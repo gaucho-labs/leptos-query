@@ -1,6 +1,6 @@
 use crate::{
     error_template::{AppError, ErrorTemplate},
-    resource_cache::QueryCache,
+    query_cache::QueryCache,
 };
 use leptos::*;
 use leptos_meta::*;
