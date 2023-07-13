@@ -1,8 +1,10 @@
 use std::future::Future;
+use std::ops::{Add, Sub};
 use std::pin::Pin;
+use std::time::Duration;
 use std::{cell::Cell, cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
-use chrono::{Duration, Local};
+use leptos::leptos_dom::is_server;
 use leptos::*;
 
 #[derive(Clone)]
@@ -69,7 +71,8 @@ where
             fetcher,
             cache: Rc::new(RefCell::new(HashMap::new())),
             default_value,
-            stale_time: Rc::new(Cell::new(stale_time.unwrap_or(Duration::milliseconds(0)))),
+            // For now, anything around 100 millis is too short and loops.
+            stale_time: Rc::new(Cell::new(stale_time.unwrap_or(Duration::from_millis(500)))),
         }
     }
 
@@ -103,7 +106,7 @@ where
         keys.into_iter().map(|k| self.get(k.clone())).collect()
     }
 
-    // Do I have to un-register the resource?
+    // TODO: Unregister resource with leptos runtime.
     pub fn evict(&self, key: &K) -> Option<QueryState<K, V>> {
         let mut map = self.cache.borrow_mut();
         map.remove(key)
@@ -125,10 +128,14 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub struct QueryState<K: 'static, V: 'static> {
+pub struct QueryState<K, V>
+where
+    K: 'static,
+    V: 'static,
+{
     stale_time: Rc<Cell<Duration>>,
     // Epoch Millis timestamp of last update.
-    last_updated: Rc<Cell<i64>>,
+    last_updated: Rc<Cell<Option<Instant>>>,
     // whether the resource must be refetched on next read.
     invalidated: RwSignal<bool>,
     resource: Rc<Resource<K, V>>,
@@ -143,7 +150,7 @@ where
         log!("Creating query state");
         Self {
             stale_time,
-            last_updated: Rc::new(Cell::new(get_instant())),
+            last_updated: Rc::new(Cell::new(None)),
             invalidated: create_rw_signal(cx, false),
             resource: Rc::new(resource),
         }
@@ -157,34 +164,85 @@ where
         self.invalidated.set(true);
     }
 
+    // TODO: For some reason this is running twice.
     pub fn read(&self, cx: Scope) -> Signal<Option<V>> {
         let resource = self.resource.clone();
         let invalidated = self.invalidated.clone();
-        let last_updated = self.last_updated.clone();
+        let last_updated_cell = self.last_updated.clone();
         let stale_time = self.stale_time.clone();
         Signal::derive(cx, move || {
             let resource = *resource;
-            log!(
-                "Retrieving resource, last_updated: {}, stale_time: {}",
-                get_instant() - last_updated.get(),
-                stale_time.get().num_milliseconds()
-            );
-            if invalidated() || {
-                get_instant() - last_updated.get() > stale_time.get().num_milliseconds()
-            } {
-                log!("STALE!!!!");
-                invalidated.set(false);
-                resource.refetch();
-                last_updated.set(get_instant());
-                log!("refetched.");
+            let now = get_instant();
+            if let Some(last_updated) = last_updated_cell.get() {
+                log!(
+                    "Retrieving resource, now: {:?}, last_updated: {:?}, diff: {:?}, stale_time: {}",
+                    now,
+                    last_updated,
+                    get_instant() - last_updated,
+                    stale_time.get().as_millis()
+                );
+                if invalidated() || (now - last_updated) > stale_time.get() {
+                    log!("Refetching!");
+                    invalidated.set_untracked(false);
+                    resource.refetch();
+                    last_updated_cell.set(Some(now));
+                    log!("refetched.");
+                }
+            } else {
+                last_updated_cell.set(Some(now));
+                log!("First read!");
             }
             resource.read(cx)
         })
     }
 }
 
-// TODO: fix this so it's not seconds.
-// Can't use Instant because of wasm.
-fn get_instant() -> i64 {
-    Local::now().timestamp() * 1000
+impl<K, V> QueryState<K, V>
+where
+    K: Clone + 'static,
+    V: Clone + PartialEq + 'static,
+{
+    pub fn read_memo(&self, cx: Scope) -> Memo<Option<V>> {
+        let signal = self.read(cx);
+        create_memo(cx, move |_| signal())
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Hash)]
+struct Instant(std::time::Duration);
+
+impl Sub<Instant> for Instant {
+    type Output = Duration;
+
+    #[inline]
+    fn sub(self, rhs: Instant) -> Self::Output {
+        self.0 - rhs.0
+    }
+}
+
+impl Add<Instant> for Instant {
+    type Output = Duration;
+    #[inline]
+    fn add(self, rhs: Instant) -> Self::Output {
+        self.0 + rhs.0
+    }
+}
+
+fn get_instant() -> Instant {
+    if is_server() {
+        let duration = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .expect("System clock was before 1970.");
+        // log!("Server Instant: {:?}", duration);
+        Instant(duration)
+    } else {
+        let millis = js_sys::Date::now();
+        let duration = std::time::Duration::from_millis(millis as u64);
+        // log!(
+        //     "Client Instant. Millis{:?}, Duration {:?}",
+        //     millis,
+        //     duration
+        // );
+        Instant(duration)
+    }
 }
