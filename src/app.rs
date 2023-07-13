@@ -5,6 +5,7 @@ use crate::{
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
+use serde::{Deserialize, Serialize};
 
 #[component]
 pub fn App(cx: Scope) -> impl IntoView {
@@ -35,7 +36,7 @@ pub fn App(cx: Scope) -> impl IntoView {
                 <Routes>
                     <Route path="" view=|cx| view! { cx, <HomePage/> }/>
                     <Route path="one" view=|cx| view! { cx, <PostOne/> }/>
-                    <Route path="two" view=|cx| view! { cx, <PostOne/> }/>
+                    <Route path="two" view=|cx| view! { cx, <PostTwo/> }/>
                 </Routes>
             </main>
         </Router>
@@ -61,17 +62,21 @@ fn HomePage(cx: Scope) -> impl IntoView {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(String);
 
 pub fn provide_post_cache(cx: Scope) {
-    let cache = ResourceCache::<PostId, String>::new(cx, |id| async move {
-        log!("fetching post: {:?}", id);
-        // tokio::time::sleep(Duration::from_millis(100)).await;
-        format!("Post: {:?}", id)
-    });
+    let cache =
+        ResourceCache::<PostId, String>::new(cx, |id| async move { get_post(id).await.unwrap() });
 
     provide_context(cx, cache);
+}
+
+#[server(GetPost, "/api")]
+pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
+    log!("fetching post: {:?}", id);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    Ok(format!("Post: {:?}", id))
 }
 
 pub fn use_post_cache(cx: Scope) -> ResourceCache<PostId, String> {
@@ -85,9 +90,29 @@ fn PostOne(cx: Scope) -> impl IntoView {
     let signal = query.read(cx);
 
     view! { cx,
+        <div>"ONE"</div>
             <Transition fallback=|| ()>
             {move || {
                signal().map(|post| view! { cx, <h1>{post}</h1> })
+            }
+        }
+            </Transition>
+    }
+}
+
+#[component]
+fn PostTwo(cx: Scope) -> impl IntoView {
+    let cache = use_post_cache(cx);
+    let query = cache.get(PostId("two".into()));
+    let signal = query.read(cx);
+
+    view! { cx,
+        <div>"TWO"</div>
+            <Transition fallback=|| ()>
+            {move || {
+               signal().map(|post| view! { cx,
+                <h1>{post}</h1>
+            })
             }
         }
             </Transition>
