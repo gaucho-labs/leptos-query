@@ -1,6 +1,6 @@
 use crate::{
     error_template::{AppError, ErrorTemplate},
-    query_cache::QueryCache,
+    query_cache::{QueryCache, QueryOptions},
 };
 use leptos::*;
 use leptos_meta::*;
@@ -70,9 +70,14 @@ fn HomePage(cx: Scope) -> impl IntoView {
 pub struct PostId(String);
 
 pub fn provide_post_cache(cx: Scope) {
-    QueryCache::<PostId, String>::provide_resource_cache(cx, |id| async move {
-        get_post(id).await.unwrap()
-    });
+    QueryCache::<PostId, String>::provide_resource_cache_with_options(
+        cx,
+        |id| async move { get_post(id).await.unwrap() },
+        QueryOptions {
+            default_value: None,
+            stale_time: Some(std::time::Duration::from_millis(5000)),
+        },
+    );
 }
 
 #[server(GetPost, "/api")]
