@@ -6,27 +6,33 @@ use chrono::{Duration, Local};
 use leptos::*;
 
 #[derive(Clone)]
-pub struct ResourceCache<K, V>
+pub struct QueryCache<K, V>
 where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone + Serializable + 'static,
 {
     cx: Scope,
+    default_value: Option<V>,
+    stale_time: Rc<Cell<Duration>>,
     fetcher: Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>,
     cache: Rc<RefCell<HashMap<K, QueryState<K, V>>>>,
 }
 
-#[derive(Clone, Debug)]
-pub struct QueryState<K: 'static, V: 'static> {
-    stale_time: Rc<Cell<Duration>>,
-    // Epoch Millis timestamp of last update.
-    last_updated: Rc<Cell<i64>>,
-    // whether the resource must be refetched on next read.
-    invalidated: RwSignal<bool>,
-    resource: Rc<Resource<K, V>>,
+pub struct QueryOptions<V> {
+    pub default_value: Option<V>,
+    pub stale_time: Option<Duration>,
 }
 
-impl<K, V> ResourceCache<K, V>
+impl<V> Default for QueryOptions<V> {
+    fn default() -> Self {
+        Self {
+            default_value: None,
+            stale_time: None,
+        }
+    }
+}
+
+impl<K, V> QueryCache<K, V>
 where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone + Serializable + 'static,
@@ -35,17 +41,35 @@ where
     where
         Fu: Future<Output = V> + 'static,
     {
-        provide_context(cx, Self::new(cx, fetcher));
+        Self::provide_resource_cache_with_options(cx, fetcher, QueryOptions::<V>::default());
     }
 
-    pub fn new<Fu>(cx: Scope, fetcher: impl Fn(K) -> Fu + 'static) -> Self
+    pub fn provide_resource_cache_with_options<Fu>(
+        cx: Scope,
+        fetcher: impl Fn(K) -> Fu + 'static,
+        options: QueryOptions<V>,
+    ) where
+        Fu: Future<Output = V> + 'static,
+    {
+        provide_context(cx, Self::new(cx, fetcher, options));
+    }
+
+    pub fn new<Fu>(cx: Scope, fetcher: impl Fn(K) -> Fu + 'static, options: QueryOptions<V>) -> Self
     where
         Fu: Future<Output = V> + 'static,
     {
+        let fetcher = Rc::new(move |s| Box::pin(fetcher(s)) as Pin<Box<dyn Future<Output = V>>>);
+        let QueryOptions {
+            default_value,
+            stale_time,
+        } = options;
+
         Self {
             cx,
-            fetcher: Rc::new(move |s| Box::pin(fetcher(s)) as Pin<Box<dyn Future<Output = V>>>),
+            fetcher,
             cache: Rc::new(RefCell::new(HashMap::new())),
+            default_value,
+            stale_time: Rc::new(Cell::new(stale_time.unwrap_or(Duration::milliseconds(0)))),
         }
     }
 
@@ -63,19 +87,57 @@ where
             let cx = self.cx;
             // TODO: Can I remove key func?
             let get_key = move || key.clone();
-            let resource = create_resource(cx, get_key, fetcher);
-            QueryState::new(cx, resource)
+            let resource = create_resource_with_initial_value(
+                cx,
+                get_key,
+                fetcher,
+                self.default_value.clone(),
+            );
+            QueryState::new(cx, self.stale_time.clone(), resource)
         });
 
         result.clone()
     }
+
+    pub fn get_many<'a>(&self, keys: impl Iterator<Item = &'a K>) -> Vec<QueryState<K, V>> {
+        keys.into_iter().map(|k| self.get(k.clone())).collect()
+    }
+
+    pub fn evict(&self, key: &K) -> Option<QueryState<K, V>> {
+        let mut map = self.cache.borrow_mut();
+        map.remove(key)
+    }
+
+    pub fn invalidate(&self, key: &K) -> bool {
+        let map = self.cache.borrow();
+        if let Some(query) = map.get(key) {
+            query.invalidate();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_stale_time(&self, stale_time: Duration) {
+        self.stale_time.set(stale_time);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct QueryState<K: 'static, V: 'static> {
+    stale_time: Rc<Cell<Duration>>,
+    // Epoch Millis timestamp of last update.
+    last_updated: Rc<Cell<i64>>,
+    // whether the resource must be refetched on next read.
+    invalidated: RwSignal<bool>,
+    resource: Rc<Resource<K, V>>,
 }
 
 impl<K: Clone + 'static, V: Clone + 'static> QueryState<K, V> {
-    pub fn new(cx: Scope, resource: Resource<K, V>) -> Self {
+    fn new(cx: Scope, stale_time: Rc<Cell<Duration>>, resource: Resource<K, V>) -> Self {
         log!("Creating query state");
         Self {
-            stale_time: Rc::new(Cell::new(Duration::seconds(10))),
+            stale_time,
             last_updated: Rc::new(Cell::new(get_instant())),
             invalidated: create_rw_signal(cx, false),
             resource: Rc::new(resource),

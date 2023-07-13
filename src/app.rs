@@ -1,6 +1,6 @@
 use crate::{
     error_template::{AppError, ErrorTemplate},
-    resource_cache::ResourceCache,
+    resource_cache::QueryCache,
 };
 use leptos::*;
 use leptos_meta::*;
@@ -66,10 +66,9 @@ fn HomePage(cx: Scope) -> impl IntoView {
 pub struct PostId(String);
 
 pub fn provide_post_cache(cx: Scope) {
-    let cache =
-        ResourceCache::<PostId, String>::new(cx, |id| async move { get_post(id).await.unwrap() });
-
-    provide_context(cx, cache);
+    QueryCache::<PostId, String>::provide_resource_cache(cx, |id| async move {
+        get_post(id).await.unwrap()
+    });
 }
 
 #[server(GetPost, "/api")]
@@ -79,8 +78,8 @@ pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
     Ok(format!("Post: {:?}", id))
 }
 
-pub fn use_post_cache(cx: Scope) -> ResourceCache<PostId, String> {
-    use_context::<ResourceCache<PostId, String>>(cx).expect("No Post Cache")
+pub fn use_post_cache(cx: Scope) -> QueryCache<PostId, String> {
+    use_context::<QueryCache<PostId, String>>(cx).expect("No Post Cache")
 }
 
 #[component]
