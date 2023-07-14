@@ -1,10 +1,11 @@
 use std::future::Future;
-use std::ops::{Add, Sub};
 use std::pin::Pin;
 use std::time::Duration;
 use std::{cell::Cell, cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
 use leptos::*;
+
+use crate::instant::{get_instant, Instant};
 
 #[derive(Clone)]
 pub struct QueryCache<K, V>
@@ -207,7 +208,7 @@ where
                     get_instant() - last_updated,
                     stale_time.get().as_millis()
                 );
-                if invalidated() || (now - last_updated) > stale_time.get() {
+                if invalidated.get() || (now - last_updated) > stale_time.get() {
                     log!("Refetching!");
                     invalidated.set_untracked(false);
                     resource.refetch();
@@ -225,41 +226,6 @@ where
 {
     pub fn read_memo(&self, cx: Scope) -> Memo<Option<V>> {
         let signal = self.read(cx);
-        create_memo(cx, move |_| signal())
+        create_memo(cx, move |_| signal.get())
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Hash)]
-struct Instant(std::time::Duration);
-
-impl Sub<Instant> for Instant {
-    type Output = Duration;
-
-    #[inline]
-    fn sub(self, rhs: Instant) -> Self::Output {
-        self.0 - rhs.0
-    }
-}
-
-impl Add<Instant> for Instant {
-    type Output = Duration;
-    #[inline]
-    fn add(self, rhs: Instant) -> Self::Output {
-        self.0 + rhs.0
-    }
-}
-
-fn get_instant() -> Instant {
-    use cfg_if::cfg_if;
-    cfg_if! { if #[cfg(not(feature = "ssr"))] {
-        let millis = js_sys::Date::now();
-        let duration = std::time::Duration::from_millis(millis as u64);
-        Instant(duration)
-    }}
-    cfg_if! { if #[cfg(feature = "ssr")] {
-        let duration = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .expect("System clock was before 1970.");
-        Instant(duration)
-    }}
 }

@@ -1,9 +1,7 @@
-use crate::{
-    error_template::{AppError, ErrorTemplate},
-    query_cache::{QueryCache, QueryOptions},
-};
+use crate::error_template::{AppError, ErrorTemplate};
 use leptos::*;
 use leptos_meta::*;
+use leptos_query::{QueryCache, QueryOptions};
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
 
