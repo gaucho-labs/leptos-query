@@ -43,6 +43,7 @@ where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone + Serializable + 'static,
 {
+    // Creates a query cache and provides it in a context object.
     pub fn provide_resource_cache<Fu>(cx: Scope, fetcher: impl Fn(K) -> Fu + 'static)
     where
         Fu: Future<Output = V> + 'static,
@@ -50,6 +51,7 @@ where
         Self::provide_resource_cache_with_options(cx, fetcher, QueryOptions::<V>::default());
     }
 
+    // Creates a query cache from the given options, and provides it in a context object.
     pub fn provide_resource_cache_with_options<Fu>(
         cx: Scope,
         fetcher: impl Fn(K) -> Fu + 'static,
@@ -60,6 +62,7 @@ where
         provide_context(cx, Self::new(cx, fetcher, options));
     }
 
+    // Creates a new query cache.
     pub fn new<Fu>(cx: Scope, fetcher: impl Fn(K) -> Fu + 'static, options: QueryOptions<V>) -> Self
     where
         Fu: Future<Output = V> + 'static,
@@ -183,6 +186,7 @@ where
 {
     fn new(
         cx: Scope,
+        // TODO: Should this be an Rc?
         key: K,
         stale_time: Rc<Cell<Duration>>,
         resource: Resource<K, V>,
@@ -225,6 +229,7 @@ where
             last_updated.set(Some(get_instant()));
         }
 
+        // Saves last interval to be cleared on cleanup.
         // TODO: Ensure this is necessary.
         let interval: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));
         let clean_up = {
@@ -237,7 +242,7 @@ where
         };
         on_cleanup(cx, clean_up);
 
-        // Sets timeout to refetch resource if it is stale.
+        // Sets timeout to refetch resource once it becomes stale.
         create_effect(cx, {
             let stale_time = stale_time.clone();
             let resource = resource.clone();
@@ -268,6 +273,7 @@ where
             }
         });
 
+        // Refetch query if invalidated.
         create_effect(cx, {
             let resource = resource.clone();
             move |_| {
@@ -290,6 +296,8 @@ where
     K: Clone + 'static,
     V: Clone + PartialEq + 'static,
 {
+    // Render optimized version of read?
+    // Not sure if this is needed.
     pub fn read_memo(&self, cx: Scope) -> Memo<Option<V>> {
         let signal = self.read(cx);
         create_memo(cx, move |_| signal.get())

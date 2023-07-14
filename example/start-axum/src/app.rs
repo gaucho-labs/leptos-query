@@ -74,6 +74,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(String);
 
+// Include a query cache provider.
 pub fn provide_post_cache(cx: Scope) {
     QueryCache::<PostId, String>::provide_resource_cache_with_options(
         cx,
@@ -85,13 +86,16 @@ pub fn provide_post_cache(cx: Scope) {
     );
 }
 
+// Server function that fetches a post.
 #[server(GetPost, "/api")]
 pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
     log!("fetching post: {:?}", id);
     tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-    Ok(format!("Post Number {:?}", id.0))
+    let instant = std::time::Instant::now();
+    Ok(format!("Post {} : timestamp {:?}", id.0, instant))
 }
 
+// Function to retrieve the post cache from Context.
 pub fn use_post_cache(cx: Scope) -> QueryCache<PostId, String> {
     use_context::<QueryCache<PostId, String>>(cx).expect("No Post Cache")
 }
@@ -114,7 +118,7 @@ fn PostTwo(cx: Scope) -> impl IntoView {
 
 #[component]
 fn Post(cx: Scope, query: QueryState<PostId, String>) -> impl IntoView {
-    let signal = query.read(cx);
+    let data_signal = query.read(cx);
     let loading = query.loading();
     let key = query.key().0;
     view! { cx,
@@ -130,12 +134,22 @@ fn Post(cx: Scope, query: QueryState<PostId, String>) -> impl IntoView {
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     {move || {
-                        signal()
+                        data_signal()
                             .map(|post| {
-                                view! { cx, <h1>{post}</h1> }
+                                view! { cx, <h2>{post}</h2> }
                             })
                     }}
                 </Transition>
+            </div>
+            <div>
+            <p>
+            "When you invalidate, the query will immediately refetch in the background."
+            </p>
+                <button
+                    on:click=move |_| query.invalidate()
+                >
+                    "Invalidate"
+                </button>
             </div>
         </div>
     }
