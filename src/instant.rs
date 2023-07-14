@@ -4,7 +4,7 @@ use std::{
 };
 
 #[derive(Copy, Clone, Debug, Hash)]
-pub struct Instant(std::time::Duration);
+pub struct Instant(pub std::time::Duration);
 
 impl Sub<Instant> for Instant {
     type Output = Duration;

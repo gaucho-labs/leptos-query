@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::time::Duration;
 use std::{cell::Cell, cell::RefCell, collections::HashMap, hash::Hash, rc::Rc};
 
+use leptos::leptos_dom::helpers::TimeoutHandle;
 use leptos::*;
 
 use crate::instant::{get_instant, Instant};
@@ -88,7 +89,7 @@ where
             let fetch = self.fetcher.clone();
 
             // Save last update time on completion.
-            let last_update = Rc::new(Cell::new(None as Option<Instant>));
+            let last_update: RwSignal<Option<Instant>> = create_rw_signal(self.cx, None);
 
             let fetcher = {
                 let last_update = last_update.clone();
@@ -139,6 +140,13 @@ where
         }
     }
 
+    pub fn invalidate_all(&self) {
+        self.cache
+            .borrow()
+            .values()
+            .for_each(|query| query.invalidate());
+    }
+
     pub fn set_stale_time(&self, stale_time: Duration) {
         self.stale_time.set(stale_time);
     }
@@ -152,7 +160,7 @@ where
 {
     stale_time: Rc<Cell<Duration>>,
     // Epoch Millis timestamp of last update.
-    last_updated: Rc<Cell<Option<Instant>>>,
+    last_updated: RwSignal<Option<Instant>>,
     // Whether the resource must be refetched on next read.
     invalidated: RwSignal<bool>,
     resource: Rc<Resource<K, V>>,
@@ -167,7 +175,7 @@ where
         cx: Scope,
         stale_time: Rc<Cell<Duration>>,
         resource: Resource<K, V>,
-        last_updated: Rc<Cell<Option<Instant>>>,
+        last_updated: RwSignal<Option<Instant>>,
     ) -> Self {
         log!("Creating query state");
         Self {
@@ -186,30 +194,69 @@ where
         self.invalidated.set(true);
     }
 
+    pub fn loading(&self) -> Signal<bool> {
+        self.resource.loading().into()
+    }
+
     pub fn read(&self, cx: Scope) -> Signal<Option<V>> {
         let resource = self.resource.clone();
         let invalidated = self.invalidated.clone();
         let stale_time = self.stale_time.clone();
         let last_updated = self.last_updated.clone();
 
+        // This is a kind of a hack. Happens when the resource is SSR'd.
         if resource.read(cx).is_some() && last_updated.get().is_none() {
-            log!("Resource was Server Side Rendered!");
             last_updated.set(Some(get_instant()));
         }
 
+        // TODO: Ensure this is necessary.
+        let interval: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));
+        let clean_up = {
+            let interval = interval.clone();
+            move || {
+                if let Some(handle) = interval.take() {
+                    handle.clear();
+                }
+            }
+        };
+        on_cleanup(cx, clean_up);
+
+        // Sets timeout to refetch resource if it is stale.
+        create_effect(cx, {
+            let stale_time = stale_time.clone();
+            let resource = resource.clone();
+            let interval = interval.clone();
+
+            move |maybe_handle: Option<Option<TimeoutHandle>>| {
+                let maybe_handle = maybe_handle.flatten();
+                if let Some(handle) = maybe_handle {
+                    handle.clear();
+                };
+                if let Some(last_updated) = last_updated.get() {
+                    let timeout = time_until_stale(last_updated, stale_time.get());
+
+                    log!("Setting refetch timeout for: {:?}", timeout);
+                    let resource = resource.clone();
+                    let handle = set_timeout_with_handle(
+                        move || {
+                            resource.refetch();
+                        },
+                        timeout,
+                    )
+                    .ok();
+                    interval.set(handle);
+                    handle
+                } else {
+                    None
+                }
+            }
+        });
+
         Signal::derive(cx, move || {
-            let resource = *resource;
-            let now = get_instant();
-            if let Some(last_updated) = last_updated.get() {
-                log!(
-                    "Reading resource, now: {:?}, last_updated: {:?}, diff: {:?}, stale_time: {}",
-                    now,
-                    last_updated,
-                    get_instant() - last_updated,
-                    stale_time.get().as_millis()
-                );
-                if invalidated.get() || (now - last_updated) > stale_time.get() {
-                    log!("Refetching!");
+            // Subscribe to last_updated to always have latest value in resource.
+            if let Some(_) = last_updated.get() {
+                if invalidated.get() {
+                    log!("Refetching invalidated query");
                     invalidated.set_untracked(false);
                     resource.refetch();
                 }
@@ -228,4 +275,13 @@ where
         let signal = self.read(cx);
         create_memo(cx, move |_| signal.get())
     }
+}
+
+fn time_until_stale(last_updated: Instant, stale_time: Duration) -> Duration {
+    let last_updated = last_updated.0.as_millis() as i64;
+    let now = get_instant().0.as_millis() as i64;
+    let stale_time = stale_time.as_millis() as i64;
+    let result = (last_updated + stale_time) - now;
+    let ensure_non_negative = result.max(0);
+    Duration::from_millis(ensure_non_negative as u64)
 }
