@@ -107,14 +107,23 @@ where
             };
             let cx = self.cx;
             // TODO: Can I remove key func?
-            let get_key = move || key.clone();
+            let get_key = {
+                let key = key.clone();
+                move || key.clone()
+            };
             let resource = create_resource_with_initial_value(
                 cx,
                 get_key,
                 fetcher,
                 self.default_value.clone(),
             );
-            QueryState::new(cx, self.stale_time.clone(), resource, last_update)
+            QueryState::new(
+                cx,
+                key.clone(),
+                self.stale_time.clone(),
+                resource,
+                last_update,
+            )
         });
 
         result.clone()
@@ -158,6 +167,7 @@ where
     K: 'static,
     V: 'static,
 {
+    key: K,
     stale_time: Rc<Cell<Duration>>,
     // Epoch Millis timestamp of last update.
     last_updated: RwSignal<Option<Instant>>,
@@ -173,17 +183,23 @@ where
 {
     fn new(
         cx: Scope,
+        key: K,
         stale_time: Rc<Cell<Duration>>,
         resource: Resource<K, V>,
         last_updated: RwSignal<Option<Instant>>,
     ) -> Self {
         log!("Creating query state");
         Self {
+            key,
             stale_time,
             resource: Rc::new(resource),
             last_updated,
             invalidated: create_rw_signal(cx, false),
         }
+    }
+
+    pub fn key(&self) -> K {
+        self.key.clone()
     }
 
     pub fn refetch(&self) {
