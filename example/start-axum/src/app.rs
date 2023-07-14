@@ -1,7 +1,7 @@
 use crate::error_template::{AppError, ErrorTemplate};
 use leptos::*;
 use leptos_meta::*;
-use leptos_query::{QueryCache, QueryOptions};
+use leptos_query::{QueryCache, QueryOptions, QueryState};
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
 
@@ -46,20 +46,27 @@ pub fn App(cx: Scope) -> impl IntoView {
     }
 }
 
-/// Renders the home page of your application.
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
-    // Creates a reactive value to update the button
-    let (count, set_count) = create_signal(cx, 0);
-    let on_click = move |_| set_count.update(|count| *count += 1);
-
     view! { cx,
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {count}</button>
         <div>
-            <a href="/one">"Post One"</a>
-            <br/>
-            <a href="/two">"Post two"</a>
+            <h1>"Welcome to Leptos Query!"</h1>
+            <div id="simple" style:width="20rem" style:margin="auto">
+                <p>"This is a simple example of using a query cache."</p>
+                <p>"Each post has a stale_time of 5 seconds."</p>
+
+                <h2>"Posts"</h2>
+                <ul>
+                    <li>
+                        <a href="/one">"Post 1"</a>
+                    </li>
+                    <li>
+                        <a href="/two">"Post 2"</a>
+                    </li>
+                </ul>
+                <br/>
+            </div>
+            <div id="complex"></div>
         </div>
     }
 }
@@ -81,8 +88,8 @@ pub fn provide_post_cache(cx: Scope) {
 #[server(GetPost, "/api")]
 pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
     log!("fetching post: {:?}", id);
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    Ok(format!("Post: {:?}", id))
+    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+    Ok(format!("Post Number {:?}", id.0))
 }
 
 pub fn use_post_cache(cx: Scope) -> QueryCache<PostId, String> {
@@ -93,36 +100,43 @@ pub fn use_post_cache(cx: Scope) -> QueryCache<PostId, String> {
 fn PostOne(cx: Scope) -> impl IntoView {
     let cache = use_post_cache(cx);
     let query = cache.get(PostId("one".into()));
-    let signal = query.read(cx);
 
-    view! { cx,
-        <div>"ONE"</div>
-        <Transition fallback=|| ()>
-            {move || {
-                signal()
-                    .map(|post| {
-                        view! { cx, <h1>{post}</h1> }
-                    })
-            }}
-        </Transition>
-    }
+    view! { cx, <Post query/> }
 }
 
 #[component]
 fn PostTwo(cx: Scope) -> impl IntoView {
     let cache = use_post_cache(cx);
     let query = cache.get(PostId("two".into()));
-    let signal = query.read(cx);
 
+    view! { cx, <Post query/> }
+}
+
+#[component]
+fn Post(cx: Scope, query: QueryState<PostId, String>) -> impl IntoView {
+    let signal = query.read(cx);
+    let loading = query.loading();
+    let key = query.key().0;
     view! { cx,
-        <div>"TWO"</div>
-        <Transition fallback=|| ()>
-            {move || {
-                signal()
-                    .map(|post| {
-                        view! { cx, <h1>{post}</h1> }
-                    })
-            }}
-        </Transition>
+        <div class="post">
+            <h2>"Post Key: " {key}</h2>
+            <div>
+                <span>"Fetching Status: "</span>
+                <span>{move || { if loading.get() { "Fetching..." } else { "Idle..." } }}</span>
+            </div>
+            <div class="post-body">
+                <p>"Post Body"</p>
+                <Transition fallback=move || {
+                    view! { cx, <h2>"Loading..."</h2> }
+                }>
+                    {move || {
+                        signal()
+                            .map(|post| {
+                                view! { cx, <h1>{post}</h1> }
+                            })
+                    }}
+                </Transition>
+            </div>
+        </div>
     }
 }

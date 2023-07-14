@@ -1,4 +1,20 @@
 body {
-	font-family: sans-serif;
-	text-align: center;
+  font-family: sans-serif;
+  text-align: center;
+}
+
+.post {
+  display: flex;
+  width: 20rem;
+  flex-direction: column;
+  gap: 1rem;
+  margin: auto;
+}
+
+.post-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: red 1px solid;
 }

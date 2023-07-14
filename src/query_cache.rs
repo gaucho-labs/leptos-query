@@ -268,17 +268,20 @@ where
             }
         });
 
-        Signal::derive(cx, move || {
-            // Subscribe to last_updated to always have latest value in resource.
-            if let Some(_) = last_updated.get() {
-                if invalidated.get() {
-                    log!("Refetching invalidated query");
-                    invalidated.set_untracked(false);
-                    resource.refetch();
+        create_effect(cx, {
+            let resource = resource.clone();
+            move |_| {
+                if let Some(_) = last_updated.get() {
+                    if invalidated.get() {
+                        log!("Refetching invalidated query");
+                        invalidated.set_untracked(false);
+                        resource.refetch();
+                    }
                 }
             }
-            resource.read(cx)
-        })
+        });
+
+        Signal::derive(cx, move || resource.read(cx))
     }
 }
 
