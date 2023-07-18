@@ -3,6 +3,8 @@ use std::{
     time::Duration,
 };
 
+// Instant that can be used in both wasm and non-wasm environments.
+
 #[derive(Copy, Clone, Debug, Hash)]
 pub struct Instant(pub std::time::Duration);
 

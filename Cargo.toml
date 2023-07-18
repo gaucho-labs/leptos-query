@@ -1,9 +1,9 @@
 [package]
-name = "leptos-query"
+name = "leptos_query"
 version = "0.1.0"
 edition = "2021"
 authors = ["Nico Burniske"]
-description = "Async resource manager for Leptos"
+description = "Async query manager for Leptos"
 exclude = ["example/"]
 keywords = ["leptos"]
 license = "MIT"
@@ -11,7 +11,7 @@ readme = "README.md"
 repository = "https://github.com/nicoburniske/leptos-query"
 
 [dependencies]
-leptos = "0.4"
+leptos = "0.4.3"
 cfg-if = "1"
 js-sys = {version = "0.3.64", optional = true}
 

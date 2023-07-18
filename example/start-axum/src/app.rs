@@ -1,15 +1,17 @@
 use crate::error_template::{AppError, ErrorTemplate};
 use leptos::*;
 use leptos_meta::*;
-use leptos_query::{QueryCache, QueryOptions, QueryState};
+use leptos_query::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[component]
 pub fn App(cx: Scope) -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context(cx);
-    provide_post_cache(cx);
+    // Provides Query Client for entire app.
+    provide_query_client(cx);
 
     view! { cx,
         <Stylesheet id="leptos" href="/pkg/start-axum.css"/>
@@ -54,7 +56,6 @@ fn HomePage(cx: Scope) -> impl IntoView {
             <div id="simple" style:width="20rem" style:margin="auto">
                 <p>"This is a simple example of using a query cache."</p>
                 <p>"Each post has a stale_time of 5 seconds."</p>
-
                 <h2>"Posts"</h2>
                 <ul>
                     <li>
@@ -74,59 +75,54 @@ fn HomePage(cx: Scope) -> impl IntoView {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(String);
 
-// Include a query cache provider.
-pub fn provide_post_cache(cx: Scope) {
-    QueryCache::<PostId, String>::provide_resource_cache_with_options(
+fn use_post_query(cx: Scope, post_id: PostId) -> QueryState<PostId, String> {
+    leptos_query::use_query(
         cx,
+        post_id,
         |id| async move { get_post(id).await.unwrap() },
-        QueryOptions {
-            default_value: None,
-            stale_time: Some(std::time::Duration::from_millis(5000)),
-        },
-    );
+        QueryOptions::stale_time(Duration::from_secs(5)),
+    )
 }
 
 // Server function that fetches a post.
 #[server(GetPost, "/api")]
 pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
-    log!("fetching post: {:?}", id);
-    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-    let instant = std::time::Instant::now();
-    Ok(format!("Post {} : timestamp {:?}", id.0, instant))
-}
+    use std::time::Instant;
 
-// Function to retrieve the post cache from Context.
-pub fn use_post_cache(cx: Scope) -> QueryCache<PostId, String> {
-    use_context::<QueryCache<PostId, String>>(cx).expect("No Post Cache")
+    log!("Fetching post: {:?}", id);
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let instant = Instant::now();
+    Ok(format!("Post {} : timestamp {:?}", id.0, instant))
 }
 
 #[component]
 fn PostOne(cx: Scope) -> impl IntoView {
-    let cache = use_post_cache(cx);
-    let query = cache.get(PostId("one".into()));
-
-    view! { cx, <Post query/> }
+    view! { cx, <Post post_id=PostId("one".into())/> }
 }
 
 #[component]
 fn PostTwo(cx: Scope) -> impl IntoView {
-    let cache = use_post_cache(cx);
-    let query = cache.get(PostId("two".into()));
-
-    view! { cx, <Post query/> }
+    view! { cx, <Post post_id=PostId("two".into())/> }
 }
 
 #[component]
-fn Post(cx: Scope, query: QueryState<PostId, String>) -> impl IntoView {
+fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
+    let query = use_post_query(cx, post_id);
     let data_signal = query.read(cx);
-    let loading = query.loading();
+    let loading = query.is_loading(cx);
+    let refetching = query.is_refetching();
     let key = query.key().0;
+
     view! { cx,
         <div class="post">
             <h2>"Post Key: " {key}</h2>
             <div>
+                <span>"Loading Status: " </span>
+                <span>{move || { if loading.get() { "Loading..." } else { "Loaded"} }}</span>
+            </div>
+            <div>
                 <span>"Fetching Status: "</span>
-                <span>{move || { if loading.get() { "Fetching..." } else { "Idle..." } }}</span>
+                <span>{move || { if refetching.get() { "Fetching..." } else { "Idle..." } }}</span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -142,14 +138,8 @@ fn Post(cx: Scope, query: QueryState<PostId, String>) -> impl IntoView {
                 </Transition>
             </div>
             <div>
-            <p>
-            "When you invalidate, the query will immediately refetch in the background."
-            </p>
-                <button
-                    on:click=move |_| query.invalidate()
-                >
-                    "Invalidate"
-                </button>
+                <p>"When you invalidate, the query will immediately refetch in the background."</p>
+                <button on:click=move |_| query.invalidate()>"Invalidate"</button>
             </div>
         </div>
     }
