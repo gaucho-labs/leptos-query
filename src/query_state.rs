@@ -14,11 +14,10 @@ where
 {
     pub(crate) observers: Rc<Cell<usize>>,
     pub(crate) key: K,
-    // pub(crate) fetcher: Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>,
     pub(crate) resource: RwSignal<Resource<(), V>>,
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
-    pub(crate) last_updated: RwSignal<Option<Instant>>,
+    pub(crate) updated_at: RwSignal<Option<Instant>>,
     // Whether the resource must be refetched on next read.
     pub(crate) invalidated: RwSignal<bool>,
 }
@@ -39,7 +38,7 @@ where
         Fu: Future<Output = V> + 'static,
     {
         let stored_fetcher = Rc::new(fetcher);
-        let last_updated: RwSignal<Option<Instant>> = create_rw_signal(scope, None);
+        let updated_at: RwSignal<Option<Instant>> = create_rw_signal(scope, None);
 
         let key = key.clone();
         let fetcher = {
@@ -51,7 +50,7 @@ where
                 async move {
                     let result = stored_fetcher(key).await;
                     let instant = get_instant();
-                    last_updated.set(Some(instant));
+                    updated_at.set(Some(instant));
                     result
                 }
             }
@@ -74,7 +73,7 @@ where
             resource: create_rw_signal(scope, resource),
             stale_time: create_rw_signal(scope, options.stale_time),
             refetch_interval: create_rw_signal(scope, options.refetch_interval),
-            last_updated,
+            updated_at: updated_at,
             invalidated: create_rw_signal(scope, false),
         }
     }
@@ -90,7 +89,7 @@ where
         &self.key
     }
 
-    pub fn refetch(&self) {
+    pub(crate) fn refetch(&self) {
         let resource = self.resource.get();
         if !resource.loading().get() {
             resource.refetch();
@@ -104,57 +103,43 @@ where
     }
 
     /// If the query is currently being fetched in the background.
-    pub fn is_refetching(&self, cx: Scope) -> Signal<bool> {
+    pub(crate) fn is_refetching(&self, cx: Scope) -> Signal<bool> {
         let resource = self.resource;
 
         Signal::derive(cx, move || resource.get().loading().get())
     }
 
-    /// If the query is being fetched for the first time.
-    /// IMPORTANT: If the query is never [read](QueryState::read), this will always return false.
-    pub fn is_loading(&self, cx: Scope) -> Memo<bool> {
-        let last_updated = self.last_updated;
-        let is_loading = self.resource;
-        create_memo(cx, move |_| {
-            last_updated.get().is_none() && is_loading.get().loading().get()
+    pub(crate) fn is_stale(&self, cx: Scope) -> Signal<bool> {
+        let updated_at = self.updated_at;
+        let stale_time = self.stale_time;
+        Signal::derive(cx, move || {
+            let updated_at = updated_at.get();
+            let stale_time = stale_time.get();
+            if let (Some(updated_at), Some(stale_time)) = (updated_at, stale_time) {
+                time_until_stale(updated_at, stale_time).is_zero()
+            } else {
+                false
+            }
         })
     }
 
-    pub fn stale_time(&self) -> Signal<Option<Duration>> {
-        self.stale_time.read_only().into()
-    }
-
-    pub fn refetch_interval(&self) -> Signal<Option<Duration>> {
-        self.refetch_interval.read_only().into()
+    /// If the query is being fetched for the first time.
+    /// IMPORTANT: If the query is never [read](QueryState::read), this will always return false.
+    pub fn is_loading(&self, cx: Scope) -> Signal<bool> {
+        let updated_at = self.updated_at;
+        let is_loading = self.resource;
+        Signal::derive(cx, move || {
+            updated_at.get().is_none() && is_loading.get().loading().get()
+        })
     }
 
     pub(crate) fn set_options(&self, options: QueryOptions<V>) {
         if let Some(stale_time) = options.stale_time {
-            self.set_stale_time(stale_time);
+            self.stale_time.set(Some(stale_time));
         }
         if let Some(refetch_interval) = options.refetch_interval {
-            self.set_refetch_interval(refetch_interval);
+            self.refetch_interval.set(Some(refetch_interval));
         }
-    }
-
-    /// Update the stale time for the current query.
-    pub fn set_stale_time(&self, stale_time: Duration) {
-        self.stale_time.set(Some(stale_time));
-    }
-
-    /// Update the refetch interval for the current query.
-    pub fn set_refetch_interval(&self, refetch_interval: Duration) {
-        self.refetch_interval.set(Some(refetch_interval));
-    }
-
-    /// Clear the stale time for the current query.
-    pub fn clear_refetch_interval(&self) {
-        self.refetch_interval.set(None);
-    }
-
-    /// Query will never be considered stale.
-    pub fn clear_stale_time(&self) {
-        self.stale_time.set(None);
     }
 
     pub fn read(&self, cx: Scope) -> Signal<Option<V>> {
@@ -162,10 +147,10 @@ where
         let refetch_interval = self.refetch_interval;
         let resource = self.resource;
         let stale_time = self.stale_time;
-        let last_updated = self.last_updated;
+        let updated_at = self.updated_at;
 
         let refetch = move || {
-            if last_updated.get_untracked().is_some() {
+            if updated_at.get_untracked().is_some() {
                 let resource = resource.get_untracked();
                 if !resource.loading().get_untracked() {
                     resource.refetch();
@@ -196,9 +181,9 @@ where
                 if let Some(handle) = maybe_handle {
                     handle.clear();
                 };
-                match (last_updated.get(), refetch_interval.get()) {
-                    (Some(last_updated), Some(refetch_interval)) => {
-                        let timeout = time_until_stale(last_updated, refetch_interval);
+                match (updated_at.get(), refetch_interval.get()) {
+                    (Some(updated_at), Some(refetch_interval)) => {
+                        let timeout = time_until_stale(updated_at, refetch_interval);
                         let handle = set_timeout_with_handle(
                             move || {
                                 refetch.with_value(|r| r());
@@ -225,9 +210,9 @@ where
 
         Signal::derive(cx, move || {
             // On mount, ensure that the resource is not stale
-            match (last_updated.get_untracked(), stale_time.get_untracked()) {
-                (Some(last_updated), Some(stale_time)) => {
-                    if time_until_stale(last_updated, stale_time).is_zero() {
+            match (updated_at.get_untracked(), stale_time.get_untracked()) {
+                (Some(updated_at), Some(stale_time)) => {
+                    if time_until_stale(updated_at, stale_time).is_zero() {
                         refetch.with_value(|r| r());
                     }
                 }
@@ -236,8 +221,8 @@ where
 
             // Happens when the resource is SSR'd.
             let read = resource.get().read(cx);
-            if read.is_some() && last_updated.get_untracked().is_none() {
-                last_updated.set(Some(get_instant()));
+            if read.is_some() && updated_at.get_untracked().is_none() {
+                updated_at.set(Some(get_instant()));
             }
 
             read
@@ -257,11 +242,11 @@ where
     }
 }
 
-pub(crate) fn time_until_stale(last_updated: Instant, stale_time: Duration) -> Duration {
-    let last_updated = last_updated.0.as_millis() as i64;
+pub(crate) fn time_until_stale(updated_at: Instant, stale_time: Duration) -> Duration {
+    let updated_at = updated_at.0.as_millis() as i64;
     let now = get_instant().0.as_millis() as i64;
     let stale_time = stale_time.as_millis() as i64;
-    let result = (last_updated + stale_time) - now;
+    let result = (updated_at + stale_time) - now;
     let ensure_non_negative = result.max(0);
     Duration::from_millis(ensure_non_negative as u64)
 }

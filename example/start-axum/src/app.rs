@@ -25,7 +25,7 @@ pub fn App(cx: Scope) -> impl IntoView {
             <main>
                 <Routes>
                     <Route
-                        path=""
+                        path="/"
                         view=|cx| {
                             view! { cx, <HomePage/> }
                         }
@@ -75,7 +75,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(String);
 
-fn use_post_query(cx: Scope, post_id: PostId) -> QueryState<PostId, String> {
+fn use_post_query(cx: Scope, post_id: PostId) -> QueryResult<String> {
     leptos_query::use_query(
         cx,
         post_id,
@@ -109,32 +109,37 @@ fn PostOne(cx: Scope) -> impl IntoView {
 #[component]
 fn PostTwo(cx: Scope) -> impl IntoView {
     view! { cx,
-        <h1> "Requests are de-duplicated across components" </h1>
+        <h1>"Requests are de-duplicated across components"</h1>
         <br/>
-       <Post post_id=PostId("two".into())/>
-       <hr/>
-       <Post post_id=PostId("two".into())/>
+        <Post post_id=PostId("two".into())/>
+        <hr/>
+        <Post post_id=PostId("two".into())/>
     }
 }
 
 #[component]
 fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
-    let query = use_post_query(cx, post_id);
-    let data_signal = query.read(cx);
-    let loading = query.is_loading(cx);
-    let refetching = query.is_refetching(cx);
-    let key = query.key().0.clone();
+    let query = use_post_query(cx, post_id.clone());
+    let QueryResult {
+        data,
+        is_loading,
+        is_refetching,
+        ..
+    } = query;
 
     view! { cx,
         <div class="post">
-            <h2>"Post Key: " {key}</h2>
+            <a href="/">"Home"</a>
+            <h2>"Post Key: " {post_id.0}</h2>
             <div>
-                <span>"Loading Status: " </span>
-                <span>{move || { if loading.get() { "Loading..." } else { "Loaded"} }}</span>
+                <span>"Loading Status: "</span>
+                <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
             </div>
             <div>
                 <span>"Fetching Status: "</span>
-                <span>{move || { if refetching.get() { "Fetching..." } else { "Idle..." } }}</span>
+                <span>
+                    {move || { if is_refetching.get() { "Fetching..." } else { "Idle..." } }}
+                </span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -142,7 +147,7 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     {move || {
-                        data_signal()
+                        data()
                             .map(|post| {
                                 view! { cx, <h2>{post}</h2> }
                             })
@@ -150,8 +155,7 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
                 </Transition>
             </div>
             <div>
-                <p>"When you invalidate, the query will immediately refetch in the background."</p>
-                <button on:click=move |_| query.invalidate()>"Invalidate"</button>
+                <button on:click=move |_| query.refetch()>"Refetch query"</button>
             </div>
         </div>
     }

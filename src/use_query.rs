@@ -1,4 +1,5 @@
 use crate::instant::Instant;
+use crate::query_result::QueryResult;
 use crate::{time_until_stale, CacheEntry, QueryClient, QueryOptions, QueryState};
 use leptos::leptos_dom::helpers::TimeoutHandle;
 use leptos::*;
@@ -26,7 +27,7 @@ pub fn use_query<K, V, Fu>(
     key: K,
     query: impl Fn(K) -> Fu + 'static,
     options: QueryOptions<V>,
-) -> QueryState<K, V>
+) -> QueryResult<V>
 where
     Fu: Future<Output = V> + 'static,
     K: Hash + Eq + PartialEq + Clone + 'static,
@@ -68,12 +69,26 @@ where
     cache_cleanup::<K, V>(
         root_scope,
         key,
-        state.last_updated.into(),
+        state.updated_at.into(),
         cache_time,
         observers,
     );
 
-    state
+    let data = state.read(cx);
+    let is_loading = state.is_loading(cx);
+    let is_refetching = state.is_refetching(cx);
+    let is_stale = state.is_stale(cx);
+    let updated_at = state.updated_at.clone().into();
+    let refetch = move |_: ()| state.refetch();
+
+    QueryResult {
+        data,
+        is_loading,
+        is_stale,
+        is_refetching,
+        updated_at,
+        refetch: refetch.mapped_signal_setter(cx),
+    }
 }
 
 // Will cleanup the cache corresponding to the key when the cache_time has elapsed, and the query has not been updated.
@@ -124,7 +139,7 @@ fn cache_cleanup<K, V>(
                                         resource,
                                         stale_time,
                                         refetch_interval,
-                                        last_updated,
+                                        updated_at: last_updated,
                                         invalidated,
                                         ..
                                     } = query;
@@ -173,8 +188,6 @@ where
         .downcast_ref::<CacheEntry<K, V>>()
         .expect("Query Cache Type Mismatch.")
         .borrow_mut();
-
-    log!("Cache Size: {}", cache.len());
 
     func((client.cx, &mut cache))
 }
