@@ -34,9 +34,9 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
 ///
 ///
 /// Details:
-/// A query is unique per Key `K`.
-/// A query Key type `K` must only correspond to ONE UNIQUE Value `V` Type.
-/// Meaning a query Key type `K` cannot correspond to multiple Value `V` Types.
+/// - A query is unique per Key `K`.
+/// - A query Key type `K` must only correspond to ONE UNIQUE Value `V` Type.
+/// - Meaning a query Key type `K` cannot correspond to multiple Value `V` Types.
 ///
 /// Example
 /// ```
@@ -65,22 +65,6 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
 ///             cache_time: Some(Duration::from_secs(30)),
 ///         },
 ///     )
-/// }
-///
-/// #[component]
-/// fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
-///     let query = use_monkey_query(cx, id);
-///     let QueryResult {
-///         data,
-///         is_loading,
-///         is_refetching,
-///         ..
-///     } = query;
-///
-///     view! { cx,
-///       // You can use the query result data here.
-///       // Everything is reactive.
-///     }
 /// }
 ///
 /// ```

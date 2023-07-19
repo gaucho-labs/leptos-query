@@ -8,7 +8,7 @@ exclude = ["example/"]
 keywords = ["leptos"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/nicoburniske/leptos-query"
+repository = "https://github.com/nicoburniske/leptos_query"
 
 [dependencies]
 leptos = "0.4.3"

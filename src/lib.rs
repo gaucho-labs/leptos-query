@@ -4,9 +4,9 @@
 //! # About Query
 //!
 //!
-//! Leptos Query is a asynchronous state management library for [Leptos](https://leptos.dev/),
+//! Leptos Query is a asynchronous state management library for [Leptos](https://leptos.dev/).
 //!
-//! Heavily inspired by [react-query](https://react-query.tanstack.com/)
+//! Heavily inspired by [react-query](https://react-query.tanstack.com/).
 //!
 //! Queries are useful for data fetching, caching, and synchronization with server state.
 //!
@@ -19,9 +19,26 @@
 //! - memory management with cache lifetimes
 //!
 //! # A Simple Example
+//!
+//! In the root of your App, provide a query client:
+//!
+//! ```rust
+//! use leptos_query::*;
+//! use leptos::*;
+//!
+//! #[component]
+//! pub fn App(cx: Scope) -> impl IntoView {
+//!     // Provides Query Client for entire app.
+//!     provide_query_client(cx);
+//!
+//!     // Rest of App...
+//! }
 //! ```
 //!
-//! // Create a Newtype for MonkeyId.
+//! Then make a query funciton:
+//!
+//! ```
+//!//! // Create a Newtype for MonkeyId.
 //! #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 //! struct MonkeyId(String);
 //!
@@ -46,6 +63,11 @@
 //!         },
 //!     )
 //! }
+//! ```
+//!
+//! Now you can use the query in any component in your app.
+//!
+//! ```rust
 //!
 //! #[component]
 //! fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
@@ -54,15 +76,45 @@
 //!         data,
 //!         is_loading,
 //!         is_refetching,
+//!         is_stale
 //!         ..
 //!     } = query;
 //!
 //!     view! { cx,
 //!       // You can use the query result data here.
 //!       // Everything is reactive.
+//!        <div>
+//!            <div>
+//!                <span>"Loading Status: "</span>
+//!                <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
+//!            </div>
+//!            <div>
+//!                <span>"Fetching Status: "</span>
+//!                <span>
+//!                    {move || { if is_refetching.get() { "Fetching..." } else { "Idle" } }}
+//!                </span>
+//!            </div>
+//!            <div>
+//!                <span>"Stale Status: "</span>
+//!                <span>
+//!                    {move || { if is_stale.get() { "Stale" } else { "Fresh" } }}
+//!                </span>
+//!            </div>
+//!            // Query data should be read inside a Transition/Suspense component.
+//!            <Transition
+//!                fallback=move || {
+//!                    view! { cx, <h2>"Loading..."</h2> }
+//!                }>
+//!                {move || {
+//!                    data()
+//!                        .map(|monkey| {
+//!                            view! { cx, <h2>{monkey.name}</h2> }
+//!                        })
+//!                }}
+//!            </Transition>
+//!        </div>
 //!     }
 //! }
-//!
 //! ```
 //!
 
