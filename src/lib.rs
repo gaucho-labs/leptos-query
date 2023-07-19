@@ -4,9 +4,9 @@
 //! # About Query
 //!
 //!
-//! Leptos Query is a asynchronous state management library for [Leptos](https://leptos.dev/).
+//! Leptos Query is a asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
 //!
-//! Heavily inspired by [react-query](https://react-query.tanstack.com/).
+//! Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
 //!
 //! Queries are useful for data fetching, caching, and synchronization with server state.
 //!
