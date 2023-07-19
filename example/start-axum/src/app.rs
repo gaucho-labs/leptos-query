@@ -78,14 +78,14 @@ pub struct PostId(String);
 fn use_post_query(cx: Scope, post_id: PostId) -> QueryResult<String> {
     leptos_query::use_query(
         cx,
-        post_id,
+        move || post_id.clone(),
         |id| async move { get_post(id).await.unwrap() },
         QueryOptions {
             default_value: None,
-            refetch_interval: None,
+            refetch_interval: Some(Duration::from_secs(5)),
             resource_option: ResourceOption::NonBlocking,
-            stale_time: Some(Duration::from_secs(5)),
-            cache_time: Some(Duration::from_secs(30)),
+            stale_time: Some(Duration::from_secs(30)),
+            cache_time: Some(Duration::from_secs(60)),
         },
     )
 }

@@ -1,4 +1,4 @@
-use crate::{QueryResult, QueryState};
+use crate::QueryState;
 use leptos::*;
 use std::{
     any::{Any, TypeId},
@@ -28,17 +28,17 @@ impl QueryClient {
     }
 
     /// Attempts to retrieve data for a query from the Query Cache.
-    pub fn get_query_data<K, V>(&self, cx: Scope, key: &K) -> Option<QueryResult<V>>
-    where
-        K: Hash + Eq + PartialEq + Clone + 'static,
-        V: Clone + 'static,
-    {
-        self.use_cache(|cache: &HashMap<K, QueryState<K, V>>| {
-            cache
-                .get(key)
-                .map(|state| QueryResult::from_state(cx, state.clone()))
-        })
-    }
+    // pub fn get_query_data<K, V>(&self, cx: Scope, key: &K) -> Option<QueryResult<V>>
+    // where
+    //     K: Hash + Eq + PartialEq + Clone + 'static,
+    //     V: Clone + 'static,
+    // {
+    //     self.use_cache(|cache: &HashMap<K, QueryState<K, V>>| {
+    //         cache
+    //             .get(key)
+    //             .map(|state| QueryResult::from_state(cx, state.clone()))
+    //     })
+    // }
 
     /// Attempts to invalidate an entry in the Query Cache.
     /// Returns true if the entry was successfully invalidated.

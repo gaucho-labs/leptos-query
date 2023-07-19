@@ -1,4 +1,4 @@
-use crate::instant::Instant;
+use crate::{instant::Instant, query_state::QueryState};
 use leptos::*;
 
 /// Reactive query result.
@@ -33,14 +33,15 @@ where
 {
     pub(crate) fn from_state<K: Clone>(
         cx: Scope,
-        state: crate::QueryState<K, V>,
+        state: Signal<QueryState<K, V>>,
+        data: Signal<Option<V>>,
+        refetch: impl Fn() -> () + 'static,
     ) -> QueryResult<V> {
-        let data = state.read(cx);
-        let is_loading = state.is_loading(cx);
-        let is_refetching = state.is_refetching(cx);
-        let is_stale = state.is_stale(cx);
-        let updated_at = state.updated_at.clone().into();
-        let refetch = move |_: ()| state.refetch();
+        let is_loading = state.with(|s| s.is_loading(cx));
+        let is_stale = state.with(|s| s.is_stale(cx));
+        let is_refetching = state.with(|s| s.fetching.into());
+        let updated_at = state.with(|s| s.updated_at).into();
+        let refetch = move |_: ()| refetch();
 
         QueryResult {
             data,
