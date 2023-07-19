@@ -31,13 +31,13 @@ pub fn App(cx: Scope) -> impl IntoView {
                         }
                     />
                     <Route
-                        path="one"
+                        path="single"
                         view=|cx| {
                             view! { cx, <PostOne/> }
                         }
                     />
                     <Route
-                        path="two"
+                        path="multi"
                         view=|cx| {
                             view! { cx, <PostTwo/> }
                         }
@@ -59,10 +59,10 @@ fn HomePage(cx: Scope) -> impl IntoView {
                 <h2>"Posts"</h2>
                 <ul>
                     <li>
-                        <a href="/one">"Post 1"</a>
+                        <a href="/single">"Post 1"</a>
                     </li>
                     <li>
-                        <a href="/two">"Post 2"</a>
+                        <a href="/multi">"Post 2"</a>
                     </li>
                 </ul>
                 <br/>
@@ -80,7 +80,13 @@ fn use_post_query(cx: Scope, post_id: PostId) -> QueryState<PostId, String> {
         cx,
         post_id,
         |id| async move { get_post(id).await.unwrap() },
-        QueryOptions::stale_time(Duration::from_secs(5)),
+        QueryOptions {
+            default_value: None,
+            refetch_interval: None,
+            resource_option: ResourceOption::NonBlocking,
+            stale_time: Some(Duration::from_secs(5)),
+            cache_time: Some(Duration::from_secs(30)),
+        },
     )
 }
 
@@ -102,7 +108,13 @@ fn PostOne(cx: Scope) -> impl IntoView {
 
 #[component]
 fn PostTwo(cx: Scope) -> impl IntoView {
-    view! { cx, <Post post_id=PostId("two".into())/> }
+    view! { cx,
+        <h1> "Requests are de-duplicated across components" </h1>
+        <br/>
+       <Post post_id=PostId("two".into())/>
+       <hr/>
+       <Post post_id=PostId("two".into())/>
+    }
 }
 
 #[component]
@@ -110,8 +122,8 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
     let query = use_post_query(cx, post_id);
     let data_signal = query.read(cx);
     let loading = query.is_loading(cx);
-    let refetching = query.is_refetching();
-    let key = query.key().0;
+    let refetching = query.is_refetching(cx);
+    let key = query.key().0.clone();
 
     view! { cx,
         <div class="post">
