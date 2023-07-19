@@ -72,7 +72,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(String);
 
 fn use_post_query(cx: Scope, post_id: PostId) -> QueryResult<String> {
@@ -95,7 +95,7 @@ fn use_post_query(cx: Scope, post_id: PostId) -> QueryResult<String> {
 pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
     use std::time::Instant;
 
-    log!("Fetching post: {:?}", id);
+    log!("Fetching post: {:?}", id.0);
     tokio::time::sleep(Duration::from_millis(2000)).await;
     let instant = Instant::now();
     Ok(format!("Post {} : timestamp {:?}", id.0, instant))
@@ -124,6 +124,7 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
         data,
         is_loading,
         is_refetching,
+        is_stale,
         ..
     } = query;
 
@@ -138,7 +139,13 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
             <div>
                 <span>"Fetching Status: "</span>
                 <span>
-                    {move || { if is_refetching.get() { "Fetching..." } else { "Idle..." } }}
+                    {move || { if is_refetching.get() { "Fetching..." } else { "Idle" } }}
+                </span>
+            </div>
+            <div>
+                <span>"Stale Status: "</span>
+                <span>
+                    {move || { if is_stale.get() { "Stale" } else { "Fresh" } }}
                 </span>
             </div>
             <div class="post-body">

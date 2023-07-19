@@ -1,33 +1,34 @@
-use leptos::{leptos_dom::helpers::TimeoutHandle, *};
-use std::{cell::Cell, future::Future, hash::Hash, rc::Rc, time::Duration};
+use leptos::*;
+use std::{cell::Cell, future::Future, rc::Rc, time::Duration};
 
 use crate::{
+    ensure_valid_stale_time,
     instant::{get_instant, Instant},
+    util::{time_until_stale, use_timeout},
     QueryOptions, ResourceOption,
 };
 
 #[derive(Clone)]
-pub struct QueryState<K, V>
+pub(crate) struct QueryState<K, V>
 where
     K: 'static,
     V: 'static,
 {
     pub(crate) observers: Rc<Cell<usize>>,
+    #[allow(dead_code)]
     pub(crate) key: K,
     pub(crate) resource: RwSignal<Resource<(), V>>,
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
     pub(crate) updated_at: RwSignal<Option<Instant>>,
-    // Whether the resource must be refetched on next read.
     pub(crate) invalidated: RwSignal<bool>,
 }
 
 impl<K, V> QueryState<K, V>
 where
-    K: Hash + Eq + PartialEq + Clone + 'static,
+    K: Clone + 'static,
     V: Clone + Serializable + 'static,
 {
-    // Creates a new query cache.
     pub(crate) fn new<Fu>(
         scope: Scope,
         key: K,
@@ -37,18 +38,18 @@ where
     where
         Fu: Future<Output = V> + 'static,
     {
-        let stored_fetcher = Rc::new(fetcher);
+        let fetcher = Rc::new(fetcher);
         let updated_at: RwSignal<Option<Instant>> = create_rw_signal(scope, None);
 
         let key = key.clone();
         let fetcher = {
-            let stored_fetcher = stored_fetcher.clone();
+            let fetcher = fetcher.clone();
             let key = key.clone();
             move |_: ()| {
-                let stored_fetcher = stored_fetcher.clone();
+                let fetcher = fetcher.clone();
                 let key = key.clone();
                 async move {
-                    let result = stored_fetcher(key).await;
+                    let result = fetcher(key).await;
                     let instant = get_instant();
                     updated_at.set(Some(instant));
                     result
@@ -56,9 +57,17 @@ where
             }
         };
 
-        let default_value: Option<V> = options.default_value;
+        let QueryOptions {
+            default_value,
+            ref resource_option,
+            refetch_interval,
+            ref stale_time,
+            ref cache_time,
+            ..
+        } = options;
+
         let resource = {
-            match options.resource_option {
+            match resource_option {
                 ResourceOption::NonBlocking => {
                     create_resource_with_initial_value(scope, || (), fetcher, default_value)
                 }
@@ -66,14 +75,15 @@ where
             }
         };
 
+        let stale_time = ensure_valid_stale_time(stale_time, cache_time);
+
         QueryState {
             observers: Rc::new(Cell::new(0)),
             key: key.clone(),
-            // fetcher: boxed_fetcher,
             resource: create_rw_signal(scope, resource),
-            stale_time: create_rw_signal(scope, options.stale_time),
-            refetch_interval: create_rw_signal(scope, options.refetch_interval),
-            updated_at: updated_at,
+            stale_time: create_rw_signal(scope, stale_time),
+            refetch_interval: create_rw_signal(scope, refetch_interval),
+            updated_at,
             invalidated: create_rw_signal(scope, false),
         }
     }
@@ -84,11 +94,6 @@ where
     K: Clone + 'static,
     V: Clone + 'static,
 {
-    /// Key for the current query.
-    pub fn key(&self) -> &K {
-        &self.key
-    }
-
     pub(crate) fn refetch(&self) {
         let resource = self.resource.get();
         if !resource.loading().get() {
@@ -98,7 +103,7 @@ where
     }
 
     /// Marks the resource as invalidated, which will cause it to be refetched on next read.
-    pub fn invalidate(&self) {
+    pub(crate) fn invalidate(&self) {
         self.invalidated.set(true);
     }
 
@@ -112,20 +117,30 @@ where
     pub(crate) fn is_stale(&self, cx: Scope) -> Signal<bool> {
         let updated_at = self.updated_at;
         let stale_time = self.stale_time;
-        Signal::derive(cx, move || {
-            let updated_at = updated_at.get();
-            let stale_time = stale_time.get();
-            if let (Some(updated_at), Some(stale_time)) = (updated_at, stale_time) {
-                time_until_stale(updated_at, stale_time).is_zero()
-            } else {
-                false
+        let (stale, set_stale) = create_signal(cx, false);
+        use_timeout(cx, move || match (updated_at.get(), stale_time.get()) {
+            (Some(updated_at), Some(stale_time)) => {
+                let timeout = time_until_stale(updated_at, stale_time);
+                if !timeout.is_zero() {
+                    set_stale.set(false);
+                }
+                set_timeout_with_handle(
+                    move || {
+                        set_stale.set(true);
+                    },
+                    timeout,
+                )
+                .ok()
             }
-        })
+            _ => None,
+        });
+
+        stale.into()
     }
 
     /// If the query is being fetched for the first time.
     /// IMPORTANT: If the query is never [read](QueryState::read), this will always return false.
-    pub fn is_loading(&self, cx: Scope) -> Signal<bool> {
+    pub(crate) fn is_loading(&self, cx: Scope) -> Signal<bool> {
         let updated_at = self.updated_at;
         let is_loading = self.resource;
         Signal::derive(cx, move || {
@@ -133,16 +148,45 @@ where
         })
     }
 
-    pub(crate) fn set_options(&self, options: QueryOptions<V>) {
-        if let Some(stale_time) = options.stale_time {
-            self.stale_time.set(Some(stale_time));
+    pub(crate) fn set_options(&self, cx: Scope, options: QueryOptions<V>) {
+        let curr_stale = self.stale_time.get();
+        let curr_refetch_interval = self.refetch_interval.get();
+
+        let (prev_stale, new_stale) = match (curr_stale, options.stale_time) {
+            (Some(current), Some(new)) if current > new => (Some(current), Some(new)),
+            (None, Some(new)) => (None, Some(new)),
+            _ => (None, None),
+        };
+
+        let (prev_refetch, new_refetch) = match (curr_refetch_interval, options.refetch_interval) {
+            (Some(current), Some(new)) if current > new => (Some(current), Some(new)),
+            (None, Some(new)) => (None, Some(new)),
+            _ => (None, None),
+        };
+
+        if let Some(new_stale) = new_stale {
+            self.stale_time.set(Some(new_stale));
         }
-        if let Some(refetch_interval) = options.refetch_interval {
-            self.refetch_interval.set(Some(refetch_interval));
+
+        if let Some(new_refetch) = new_refetch {
+            self.refetch_interval.set(Some(new_refetch));
         }
+
+        // Reset stale time and refetch interval to previous values when scope is dropped.
+        let stale_time = self.stale_time;
+        let refetch_interval = self.refetch_interval;
+        on_cleanup(cx, move || {
+            if let Some(prev_stale) = prev_stale {
+                stale_time.set(Some(prev_stale));
+            }
+
+            if let Some(prev_refetch) = prev_refetch {
+                refetch_interval.set(Some(prev_refetch));
+            }
+        })
     }
 
-    pub fn read(&self, cx: Scope) -> Signal<Option<V>> {
+    pub(crate) fn read(&self, cx: Scope) -> Signal<Option<V>> {
         let invalidated = self.invalidated;
         let refetch_interval = self.refetch_interval;
         let resource = self.resource;
@@ -160,42 +204,20 @@ where
         };
         let refetch = store_value(cx, refetch);
 
-        // Saves last interval to be cleared on cleanup.
-        let interval: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));
-        let clean_up = {
-            let interval = interval.clone();
-            move || {
-                if let Some(handle) = interval.take() {
-                    handle.clear();
+        // Effect for refetching query on interval.
+        use_timeout(cx, move || {
+            match (updated_at.get(), refetch_interval.get()) {
+                (Some(updated_at), Some(refetch_interval)) => {
+                    let timeout = time_until_stale(updated_at, refetch_interval);
+                    set_timeout_with_handle(
+                        move || {
+                            refetch.with_value(|r| r());
+                        },
+                        timeout,
+                    )
+                    .ok()
                 }
-            }
-        };
-        on_cleanup(cx, clean_up);
-
-        // Sets refetch interval timeout, if it exists.
-        create_effect(cx, {
-            let interval = interval.clone();
-
-            move |maybe_handle: Option<Option<TimeoutHandle>>| {
-                let maybe_handle = maybe_handle.flatten();
-                if let Some(handle) = maybe_handle {
-                    handle.clear();
-                };
-                match (updated_at.get(), refetch_interval.get()) {
-                    (Some(updated_at), Some(refetch_interval)) => {
-                        let timeout = time_until_stale(updated_at, refetch_interval);
-                        let handle = set_timeout_with_handle(
-                            move || {
-                                refetch.with_value(|r| r());
-                            },
-                            timeout,
-                        )
-                        .ok();
-                        interval.set(handle);
-                        handle
-                    }
-                    _ => None,
-                }
+                _ => None,
             }
         });
 
@@ -230,23 +252,13 @@ where
     }
 }
 
-impl<K, V> QueryState<K, V>
-where
-    K: Clone + 'static,
-    V: Clone + PartialEq + 'static,
-{
-    /// Render optimized version of [`QueryState::read`].
-    pub fn read_memo(&self, cx: Scope) -> Memo<Option<V>> {
-        let signal = self.read(cx);
-        create_memo(cx, move |_| signal.get())
+impl<K, V> QueryState<K, V> {
+    pub(crate) fn dispose(&self) {
+        // TODO: Dispose Resource with runtime.
+        self.resource.dispose();
+        self.stale_time.dispose();
+        self.refetch_interval.dispose();
+        self.updated_at.dispose();
+        self.invalidated.dispose();
     }
-}
-
-pub(crate) fn time_until_stale(updated_at: Instant, stale_time: Duration) -> Duration {
-    let updated_at = updated_at.0.as_millis() as i64;
-    let now = get_instant().0.as_millis() as i64;
-    let stale_time = stale_time.as_millis() as i64;
-    let result = (updated_at + stale_time) - now;
-    let ensure_non_negative = result.max(0);
-    Duration::from_millis(ensure_non_negative as u64)
 }

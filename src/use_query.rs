@@ -1,7 +1,7 @@
 use crate::instant::Instant;
 use crate::query_result::QueryResult;
-use crate::{time_until_stale, CacheEntry, QueryClient, QueryOptions, QueryState};
-use leptos::leptos_dom::helpers::TimeoutHandle;
+use crate::util::{time_until_stale, use_timeout};
+use crate::{CacheEntry, QueryClient, QueryOptions, QueryState};
 use leptos::*;
 use std::any::{Any, TypeId};
 use std::cell::{Cell, RefCell};
@@ -22,6 +22,69 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
     use_context::<QueryClient>(cx).expect("Query Client Missing.")
 }
 
+/// Creates a query. Useful for data fetching, caching, and synchronization with server state.
+///
+/// A Query provides:
+/// - caching
+/// - de-duplication
+/// - invalidation
+/// - background refetching
+/// - refetch intervals
+/// - memory management with cache lifetimes
+///
+///
+/// Details:
+/// A query is unique per Key `K`.
+/// A query Key type `K` must only correspond to ONE UNIQUE Value `V` Type.
+/// Meaning a query Key type `K` cannot correspond to multiple Value `V` Types.
+///
+/// Example
+/// ```
+///
+/// // Create a Newtype for MonkeyId.
+/// #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+/// struct MonkeyId(String);
+///
+///
+/// // Monkey fetcher.
+/// async fn get_monkey(id: MonkeyId) -> Monkey {
+/// ...
+/// }
+///
+/// // Query for a Monkey.
+/// fn use_monkey_query(cx: Scope, id: MonkeyId) -> QueryResult<Monkey> {
+///     leptos_query::use_query(
+///         cx,
+///         id,
+///         |id| async move { get_monkey(id).await },
+///         QueryOptions {
+///             default_value: None,
+///             refetch_interval: None,
+///             resource_option: ResourceOption::NonBlocking,
+///             stale_time: Some(Duration::from_secs(5)),
+///             cache_time: Some(Duration::from_secs(30)),
+///         },
+///     )
+/// }
+///
+/// #[component]
+/// fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
+///     let query = use_monkey_query(cx, id);
+///     let QueryResult {
+///         data,
+///         is_loading,
+///         is_refetching,
+///         ..
+///     } = query;
+///
+///     view! { cx,
+///       // You can use the query result data here.
+///       // Everything is reactive.
+///     }
+/// }
+///
+/// ```
+///
 pub fn use_query<K, V, Fu>(
     cx: Scope,
     key: K,
@@ -42,7 +105,7 @@ where
             let state = match entry {
                 Entry::Occupied(entry) => {
                     let entry = entry.into_mut();
-                    entry.set_options(options);
+                    entry.set_options(cx, options);
                     entry
                 }
                 Entry::Vacant(entry) => {
@@ -74,21 +137,7 @@ where
         observers,
     );
 
-    let data = state.read(cx);
-    let is_loading = state.is_loading(cx);
-    let is_refetching = state.is_refetching(cx);
-    let is_stale = state.is_stale(cx);
-    let updated_at = state.updated_at.clone().into();
-    let refetch = move |_: ()| state.refetch();
-
-    QueryResult {
-        data,
-        is_loading,
-        is_stale,
-        is_refetching,
-        updated_at,
-        refetch: refetch.mapped_signal_setter(cx),
-    }
+    QueryResult::from_state(cx, state)
 }
 
 // Will cleanup the cache corresponding to the key when the cache_time has elapsed, and the query has not been updated.
@@ -102,67 +151,29 @@ fn cache_cleanup<K, V>(
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: 'static,
 {
-    let interval: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));
-    let clean_up = {
-        let interval = interval.clone();
-        move || {
-            if let Some(handle) = interval.take() {
-                handle.clear();
-            }
-        }
-    };
-
-    on_cleanup(cx, clean_up);
-
-    create_effect(cx, {
-        let interval = interval.clone();
-
-        move |maybe_handle: Option<Option<TimeoutHandle>>| {
-            if let Some(handle) = maybe_handle.flatten() {
-                handle.clear();
-            };
-
+    use_timeout(cx, move || match (last_updated.get(), cache_time) {
+        (Some(last_updated), Some(cache_time)) => {
+            let timeout = time_until_stale(last_updated, cache_time);
             let key = key.clone();
             let observers = observers.clone();
-            match (last_updated.get(), cache_time) {
-                (Some(last_updated), Some(cache_time)) => {
-                    let timeout = time_until_stale(last_updated, cache_time);
-                    let handle = set_timeout_with_handle(
-                        move || {
-                            let removed = use_cache::<K, V, Option<QueryState<K, V>>>(
-                                cx,
-                                move |(_, cache)| cache.remove(&key),
-                            );
-                            if let Some(query) = removed {
-                                if observers.get() == 0 {
-                                    let QueryState {
-                                        resource,
-                                        stale_time,
-                                        refetch_interval,
-                                        updated_at: last_updated,
-                                        invalidated,
-                                        ..
-                                    } = query;
-                                    // TODO: Dispose resource.
-                                    resource.dispose();
-                                    stale_time.dispose();
-                                    refetch_interval.dispose();
-                                    last_updated.dispose();
-                                    invalidated.dispose();
-
-                                    drop(query)
-                                }
-                            };
-                        },
-                        timeout,
-                    )
-                    .ok();
-                    interval.set(handle);
-                    handle
-                }
-                _ => None,
-            }
+            set_timeout_with_handle(
+                move || {
+                    let removed =
+                        use_cache::<K, V, Option<QueryState<K, V>>>(cx, move |(_, cache)| {
+                            cache.remove(&key)
+                        });
+                    if let Some(query) = removed {
+                        if observers.get() == 0 {
+                            query.dispose();
+                            drop(query)
+                        }
+                    };
+                },
+                timeout,
+            )
+            .ok()
         }
+        _ => None,
     });
 }
 

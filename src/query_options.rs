@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 /**
- * Options for a [`crate::query_client::QueryClient`]
+ * Options for a query [`crate::use_query::use_query`]
  */
 #[derive(Clone)]
 pub struct QueryOptions<V> {
@@ -11,6 +11,8 @@ pub struct QueryOptions<V> {
     /// If the query is stale, it will be refetched.
     /// If no stale time, the query will never be considered stale.
     /// Stale time is checked when [`QueryState::read`](#impl-<K,V>-for-QueryState<K,V>) is used.
+    /// Stale time can never be greater than cache_time.
+    /// Default is 0 milliseconds.
     pub stale_time: Option<Duration>,
     /// The amount of time a query will be cached, once it's considered stale.
     /// If no cache time, the query will never be revoked from cache.
@@ -38,7 +40,7 @@ impl<V> QueryOptions<V> {
         Self {
             default_value: None,
             stale_time: Some(stale_time),
-            cache_time: Some(DEFAULT_STALE_TIME),
+            cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
         }
@@ -48,22 +50,39 @@ impl<V> QueryOptions<V> {
     pub fn refetch_interval(refetch_interval: Duration) -> Self {
         Self {
             default_value: None,
-            stale_time: None,
-            cache_time: Some(DEFAULT_STALE_TIME),
+            stale_time: Some(DEFAULT_STALE_TIME),
+            cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: Some(refetch_interval),
             resource_option: ResourceOption::NonBlocking,
         }
     }
 }
 
-const DEFAULT_STALE_TIME: Duration = Duration::from_secs(60 * 5);
+pub(crate) fn ensure_valid_stale_time(
+    stale_time: &Option<Duration>,
+    cache_time: &Option<Duration>,
+) -> Option<Duration> {
+    match (stale_time, cache_time) {
+        (Some(ref stale_time), Some(ref cache_time)) => {
+            if stale_time > cache_time {
+                Some(cache_time.clone())
+            } else {
+                Some(stale_time.clone())
+            }
+        }
+        (stale_time, _) => stale_time.clone(),
+    }
+}
+
+const DEFAULT_STALE_TIME: Duration = Duration::from_secs(0);
+const DEFAULT_CACHE_TIME: Duration = Duration::from_secs(60 * 5);
 
 impl<V> Default for QueryOptions<V> {
     fn default() -> Self {
         Self {
             default_value: None,
-            stale_time: None,
-            cache_time: Some(DEFAULT_STALE_TIME),
+            stale_time: Some(DEFAULT_STALE_TIME),
+            cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
         }
