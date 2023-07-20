@@ -11,7 +11,6 @@ where
 {
     pub(crate) key: K,
     pub(crate) observers: Rc<Cell<usize>>,
-    pub(crate) needs_refetch: Rc<Cell<bool>>,
     pub(crate) value: RwSignal<Option<V>>,
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
@@ -45,7 +44,6 @@ where
         QueryState {
             key,
             observers: Rc::new(Cell::new(0)),
-            needs_refetch: Rc::new(Cell::new(true)),
             value,
             stale_time,
             refetch_interval,
@@ -77,6 +75,10 @@ where
 
     pub(crate) fn is_loading_untracked(&self) -> bool {
         self.updated_at.get_untracked().is_none() && self.fetching.get_untracked()
+    }
+
+    pub(crate) fn needs_init(&self) -> bool {
+        self.updated_at.get_untracked().is_none() && !self.fetching.get_untracked()
     }
 
     // Enables having different stale times & refetch intervals for the same query.

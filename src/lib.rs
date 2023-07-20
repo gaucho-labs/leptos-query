@@ -120,6 +120,7 @@
 
 mod instant;
 mod query_client;
+mod query_executor;
 mod query_options;
 mod query_result;
 mod query_state;
