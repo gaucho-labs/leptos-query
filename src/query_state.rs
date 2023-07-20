@@ -1,12 +1,7 @@
 use leptos::*;
 use std::{cell::Cell, rc::Rc, time::Duration};
 
-use crate::{
-    ensure_valid_stale_time,
-    instant::Instant,
-    util::{time_until_stale, use_timeout},
-    QueryOptions,
-};
+use crate::{ensure_valid_stale_time, instant::Instant, QueryOptions};
 
 #[derive(Clone)]
 pub(crate) struct QueryState<K, V>
@@ -16,6 +11,7 @@ where
 {
     pub(crate) key: K,
     pub(crate) observers: Rc<Cell<usize>>,
+    pub(crate) needs_refetch: Rc<Cell<bool>>,
     pub(crate) value: RwSignal<Option<V>>,
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
@@ -49,6 +45,7 @@ where
         QueryState {
             key,
             observers: Rc::new(Cell::new(0)),
+            needs_refetch: Rc::new(Cell::new(true)),
             value,
             stale_time,
             refetch_interval,

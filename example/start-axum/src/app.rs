@@ -91,10 +91,10 @@ fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<
         get_post_unwrapped,
         QueryOptions {
             default_value: None,
-            refetch_interval: Some(Duration::from_secs(5)),
+            refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
             stale_time: Some(Duration::from_secs(10)),
-            cache_time: Some(Duration::from_secs(20)),
+            cache_time: Some(Duration::from_secs(60)),
         },
     )
 }

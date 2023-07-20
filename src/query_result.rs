@@ -45,7 +45,10 @@ where
         let is_stale = make_stale_signal(cx, state);
         let is_refetching = Signal::derive(cx, move || state.get().fetching.get());
         let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
-        let refetch = move |_: ()| resource.refetch();
+        let refetch = move |_: ()| {
+            state.get().needs_refetch.set(true);
+            resource.refetch()
+        };
 
         QueryResult {
             data,

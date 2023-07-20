@@ -121,20 +121,30 @@ where
             let state = state.get_untracked();
             if state.is_loading_untracked() {
                 // Suspend indefinitely and wait for interruption.
+                log!("SUSPENDING");
                 gloo_timers::future::sleep(LONG_TIME).await;
                 state.value.get_untracked()
             // Ensure no request in flight.
-            } else if !(state.fetching.get_untracked()) {
+            // Need to ensure that refetch was actually called as well.
+            // TODO: here we only want to fetch the very first time???????
+            } else if !(state.fetching.get_untracked()) && state.needs_refetch.get() {
+                log!(
+                    "NEEDS REFETCH. fetching: {}, needs: {}",
+                    state.fetching.get_untracked(),
+                    state.needs_refetch.get()
+                );
                 state.fetching.set(true);
                 let result = query(key).await;
                 state.updated_at.set(Some(get_instant()));
                 state.fetching.set(false);
                 state.value.set(Some(result.clone()));
+                state.needs_refetch.set(false);
                 if state.invalidated.get_untracked() {
                     state.invalidated.set(false);
                 }
                 return Some(result);
             } else {
+                log!("USING STATE VALUE!");
                 state.value.get_untracked()
             }
         }
@@ -156,13 +166,16 @@ where
             if state.key == prev_key && data.is_some() {
                 resource.set(data);
             }
-        } else if data.is_some() {
-            resource.set(data);
+            // This is breaking something. Need to check that resource hasn't been initialized.
+            // This needs to happen when requests are duplicated?
         }
+        // else if data.is_some() {
+        //     log!("SETTING RESOURCE DIRECTLY");
+        //     resource.set(data);
+        // }
         state.key.clone()
     });
 
-    // TODO: If key changes, and new data isn't loaded, then loading should appear again?
     // When key changes.
     create_isomorphic_effect(cx, move |prev_key: Option<K>| {
         let state = state.get();
@@ -172,6 +185,8 @@ where
             if state.key != prev_key && data.is_some() {
                 resource.set(data);
             }
+            // TODO: If key changes, and new data isn't loaded, then loading should appear again?
+            // RE TRIGGER SUSPENSE.
         }
         state.key.clone()
     });
@@ -201,6 +216,7 @@ where
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 
+// When two things are stale, then the second will be refetched.
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
     state: Memo<QueryState<K, V>>,
@@ -214,7 +230,10 @@ fn ensure_not_stale<K: Clone, V: Clone>(
         // On mount, ensure that the resource is not stale
         match (updated_at.get_untracked(), stale_time.get_untracked()) {
             (Some(updated_at), Some(stale_time)) => {
-                if time_until_stale(updated_at, stale_time).is_zero() {
+                if time_until_stale(updated_at, stale_time).is_zero() && !state.needs_refetch.get()
+                {
+                    log!("STALE!! Refetching");
+                    state.needs_refetch.set(true);
                     resource.refetch();
                 }
             }
@@ -234,14 +253,18 @@ where
         let invalidated = state.invalidated;
         let refetch_interval = state.refetch_interval;
         let updated_at = state.updated_at;
+        let needs_refetch = state.needs_refetch;
 
         // Effect for refetching query on interval.
-        use_timeout(cx, move || {
-            match (updated_at.get(), refetch_interval.get()) {
+        use_timeout(cx, {
+            let needs_refetch = needs_refetch.clone();
+            move || match (updated_at.get(), refetch_interval.get()) {
                 (Some(updated_at), Some(refetch_interval)) => {
+                    let needs_refetch = needs_refetch.clone();
                     let timeout = time_until_stale(updated_at, refetch_interval);
                     set_timeout_with_handle(
                         move || {
+                            needs_refetch.set(true);
                             resource.refetch();
                         },
                         timeout,
@@ -254,8 +277,10 @@ where
 
         // Refetch query if invalidated.
         create_isomorphic_effect(cx, {
+            let needs_refetch = needs_refetch.clone();
             move |_| {
                 if invalidated.get() {
+                    needs_refetch.set(true);
                     resource.refetch();
                 }
             }
