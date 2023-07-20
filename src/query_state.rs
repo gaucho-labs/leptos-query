@@ -152,6 +152,9 @@ where
         Signal::derive(cx, move || updated_at.get().is_none() && fetching.get())
     }
 
+    // Enables having different stale times & refetch intervals for the same query.
+    // The lowest stale time & refetch interval will be used.
+    // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
     pub(crate) fn set_options(&self, cx: Scope, options: QueryOptions<V>) {
         let curr_stale = self.stale_time.get_untracked();
         let curr_refetch_interval = self.refetch_interval.get_untracked();
@@ -190,68 +193,32 @@ where
         })
     }
 
-    pub(crate) fn read(&self, cx: Scope) -> Signal<Option<V>> {
-        let invalidated = self.invalidated;
-        let refetch_interval = self.refetch_interval;
-        let resource = self.resource;
-        let stale_time = self.stale_time;
+    pub(crate) fn read(&self, cx: Scope) -> Option<V> {
         let updated_at = self.updated_at;
+        let stale_time = self.stale_time;
+        let resource = self.resource;
+        let invalidated = self.invalidated;
 
-        let refetch = move || {
-            if updated_at.get_untracked().is_some() {
-                if !resource.loading().get_untracked() {
+        let fetching = self.fetching;
+
+        // On mount, ensure that the resource is not stale
+        match (updated_at.get_untracked(), stale_time.get_untracked()) {
+            (Some(updated_at), Some(stale_time)) => {
+                if time_until_stale(updated_at, stale_time).is_zero() && !fetching.get_untracked() {
                     resource.refetch();
                     invalidated.set(false);
                 }
             }
-        };
-        let refetch = store_value(cx, refetch);
+            _ => (),
+        }
 
-        // Effect for refetching query on interval.
-        use_timeout(cx, move || {
-            match (updated_at.get(), refetch_interval.get()) {
-                (Some(updated_at), Some(refetch_interval)) => {
-                    let timeout = time_until_stale(updated_at, refetch_interval);
-                    set_timeout_with_handle(
-                        move || {
-                            refetch.with_value(|r| r());
-                        },
-                        timeout,
-                    )
-                    .ok()
-                }
-                _ => None,
-            }
-        });
+        // Happens when the resource is SSR'd.
+        let read = resource.read(cx);
+        if read.is_some() && updated_at.get_untracked().is_none() {
+            updated_at.set(Some(get_instant()));
+        }
 
-        // Refetch query if invalidated.
-        create_effect(cx, {
-            move |_| {
-                if invalidated.get() {
-                    refetch.with_value(|r| r());
-                }
-            }
-        });
-
-        Signal::derive(cx, move || {
-            // On mount, ensure that the resource is not stale
-            match (updated_at.get_untracked(), stale_time.get_untracked()) {
-                (Some(updated_at), Some(stale_time)) => {
-                    if time_until_stale(updated_at, stale_time).is_zero() {
-                        refetch.with_value(|r| r());
-                    }
-                }
-                _ => (),
-            }
-
-            // Happens when the resource is SSR'd.
-            let read = resource.read(cx);
-            if read.is_some() && updated_at.get_untracked().is_none() {
-                updated_at.set(Some(get_instant()));
-            }
-
-            read
-        })
+        read
     }
 }
 

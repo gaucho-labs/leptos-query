@@ -35,11 +35,15 @@ where
         cx: Scope,
         state: Signal<QueryState<K, V>>,
     ) -> QueryResult<V> {
-        let data = state.with(|s| s.read(cx));
-        let is_loading = state.with(|s| s.is_loading(cx));
-        let is_stale = state.with(|s| s.is_stale(cx));
-        let is_refetching = state.with(|s| s.fetching.into());
-        let updated_at = state.with(|s| s.updated_at).into();
+        let data = Signal::derive(cx, move || {
+            let state = state.get();
+            let read = state.read(cx);
+            read
+        });
+        let is_loading = Signal::derive(cx, move || state.get().is_loading(cx).get());
+        let is_stale = Signal::derive(cx, move || state.get().is_stale(cx).get());
+        let is_refetching = Signal::derive(cx, move || state.get().fetching.get());
+        let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
         let refetch = move |_: ()| state.get().refetch();
 
         QueryResult {
@@ -53,12 +57,15 @@ where
     }
 
     pub(crate) fn from_state<K: Clone>(cx: Scope, state: QueryState<K, V>) -> QueryResult<V> {
-        let data = state.read(cx);
         let is_loading = state.is_loading(cx);
         let is_stale = state.is_stale(cx);
         let is_refetching = state.fetching.into();
         let updated_at = state.updated_at.into();
-        let refetch = move |_: ()| state.refetch();
+        let refetch = {
+            let state = state.clone();
+            move |_: ()| state.refetch()
+        };
+        let data = Signal::derive(cx, move || state.read(cx));
 
         QueryResult {
             data,

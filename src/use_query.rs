@@ -80,26 +80,24 @@ where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: std::fmt::Debug + Clone + Serializable + 'static,
 {
-    // TODO: this should probably be memo?
-    // If I use memo here, then I get 'not being used in reactive context' warnings.
-    // let key = create_memo(cx, move |_| key());
-    let key = Signal::derive(cx, move || key());
+    let key = create_memo(cx, move |_| key());
     let query = Rc::new(query);
 
     // find relevant state.
     let state = Signal::derive(cx, {
         let options = options.clone();
         move || {
-            let key = key.get();
             use_cache(cx, {
                 let options = options.clone();
                 let query = query.clone();
+                let key = key.get();
                 move |(root_scope, cache)| {
                     let entry = cache.entry(key.clone());
 
                     let state = match entry {
                         Entry::Occupied(entry) => {
                             let entry = entry.into_mut();
+                            // Enable nested options.
                             entry.set_options(cx, options);
                             entry
                         }
@@ -114,6 +112,7 @@ where
         }
     });
 
+    sync_refetch(cx, state.clone());
     sync_observers(cx, state.clone());
 
     // Ensure that the Query is removed from cache up after the specified cache_time.
@@ -133,6 +132,51 @@ where
     });
 
     QueryResult::from_state_signal(cx, state)
+}
+
+// Effects for syncing on interval and invalidation.
+fn sync_refetch<K, V>(cx: Scope, state: Signal<QueryState<K, V>>)
+where
+    K: Clone + 'static,
+    V: Clone + 'static,
+{
+    create_isomorphic_effect(cx, move |_| {
+        let state = state.get();
+        let invalidated = state.invalidated;
+        let refetch_interval = state.refetch_interval;
+        let resource = state.resource;
+        let updated_at = state.updated_at;
+
+        // Effect for refetching query on interval.
+        use_timeout(cx, move || {
+            match (updated_at.get(), refetch_interval.get()) {
+                (Some(updated_at), Some(refetch_interval)) => {
+                    let timeout = time_until_stale(updated_at, refetch_interval);
+                    set_timeout_with_handle(
+                        move || {
+                            if !resource.loading().get_untracked() {
+                                resource.refetch();
+                                invalidated.set(false);
+                            }
+                        },
+                        timeout,
+                    )
+                    .ok()
+                }
+                _ => None,
+            }
+        });
+
+        // Refetch query if invalidated.
+        create_isomorphic_effect(cx, {
+            move |_| {
+                if invalidated.get() && !resource.loading().get_untracked() {
+                    resource.refetch();
+                    invalidated.set(false);
+                }
+            }
+        });
+    })
 }
 
 // Will cleanup the cache corresponding to the key when the cache_time has elapsed, and the query has not been updated.
