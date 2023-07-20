@@ -31,17 +31,34 @@ impl<V> QueryResult<V>
 where
     V: Clone,
 {
-    pub(crate) fn from_state<K: Clone>(
+    pub(crate) fn from_state_signal<K: Clone>(
         cx: Scope,
         state: Signal<QueryState<K, V>>,
-        data: Signal<Option<V>>,
-        refetch: impl Fn() -> () + 'static,
     ) -> QueryResult<V> {
+        let data = state.with(|s| s.read(cx));
         let is_loading = state.with(|s| s.is_loading(cx));
         let is_stale = state.with(|s| s.is_stale(cx));
         let is_refetching = state.with(|s| s.fetching.into());
         let updated_at = state.with(|s| s.updated_at).into();
-        let refetch = move |_: ()| refetch();
+        let refetch = move |_: ()| state.get().refetch();
+
+        QueryResult {
+            data,
+            is_loading,
+            is_stale,
+            is_refetching,
+            updated_at,
+            refetch: refetch.mapped_signal_setter(cx),
+        }
+    }
+
+    pub(crate) fn from_state<K: Clone>(cx: Scope, state: QueryState<K, V>) -> QueryResult<V> {
+        let data = state.read(cx);
+        let is_loading = state.is_loading(cx);
+        let is_stale = state.is_stale(cx);
+        let is_refetching = state.fetching.into();
+        let updated_at = state.updated_at.into();
+        let refetch = move |_: ()| state.refetch();
 
         QueryResult {
             data,

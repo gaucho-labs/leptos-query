@@ -1,10 +1,10 @@
 use crate::error_template::{AppError, ErrorTemplate};
-use leptos::*;
+use leptos::{leptos_dom::helpers::IntervalHandle, *};
 use leptos_meta::*;
 use leptos_query::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 #[component]
 pub fn App(cx: Scope) -> impl IntoView {
@@ -33,13 +33,19 @@ pub fn App(cx: Scope) -> impl IntoView {
                     <Route
                         path="single"
                         view=|cx| {
-                            view! { cx, <PostOne/> }
+                            view! { cx, <OnePost/> }
                         }
                     />
                     <Route
                         path="multi"
                         view=|cx| {
-                            view! { cx, <PostTwo/> }
+                            view! { cx, <MultiPost/> }
+                        }
+                    />
+                    <Route
+                        path="reactive"
+                        view=|cx| {
+                            view! { cx, <ReactivePost/> }
                         }
                     />
                 </Routes>
@@ -64,6 +70,9 @@ fn HomePage(cx: Scope) -> impl IntoView {
                     <li>
                         <a href="/multi">"Post 2"</a>
                     </li>
+                    <li>
+                        <a href="/reactive">"Reactive"</a>
+                    </li>
                 </ul>
                 <br/>
             </div>
@@ -75,19 +84,23 @@ fn HomePage(cx: Scope) -> impl IntoView {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(String);
 
-fn use_post_query(cx: Scope, post_id: PostId) -> QueryResult<String> {
+fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<String> {
     leptos_query::use_query(
         cx,
-        move || post_id.clone(),
-        |id| async move { get_post(id).await.unwrap() },
+        key,
+        get_post_unwrapped,
         QueryOptions {
             default_value: None,
             refetch_interval: Some(Duration::from_secs(5)),
             resource_option: ResourceOption::NonBlocking,
-            stale_time: Some(Duration::from_secs(30)),
-            cache_time: Some(Duration::from_secs(60)),
+            stale_time: Some(Duration::from_secs(10)),
+            cache_time: Some(Duration::from_secs(20)),
         },
     )
+}
+
+async fn get_post_unwrapped(id: PostId) -> String {
+    get_post(id).await.unwrap()
 }
 
 // Server function that fetches a post.
@@ -102,12 +115,12 @@ pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
 }
 
 #[component]
-fn PostOne(cx: Scope) -> impl IntoView {
+fn OnePost(cx: Scope) -> impl IntoView {
     view! { cx, <Post post_id=PostId("one".into())/> }
 }
 
 #[component]
-fn PostTwo(cx: Scope) -> impl IntoView {
+fn MultiPost(cx: Scope) -> impl IntoView {
     view! { cx,
         <h1>"Requests are de-duplicated across components"</h1>
         <br/>
@@ -118,8 +131,9 @@ fn PostTwo(cx: Scope) -> impl IntoView {
 }
 
 #[component]
-fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
+fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView {
     let query = use_post_query(cx, post_id.clone());
+
     let QueryResult {
         data,
         is_loading,
@@ -131,7 +145,7 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
     view! { cx,
         <div class="post">
             <a href="/">"Home"</a>
-            <h2>"Post Key: " {post_id.0}</h2>
+            <h2>"Post Key: " {move || post_id.get().0}</h2>
             <div>
                 <span>"Loading Status: "</span>
                 <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
@@ -166,4 +180,42 @@ fn Post(cx: Scope, post_id: PostId) -> impl IntoView {
             </div>
         </div>
     }
+}
+
+#[component]
+fn ReactivePost(cx: Scope) -> impl IntoView {
+    let (post_id, set_post_id) = create_signal(cx, PostId("one".into()));
+
+    let last_interval = Rc::new(Cell::new(None as Option<IntervalHandle>));
+
+    on_cleanup(cx, {
+        let last_interval = last_interval.clone();
+        move || {
+            if let Some(interval) = last_interval.get() {
+                interval.clear();
+            }
+        }
+    });
+
+    create_effect(cx, move |interval: Option<Option<IntervalHandle>>| {
+        if let Some(interval) = interval.flatten() {
+            interval.clear();
+        }
+        let interval = set_interval_with_handle(
+            move || {
+                log!("changing post !!!");
+                if post_id.get().0 == "one" {
+                    set_post_id(PostId("two".into()));
+                } else {
+                    set_post_id(PostId("one".into()));
+                }
+            },
+            Duration::from_secs(5),
+        )
+        .ok();
+        last_interval.set(interval);
+        interval
+    });
+
+    view! { cx, <Post post_id=post_id/> }
 }

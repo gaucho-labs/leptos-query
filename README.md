@@ -65,7 +65,7 @@ TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/gen
      leptos_query::use_query(
          cx,
          id,
-         |id| async move { get_monkey(id).await },
+         get_monkey,
          QueryOptions {
              default_value: None,
              refetch_interval: None,
