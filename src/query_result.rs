@@ -1,4 +1,8 @@
-use crate::{instant::Instant, query_state::QueryState};
+use crate::{
+    instant::Instant,
+    query_state::QueryState,
+    util::{time_until_stale, use_timeout},
+};
 use leptos::*;
 
 /// Reactive query result.
@@ -31,41 +35,17 @@ impl<V> QueryResult<V>
 where
     V: Clone,
 {
-    pub(crate) fn from_state_signal<K: Clone>(
+    pub(crate) fn new<K: Clone>(
         cx: Scope,
-        state: Signal<QueryState<K, V>>,
+        state: Memo<QueryState<K, V>>,
+        resource: Resource<K, Option<V>>,
     ) -> QueryResult<V> {
-        let data = Signal::derive(cx, move || {
-            let state = state.get();
-            let read = state.read(cx);
-            read
-        });
+        let data = Signal::derive(cx, move || resource.read(cx).flatten());
         let is_loading = Signal::derive(cx, move || state.get().is_loading(cx).get());
-        let is_stale = Signal::derive(cx, move || state.get().is_stale(cx).get());
+        let is_stale = make_stale_signal(cx, state);
         let is_refetching = Signal::derive(cx, move || state.get().fetching.get());
         let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
-        let refetch = move |_: ()| state.get().refetch();
-
-        QueryResult {
-            data,
-            is_loading,
-            is_stale,
-            is_refetching,
-            updated_at,
-            refetch: refetch.mapped_signal_setter(cx),
-        }
-    }
-
-    pub(crate) fn from_state<K: Clone>(cx: Scope, state: QueryState<K, V>) -> QueryResult<V> {
-        let is_loading = state.is_loading(cx);
-        let is_stale = state.is_stale(cx);
-        let is_refetching = state.fetching.into();
-        let updated_at = state.updated_at.into();
-        let refetch = {
-            let state = state.clone();
-            move |_: ()| state.refetch()
-        };
-        let data = Signal::derive(cx, move || state.read(cx));
+        let refetch = move |_: ()| resource.refetch();
 
         QueryResult {
             data,
@@ -79,3 +59,31 @@ where
 }
 
 impl<V: Copy> Copy for QueryResult<V> where V: 'static {}
+
+fn make_stale_signal<K: Clone, V: Clone>(cx: Scope, state: Memo<QueryState<K, V>>) -> Signal<bool> {
+    let (stale, set_stale) = create_signal(cx, false);
+    create_effect(cx, move |_| {
+        let state = state.get();
+        let updated_at = state.updated_at;
+        let stale_time = state.stale_time;
+
+        use_timeout(cx, move || match (updated_at.get(), stale_time.get()) {
+            (Some(updated_at), Some(stale_time)) => {
+                let timeout = time_until_stale(updated_at, stale_time);
+                if !timeout.is_zero() {
+                    set_stale.set(false);
+                }
+                set_timeout_with_handle(
+                    move || {
+                        set_stale.set(true);
+                    },
+                    timeout,
+                )
+                .ok()
+            }
+            _ => None,
+        })
+    });
+
+    stale.into()
+}

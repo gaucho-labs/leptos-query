@@ -1,7 +1,7 @@
-use crate::instant::Instant;
+use crate::instant::{get_instant, Instant};
 use crate::query_result::QueryResult;
 use crate::util::{time_until_stale, use_timeout};
-use crate::{CacheEntry, QueryClient, QueryOptions, QueryState};
+use crate::{CacheEntry, QueryClient, QueryOptions, QueryState, ResourceOption};
 use leptos::*;
 use std::any::{Any, TypeId};
 use std::cell::{Cell, RefCell};
@@ -78,18 +78,20 @@ pub fn use_query<K, V, Fu>(
 where
     Fu: Future<Output = V> + 'static,
     K: Hash + Eq + PartialEq + Clone + 'static,
-    V: std::fmt::Debug + Clone + Serializable + 'static,
+    V: Clone
+        + Serializable
+        + 'static
+        + server_fn::serde::de::DeserializeOwned
+        + server_fn::serde::Serialize,
 {
     let key = create_memo(cx, move |_| key());
-    let query = Rc::new(query);
 
-    // find relevant state.
-    let state = Signal::derive(cx, {
+    // Find relevant state.
+    let state = create_memo(cx, {
         let options = options.clone();
-        move || {
+        move |_| {
             use_cache(cx, {
                 let options = options.clone();
-                let query = query.clone();
                 let key = key.get();
                 move |(root_scope, cache)| {
                     let entry = cache.entry(key.clone());
@@ -102,7 +104,7 @@ where
                             entry
                         }
                         Entry::Vacant(entry) => {
-                            let state = QueryState::new(root_scope, key.clone(), query, options);
+                            let state = QueryState::new(root_scope, key, options);
                             entry.insert(state.clone())
                         }
                     };
@@ -112,7 +114,70 @@ where
         }
     });
 
-    sync_refetch(cx, state.clone());
+    let query = Rc::new(query);
+    let fetcher = move |key: K| {
+        let query = query.clone();
+        async move {
+            let state = state.get_untracked();
+            if state.is_loading_untracked() {
+                // Suspend indefinitely and wait for interruption.
+                gloo_timers::future::sleep(LONG_TIME).await;
+                state.value.get_untracked()
+            // Ensure no request in flight.
+            } else if !(state.fetching.get_untracked()) {
+                state.fetching.set(true);
+                let result = query(key).await;
+                state.updated_at.set(Some(get_instant()));
+                state.fetching.set(false);
+                state.value.set(Some(result.clone()));
+                if state.invalidated.get_untracked() {
+                    state.invalidated.set(false);
+                }
+                return Some(result);
+            } else {
+                state.value.get_untracked()
+            }
+        }
+    };
+
+    let resource: Resource<K, Option<V>> = {
+        match options.resource_option {
+            ResourceOption::NonBlocking => create_resource(cx, move || key.get(), fetcher),
+            ResourceOption::Blocking => create_blocking_resource(cx, move || key.get(), fetcher),
+        }
+    };
+
+    // Listen for changes to the same key.
+    create_isomorphic_effect(cx, move |prev_key: Option<K>| {
+        let state = state.get();
+        let data = state.value.get();
+
+        if let Some(prev_key) = prev_key {
+            if state.key == prev_key && data.is_some() {
+                resource.set(data);
+            }
+        } else if data.is_some() {
+            resource.set(data);
+        }
+        state.key.clone()
+    });
+
+    // TODO: If key changes, and new data isn't loaded, then loading should appear again?
+    // When key changes.
+    create_isomorphic_effect(cx, move |prev_key: Option<K>| {
+        let state = state.get();
+        let data = state.value.get();
+
+        if let Some(prev_key) = prev_key {
+            if state.key != prev_key && data.is_some() {
+                resource.set(data);
+            }
+        }
+        state.key.clone()
+    });
+
+    ensure_not_stale(cx, state.clone(), resource.clone());
+    sync_refetch(cx, state.clone(), resource.clone());
     sync_observers(cx, state.clone());
 
     // Ensure that the Query is removed from cache up after the specified cache_time.
@@ -131,11 +196,35 @@ where
         );
     });
 
-    QueryResult::from_state_signal(cx, state)
+    QueryResult::new(cx, state, resource)
+}
+
+const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
+
+fn ensure_not_stale<K: Clone, V: Clone>(
+    cx: Scope,
+    state: Memo<QueryState<K, V>>,
+    resource: Resource<K, Option<V>>,
+) {
+    create_isomorphic_effect(cx, move |_| {
+        let state = state.get();
+        let updated_at = state.updated_at;
+        let stale_time = state.stale_time;
+
+        // On mount, ensure that the resource is not stale
+        match (updated_at.get_untracked(), stale_time.get_untracked()) {
+            (Some(updated_at), Some(stale_time)) => {
+                if time_until_stale(updated_at, stale_time).is_zero() {
+                    resource.refetch();
+                }
+            }
+            _ => (),
+        }
+    })
 }
 
 // Effects for syncing on interval and invalidation.
-fn sync_refetch<K, V>(cx: Scope, state: Signal<QueryState<K, V>>)
+fn sync_refetch<K, V>(cx: Scope, state: Memo<QueryState<K, V>>, resource: Resource<K, Option<V>>)
 where
     K: Clone + 'static,
     V: Clone + 'static,
@@ -144,7 +233,6 @@ where
         let state = state.get();
         let invalidated = state.invalidated;
         let refetch_interval = state.refetch_interval;
-        let resource = state.resource;
         let updated_at = state.updated_at;
 
         // Effect for refetching query on interval.
@@ -154,10 +242,7 @@ where
                     let timeout = time_until_stale(updated_at, refetch_interval);
                     set_timeout_with_handle(
                         move || {
-                            if !resource.loading().get_untracked() {
-                                resource.refetch();
-                                invalidated.set(false);
-                            }
+                            resource.refetch();
                         },
                         timeout,
                     )
@@ -170,9 +255,8 @@ where
         // Refetch query if invalidated.
         create_isomorphic_effect(cx, {
             move |_| {
-                if invalidated.get() && !resource.loading().get_untracked() {
+                if invalidated.get() {
                     resource.refetch();
-                    invalidated.set(false);
                 }
             }
         });
@@ -217,7 +301,7 @@ fn cache_cleanup<K, V>(
 }
 
 // Ensure that observers are kept track of.
-fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Signal<QueryState<K, V>>) {
+fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Memo<QueryState<K, V>>) {
     type Observer = Rc<Cell<usize>>;
     let last_observer: Rc<Cell<Option<Observer>>> = Rc::new(Cell::new(None));
 
