@@ -28,14 +28,14 @@ impl Add<Instant> for Instant {
 pub fn get_instant() -> Instant {
     use cfg_if::cfg_if;
     cfg_if! { if #[cfg(feature = "hydrate")] {
-        let millis = js_sys::Date::now();
-        let duration = std::time::Duration::from_millis(millis as u64);
-        Instant(duration)
-    }}
-    cfg_if! { if #[cfg(not(feature = "hydrate"))] {
-        let duration = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .expect("System clock was before 1970.");
-        Instant(duration)
-    }}
+            let millis = js_sys::Date::now();
+            let duration = std::time::Duration::from_millis(millis as u64);
+            Instant(duration)
+        } else {
+            let duration = std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .expect("System clock was before 1970.");
+            Instant(duration)
+        }
+    }
 }

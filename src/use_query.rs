@@ -1,4 +1,4 @@
-use crate::query_executor::execute_query;
+use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
 use crate::{use_cache, QueryClient, QueryOptions, QueryState, ResourceOption};
 use leptos::*;
@@ -108,7 +108,7 @@ where
         async move {
             if state.value.get_untracked().is_none() || state.is_loading_untracked() {
                 // Suspend indefinitely and wait for interruption.
-                gloo_timers::future::sleep(LONG_TIME).await;
+                sleep(LONG_TIME).await;
                 None
             } else {
                 state.value.get_untracked()
@@ -124,7 +124,7 @@ where
     };
 
     let callback = move || resource.refetch();
-    let refetch = execute_query(cx, state, query, callback);
+    let refetch = create_executor(cx, state, query, callback);
 
     create_isomorphic_effect(cx, {
         let refetch = refetch.clone();
@@ -144,7 +144,27 @@ where
     // When key changes.
     let data = Signal::derive(cx, move || resource.read(cx).flatten());
 
-    QueryResult::new(cx, state, data, refetch)
+    let is_loading = Signal::derive(cx, move || {
+        let state = state.get();
+
+        (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
+    });
+
+    QueryResult::new(cx, state, data, is_loading, refetch)
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
+
+async fn sleep(duration: Duration) {
+    use cfg_if::cfg_if;
+    cfg_if! {
+        if #[cfg(all(target_arch = "wasm32", any(feature = "hydrate")))] {
+            gloo_timers::future::sleep(duration).await;
+        }
+         else if #[cfg(feature = "ssr")] {
+            tokio::time::sleep(duration).await;
+        }  else {
+            debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
+        }
+    }
+}

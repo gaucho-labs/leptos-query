@@ -833,6 +833,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "leptos",
+ "tokio",
 ]
 
 [[package]]

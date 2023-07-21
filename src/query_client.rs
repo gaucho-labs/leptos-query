@@ -1,4 +1,4 @@
-use crate::{QueryResult, QueryState};
+use crate::QueryState;
 use leptos::*;
 use std::{
     any::{Any, TypeId},

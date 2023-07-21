@@ -8,14 +8,16 @@ use crate::{
     util::{time_until_stale, use_timeout},
 };
 
-type Refetch = Rc<dyn Fn() -> ()>;
+type Executor = Rc<dyn Fn() -> ()>;
 
-pub(crate) fn execute_query<K, V, Fu>(
+// Creates state listeners and return executor funtion to run query.
+// When running executor, on query completion it will invoke the callback (notifying the success)
+pub(crate) fn create_executor<K, V, Fu>(
     cx: Scope,
     state: Memo<QueryState<K, V>>,
     query: impl Fn(K) -> Fu + 'static,
     callback: impl Fn() -> () + 'static,
-) -> Refetch
+) -> Executor
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
@@ -44,7 +46,7 @@ where
         })
     };
 
-    let refetch: Refetch = Rc::new(refetch);
+    let refetch: Executor = Rc::new(refetch);
     ensure_not_stale(cx, state, refetch.clone());
     sync_refetch(cx, state, refetch.clone());
     sync_observers(cx, state);
@@ -57,7 +59,7 @@ where
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
     state: Memo<QueryState<K, V>>,
-    refetch: Refetch,
+    refetch: Executor,
 ) {
     create_isomorphic_effect(cx, move |_| {
         let state = state.get();
@@ -76,12 +78,12 @@ fn ensure_not_stale<K: Clone, V: Clone>(
     })
 }
 
-fn sync_refetch<K, V>(cx: Scope, state: Memo<QueryState<K, V>>, refetch: Refetch)
+fn sync_refetch<K, V>(cx: Scope, state: Memo<QueryState<K, V>>, refetch: Executor)
 where
     K: Clone + 'static,
     V: Clone + 'static,
 {
-    create_isomorphic_effect(cx, {
+    create_effect(cx, {
         let refetch = refetch.clone();
         move |_| {
             let refetch = refetch.clone();
@@ -111,7 +113,7 @@ where
             });
 
             // Refetch query if invalidated.
-            create_isomorphic_effect(cx, {
+            create_effect(cx, {
                 move |_| {
                     if invalidated.get() {
                         refetch();

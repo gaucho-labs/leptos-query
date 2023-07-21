@@ -41,9 +41,9 @@ where
         cx: Scope,
         state: Memo<QueryState<K, V>>,
         data: Signal<Option<V>>,
+        is_loading: Signal<bool>,
         refetch: Rc<dyn Fn() -> ()>,
     ) -> QueryResult<V> {
-        let is_loading = Signal::derive(cx, move || state.get().is_loading(cx).get());
         let is_stale = make_stale_signal(cx, state);
         let is_refetching = Signal::derive(cx, move || state.get().fetching.get());
         let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
