@@ -39,7 +39,7 @@ pub fn provide_query_client(cx: Scope) {
 ///
 /// // Monkey fetcher.
 /// async fn get_monkey(id: MonkeyId) -> Monkey {
-/// ...
+///     todo!()
 /// }
 ///
 /// // Query for a Monkey.

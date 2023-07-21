@@ -45,7 +45,7 @@
 //!
 //! // Monkey fetcher.
 //! async fn get_monkey(id: MonkeyId) -> Monkey {
-//! ...
+//!     todo!()
 //! }
 //!
 //! // Query for a Monkey.
@@ -53,7 +53,7 @@
 //!     leptos_query::use_query(
 //!         cx,
 //!         id,
-//!         |id| async move { get_monkey(id).await },
+//!         get_monkey,
 //!         QueryOptions {
 //!             default_value: None,
 //!             refetch_interval: None,
@@ -71,7 +71,7 @@
 //!
 //! #[component]
 //! fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
-//!     let query = use_monkey_query(cx, id);
+//!     let query = use_monkey_query(cx, move || id.clone());
 //!     let QueryResult {
 //!         data,
 //!         is_loading,
