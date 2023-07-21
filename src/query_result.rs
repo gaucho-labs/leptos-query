@@ -42,12 +42,12 @@ where
         state: Memo<QueryState<K, V>>,
         data: Signal<Option<V>>,
         is_loading: Signal<bool>,
-        refetch: Rc<dyn Fn() -> ()>,
+        executor: Rc<dyn Fn() -> ()>,
     ) -> QueryResult<V> {
         let is_stale = make_stale_signal(cx, state);
         let is_refetching = Signal::derive(cx, move || state.get().fetching.get());
         let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
-        let refetch = move |_: ()| refetch();
+        let refetch = move |_: ()| executor();
 
         QueryResult {
             data,

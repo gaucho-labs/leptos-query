@@ -25,7 +25,7 @@ where
 {
     let query = Rc::new(query);
     let callback = Rc::new(callback);
-    let refetch = move || {
+    let executor = move || {
         let query = query.clone();
         let callback = callback.clone();
         spawn_local(async move {
@@ -46,20 +46,21 @@ where
         })
     };
 
-    let refetch: Executor = Rc::new(refetch);
-    ensure_not_stale(cx, state, refetch.clone());
-    sync_refetch(cx, state, refetch.clone());
+    let executor: Executor = Rc::new(executor);
+
+    ensure_not_stale(cx, state, executor.clone());
+    sync_refetch(cx, state, executor.clone());
     sync_observers(cx, state);
     // TODO FIX
     ensure_cache_cleanup(cx, state, None);
 
-    refetch
+    executor
 }
 
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
     state: Memo<QueryState<K, V>>,
-    refetch: Executor,
+    executor: Executor,
 ) {
     create_isomorphic_effect(cx, move |_| {
         let state = state.get();
@@ -70,7 +71,7 @@ fn ensure_not_stale<K: Clone, V: Clone>(
         match (updated_at.get_untracked(), stale_time.get_untracked()) {
             (Some(updated_at), Some(stale_time)) => {
                 if time_until_stale(updated_at, stale_time).is_zero() {
-                    refetch();
+                    executor();
                 }
             }
             _ => (),
@@ -78,15 +79,15 @@ fn ensure_not_stale<K: Clone, V: Clone>(
     })
 }
 
-fn sync_refetch<K, V>(cx: Scope, state: Memo<QueryState<K, V>>, refetch: Executor)
+fn sync_refetch<K, V>(cx: Scope, state: Memo<QueryState<K, V>>, executor: Executor)
 where
     K: Clone + 'static,
     V: Clone + 'static,
 {
     create_effect(cx, {
-        let refetch = refetch.clone();
+        let executor = executor.clone();
         move |_| {
-            let refetch = refetch.clone();
+            let executor = executor.clone();
 
             let state = state.get();
             let invalidated = state.invalidated;
@@ -95,14 +96,14 @@ where
 
             // Effect for refetching query on interval.
             use_timeout(cx, {
-                let refetch = refetch.clone();
+                let executor = executor.clone();
                 move || match (updated_at.get(), refetch_interval.get()) {
                     (Some(updated_at), Some(refetch_interval)) => {
-                        let refetch = refetch.clone();
+                        let executor = executor.clone();
                         let timeout = time_until_stale(updated_at, refetch_interval);
                         set_timeout_with_handle(
                             move || {
-                                refetch();
+                                executor();
                             },
                             timeout,
                         )
@@ -116,7 +117,7 @@ where
             create_effect(cx, {
                 move |_| {
                     if invalidated.get() {
-                        refetch();
+                        executor();
                     }
                 }
             });

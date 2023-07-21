@@ -124,16 +124,16 @@ where
     };
 
     let callback = move || resource.refetch();
-    let refetch = create_executor(cx, state, query, callback);
+    let executor = create_executor(cx, state, query, callback);
 
     create_isomorphic_effect(cx, {
-        let refetch = refetch.clone();
+        let executor = executor.clone();
         move |_| {
             let state = state.get();
             let value = state.value.get();
             // Fetch for first time if necessary.
             if state.needs_init() {
-                refetch();
+                executor();
             // Update resource with latest value.
             } else if value.is_some() {
                 resource.set(value);
@@ -150,7 +150,7 @@ where
         (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
     });
 
-    QueryResult::new(cx, state, data, is_loading, refetch)
+    QueryResult::new(cx, state, data, is_loading, executor)
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
