@@ -137,7 +137,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
     let QueryResult {
         data,
         is_loading,
-        is_refetching,
+        is_fetching,
         is_stale,
         ..
     } = query;
@@ -153,7 +153,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             <div>
                 <span>"Fetching Status: "</span>
                 <span>
-                    {move || { if is_refetching.get() { "Fetching..." } else { "Idle" } }}
+                    {move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}
                 </span>
             </div>
             <div>

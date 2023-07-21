@@ -182,6 +182,7 @@ where
         }
     });
 
+    // Doing this outside of QueryResult because of the need for `resource`.
     let is_loading = Signal::derive(cx, move || {
         let state = state.get();
 
@@ -202,6 +203,7 @@ async fn sleep(duration: Duration) {
         } else if #[cfg(feature = "ssr")] {
             tokio::time::sleep(duration).await;
         } else {
+            let _ = duration;
             debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
         }
     }
