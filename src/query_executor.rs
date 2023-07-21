@@ -16,7 +16,6 @@ pub(crate) fn create_executor<K, V, Fu>(
     cx: Scope,
     state: Memo<QueryState<K, V>>,
     query: impl Fn(K) -> Fu + 'static,
-    callback: impl Fn() + 'static,
 ) -> Executor
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
@@ -24,10 +23,8 @@ where
     Fu: Future<Output = V> + 'static,
 {
     let query = Rc::new(query);
-    let callback = Rc::new(callback);
     let executor = move || {
         let query = query.clone();
-        let callback = callback.clone();
         spawn_local(async move {
             let state = state.get_untracked();
             if !state.fetching.get_untracked() {
@@ -41,7 +38,6 @@ where
                 if state.invalidated.get_untracked() {
                     state.invalidated.set(false);
                 }
-                callback()
             }
         })
     };

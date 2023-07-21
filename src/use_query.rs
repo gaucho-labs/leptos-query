@@ -124,22 +124,14 @@ where
         }
     };
 
-    let callback = move || {
-        // Interrupt suspense.
-        if resource.loading().get_untracked() {
-            resource.set(state.get_untracked().value.get_untracked());
-        } else {
-            resource.refetch();
-        }
-    };
-
-    let executor = create_executor(cx, state, query, callback);
+    let executor = create_executor(cx, state, query);
 
     // Ensure always latest value.
     create_isomorphic_effect(cx, move |_| {
         let state = state.get();
         let value = state.value.get();
         if value.is_some() {
+            // Interrupt suspense.
             if resource.loading().get_untracked() {
                 resource.set(value);
             } else {
