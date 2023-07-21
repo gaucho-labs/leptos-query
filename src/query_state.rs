@@ -64,12 +64,9 @@ where
         self.invalidated.set(true);
     }
 
-    pub(crate) fn is_loading_untracked(&self) -> bool {
-        self.updated_at.get_untracked().is_none() && self.fetching.get_untracked()
-    }
-
     pub(crate) fn needs_init(&self) -> bool {
-        self.updated_at.get_untracked().is_none() && !self.fetching.get_untracked()
+        (self.value.get_untracked().is_none() || self.updated_at.get_untracked().is_none())
+            && !self.fetching.get_untracked()
     }
 
     // Enables having different stale times & refetch intervals for the same query.

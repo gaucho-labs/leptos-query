@@ -1,3 +1,4 @@
+use crate::instant::get_instant;
 use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
 use crate::{use_cache, QueryClient, QueryOptions, QueryState, ResourceOption};
@@ -42,7 +43,7 @@ pub fn provide_query_client(cx: Scope) {
 /// }
 ///
 /// // Query for a Monkey.
-/// fn use_monkey_query(cx: Scope, id: MonkeyId) -> QueryResult<Monkey> {
+/// fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
 ///     leptos_query::use_query(
 ///         cx,
 ///         id,
@@ -106,7 +107,7 @@ where
 
     let fetcher = move |state: QueryState<K, V>| {
         async move {
-            if state.value.get_untracked().is_none() || state.is_loading_untracked() {
+            if state.fetching.get_untracked() || state.value.get_untracked().is_none() {
                 // Suspend indefinitely and wait for interruption.
                 sleep(LONG_TIME).await;
                 None
@@ -123,29 +124,76 @@ where
         }
     };
 
-    let callback = move || resource.refetch();
+    let callback = move || {
+        // Interrupt suspense.
+        if resource.loading().get_untracked() {
+            resource.set(state.get_untracked().value.get_untracked());
+        } else {
+            resource.refetch();
+        }
+    };
+
     let executor = create_executor(cx, state, query, callback);
 
-    create_isomorphic_effect(cx, {
-        let executor = executor.clone();
-        move |_| {
-            let state = state.get();
-            let value = state.value.get();
-            // Fetch for first time if necessary.
-            if state.needs_init() {
-                executor();
-            // Update resource with latest value.
-            } else if value.is_some() {
+    // Ensure always latest value.
+    create_isomorphic_effect(cx, move |_| {
+        let state = state.get();
+        let value = state.value.get();
+        if value.is_some() {
+            if resource.loading().get_untracked() {
                 resource.set(value);
+            } else {
+                resource.refetch();
             }
         }
     });
 
-    let data = Signal::derive(cx, move || resource.read(cx).flatten());
+    // Ensure key changes are considered.
+    create_isomorphic_effect(cx, {
+        let executor = executor.clone();
+        move |prev_state: Option<QueryState<K, V>>| {
+            let state = state.get();
+            if let Some(prev_state) = prev_state {
+                if prev_state != state && state.needs_init() {
+                    executor()
+                }
+            }
+            state
+        }
+    });
+
+    let data = Signal::derive(cx, {
+        let executor = executor.clone();
+        move || {
+            let read = resource.read(cx).flatten();
+            let state = state.get_untracked();
+            let updated_at = state.updated_at;
+
+            // First Read.
+            // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
+            if read.is_none() && state.needs_init() {
+                executor()
+            // SSR edge case.
+            // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
+            } else if read.is_some() {
+                if updated_at.get_untracked().is_none() {
+                    updated_at.set(Some(get_instant()));
+                }
+                if state.value.get_untracked().is_none() {
+                    state.value.set(read.clone());
+                }
+                if state.fetching.get_untracked() {
+                    state.fetching.set(false);
+                }
+            }
+            read
+        }
+    });
 
     let is_loading = Signal::derive(cx, move || {
         let state = state.get();
 
+        // Need to consider both because of SSR resource <-> signal mismatches.
         (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
     });
 
@@ -159,10 +207,9 @@ async fn sleep(duration: Duration) {
     cfg_if! {
         if #[cfg(all(target_arch = "wasm32", any(feature = "hydrate")))] {
             gloo_timers::future::sleep(duration).await;
-        }
-         else if #[cfg(feature = "ssr")] {
+        } else if #[cfg(feature = "ssr")] {
             tokio::time::sleep(duration).await;
-        }  else {
+        } else {
             debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
         }
     }
