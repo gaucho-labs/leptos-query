@@ -8,6 +8,13 @@ use std::{
 #[derive(Copy, Clone, Debug, Hash)]
 pub struct Instant(pub std::time::Duration);
 
+impl Instant {
+    /// Get the current time as a Unix Timestamp.
+    pub fn now() -> Self {
+        get_instant()
+    }
+}
+
 impl Sub<Instant> for Instant {
     type Output = Duration;
 
@@ -25,7 +32,7 @@ impl Add<Instant> for Instant {
     }
 }
 
-pub fn get_instant() -> Instant {
+pub(crate) fn get_instant() -> Instant {
     use cfg_if::cfg_if;
     cfg_if! {
         if #[cfg(feature = "hydrate")] {

@@ -47,8 +47,7 @@ where
     ensure_not_stale(cx, state, executor.clone());
     sync_refetch(cx, state, executor.clone());
     sync_observers(cx, state);
-    // TODO FIX
-    ensure_cache_cleanup(cx, state, None);
+    ensure_cache_cleanup(cx, state);
 
     executor
 }
@@ -147,11 +146,8 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Memo<QueryState<K, V>>) 
     });
 }
 
-fn ensure_cache_cleanup<K, V>(
-    cx: Scope,
-    state: Memo<QueryState<K, V>>,
-    cache_time: Option<Duration>,
-) where
+fn ensure_cache_cleanup<K, V>(cx: Scope, state: Memo<QueryState<K, V>>)
+where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
 {
@@ -164,7 +160,7 @@ fn ensure_cache_cleanup<K, V>(
             root_scope,
             key,
             state.updated_at.into(),
-            cache_time,
+            state.cache_time.get(),
             observers,
         );
     });

@@ -13,6 +13,7 @@ where
     pub(crate) observers: Rc<Cell<usize>>,
     pub(crate) value: RwSignal<Option<V>>,
     pub(crate) stale_time: RwSignal<Option<Duration>>,
+    pub(crate) cache_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
     pub(crate) updated_at: RwSignal<Option<Instant>>,
     pub(crate) invalidated: RwSignal<bool>,
@@ -35,6 +36,7 @@ where
     pub(crate) fn new(cx: Scope, key: K, options: QueryOptions<V>) -> Self {
         let stale_time = ensure_valid_stale_time(&options.stale_time, &options.cache_time);
         let stale_time = create_rw_signal(cx, stale_time);
+        let cache_time = create_rw_signal(cx, options.cache_time);
         let refetch_interval = create_rw_signal(cx, options.refetch_interval);
         let value = create_rw_signal(cx, None);
         let updated_at = create_rw_signal(cx, None);
@@ -46,6 +48,7 @@ where
             observers: Rc::new(Cell::new(0)),
             value,
             stale_time,
+            cache_time,
             refetch_interval,
             updated_at,
             invalidated,
@@ -72,18 +75,26 @@ where
     // Enables having different stale times & refetch intervals for the same query.
     // The lowest stale time & refetch interval will be used.
     // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
+    // Cache time behaves differently. It will only use the minimum cache time found.
     pub(crate) fn set_options(&self, cx: Scope, options: QueryOptions<V>) {
+        // Use the minimum cache time.
+        match (self.cache_time.get_untracked(), options.cache_time) {
+            (Some(current), Some(new)) if new < current => self.cache_time.set(Some(new)),
+            (None, Some(new)) => self.cache_time.set(Some(new)),
+            _ => (),
+        }
+
         let curr_stale = self.stale_time.get_untracked();
         let curr_refetch_interval = self.refetch_interval.get_untracked();
 
         let (prev_stale, new_stale) = match (curr_stale, options.stale_time) {
-            (Some(current), Some(new)) if current > new => (Some(current), Some(new)),
+            (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
             (None, Some(new)) => (None, Some(new)),
             _ => (None, None),
         };
 
         let (prev_refetch, new_refetch) = match (curr_refetch_interval, options.refetch_interval) {
-            (Some(current), Some(new)) if current > new => (Some(current), Some(new)),
+            (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
             (None, Some(new)) => (None, Some(new)),
             _ => (None, None),
         };
