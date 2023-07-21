@@ -64,15 +64,6 @@ where
         self.invalidated.set(true);
     }
 
-    /// If the query is being fetched for the first time.
-    /// IMPORTANT: If the query is never [read](QueryState::read), this will always return false.
-    pub(crate) fn is_loading(&self, cx: Scope) -> Signal<bool> {
-        let updated_at = self.updated_at;
-        let fetching = self.fetching;
-
-        Signal::derive(cx, move || updated_at.get().is_none() && fetching.get())
-    }
-
     pub(crate) fn is_loading_untracked(&self) -> bool {
         self.updated_at.get_untracked().is_none() && self.fetching.get_untracked()
     }

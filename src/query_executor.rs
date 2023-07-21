@@ -8,7 +8,7 @@ use crate::{
     util::{time_until_stale, use_timeout},
 };
 
-type Executor = Rc<dyn Fn() -> ()>;
+type Executor = Rc<dyn Fn()>;
 
 // Creates state listeners and return executor funtion to run query.
 // When running executor, on query completion it will invoke the callback (notifying the success)
@@ -16,7 +16,7 @@ pub(crate) fn create_executor<K, V, Fu>(
     cx: Scope,
     state: Memo<QueryState<K, V>>,
     query: impl Fn(K) -> Fu + 'static,
-    callback: impl Fn() -> () + 'static,
+    callback: impl Fn() + 'static,
 ) -> Executor
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
@@ -68,13 +68,12 @@ fn ensure_not_stale<K: Clone, V: Clone>(
         let stale_time = state.stale_time;
 
         // On mount, ensure that the resource is not stale
-        match (updated_at.get_untracked(), stale_time.get_untracked()) {
-            (Some(updated_at), Some(stale_time)) => {
-                if time_until_stale(updated_at, stale_time).is_zero() {
-                    executor();
-                }
+        if let (Some(updated_at), Some(stale_time)) =
+            (updated_at.get_untracked(), stale_time.get_untracked())
+        {
+            if time_until_stale(updated_at, stale_time).is_zero() {
+                executor();
             }
-            _ => (),
         }
     })
 }

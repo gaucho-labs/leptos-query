@@ -65,12 +65,12 @@ pub(crate) fn ensure_valid_stale_time(
     match (stale_time, cache_time) {
         (Some(ref stale_time), Some(ref cache_time)) => {
             if stale_time > cache_time {
-                Some(cache_time.clone())
+                Some(*cache_time)
             } else {
-                Some(stale_time.clone())
+                Some(*stale_time)
             }
         }
-        (stale_time, _) => stale_time.clone(),
+        (stale_time, _) => *stale_time,
     }
 }
 

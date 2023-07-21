@@ -116,7 +116,7 @@ where
         }
     };
 
-    let resource = {
+    let resource: Resource<QueryState<K, V>, Option<V>> = {
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource(cx, move || state.get(), fetcher),
             ResourceOption::Blocking => create_blocking_resource(cx, move || state.get(), fetcher),
@@ -141,7 +141,6 @@ where
         }
     });
 
-    // When key changes.
     let data = Signal::derive(cx, move || resource.read(cx).flatten());
 
     let is_loading = Signal::derive(cx, move || {

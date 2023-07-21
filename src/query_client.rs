@@ -73,12 +73,12 @@ impl QueryClient {
                 let cache = cache.borrow();
                 let invalidated = keys
                     .into_iter()
-                    .filter_map(|key| {
-                        if let Some(state) = cache.get(&key) {
+                    .filter(|key| {
+                        if let Some(state) = cache.get(key) {
                             state.invalidate();
-                            Some(key)
+                            true
                         } else {
-                            None
+                            false
                         }
                     })
                     .collect::<Vec<_>>();
@@ -119,8 +119,7 @@ where
 
     let cache = entry.or_insert_with(|| {
         let wrapped: CacheEntry<K, V> = Rc::new(RefCell::new(HashMap::new()));
-        let boxed = Box::new(wrapped) as Box<dyn Any>;
-        boxed
+        Box::new(wrapped) as Box<dyn Any>
     });
 
     let mut cache = cache
