@@ -68,11 +68,7 @@ pub fn use_query<K, V, Fu>(
 ) -> QueryResult<V>
 where
     K: Hash + Eq + PartialEq + Clone + 'static,
-    V: Clone
-        + Serializable
-        + 'static
-        + server_fn::serde::de::DeserializeOwned
-        + server_fn::serde::Serialize,
+    V: Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
     let key = create_memo(cx, move |_| key());
@@ -110,14 +106,14 @@ where
             if state.fetching.get_untracked() || state.value.get_untracked().is_none() {
                 // Suspend indefinitely and wait for interruption.
                 sleep(LONG_TIME).await;
-                None
+                ResourceData(None)
             } else {
-                state.value.get_untracked()
+                ResourceData(state.value.get_untracked())
             }
         }
     };
 
-    let resource: Resource<QueryState<K, V>, Option<V>> = {
+    let resource: Resource<QueryState<K, V>, ResourceData<V>> = {
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource(cx, move || state.get(), fetcher),
             ResourceOption::Blocking => create_blocking_resource(cx, move || state.get(), fetcher),
@@ -133,7 +129,7 @@ where
         if value.is_some() {
             // Interrupt suspense.
             if resource.loading().get_untracked() {
-                resource.set(value);
+                resource.set(ResourceData(value));
             } else {
                 resource.refetch();
             }
@@ -157,7 +153,7 @@ where
     let data = Signal::derive(cx, {
         let executor = executor.clone();
         move || {
-            let read = resource.read(cx).flatten();
+            let read = resource.read(cx).map(|r| r.0).flatten();
             let state = state.get_untracked();
             let updated_at = state.updated_at;
 
@@ -205,6 +201,30 @@ async fn sleep(duration: Duration) {
         } else {
             let _ = duration;
             debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
+        }
+    }
+}
+
+/// Wrapper type to enable using `Serializable`
+#[derive(Clone, Debug)]
+struct ResourceData<V>(Option<V>);
+
+impl<V> Serializable for ResourceData<V>
+where
+    V: Serializable,
+{
+    fn ser(&self) -> Result<String, SerializationError> {
+        if let Some(ref value) = self.0 {
+            value.ser()
+        } else {
+            Ok("null".to_string())
+        }
+    }
+
+    fn de(bytes: &str) -> Result<Self, SerializationError> {
+        match bytes {
+            "" | "null" => Ok(ResourceData(None)),
+            v => <V>::de(v).map(Some).map(ResourceData),
         }
     }
 }
