@@ -39,15 +39,42 @@ impl<V> QueryResult<V>
 where
     V: Clone,
 {
-    pub(crate) fn new<K: Clone>(
+    pub(crate) fn from_resource<K: Clone>(
         cx: Scope,
-        state: Memo<QueryState<K, V>>,
+        state: Signal<QueryState<K, V>>,
         data: Signal<Option<V>>,
         is_loading: Signal<bool>,
         executor: Rc<dyn Fn()>,
     ) -> QueryResult<V> {
-        let is_stale = make_stale_signal_memo(cx, state);
+        let is_stale = make_stale_signal(cx, state);
         let is_fetching = Signal::derive(cx, move || state.get().fetching.get());
+        let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
+        let invalidated = Signal::derive(cx, move || state.get().invalidated.get());
+        let refetch = move |_: ()| executor();
+
+        QueryResult {
+            data,
+            is_loading,
+            is_stale,
+            is_fetching,
+            updated_at,
+            invalidated,
+            refetch: refetch.mapped_signal_setter(cx),
+        }
+    }
+
+    pub(crate) fn from_state<K: Clone>(
+        cx: Scope,
+        state: Signal<QueryState<K, V>>,
+        executor: Rc<dyn Fn()>,
+    ) -> QueryResult<V> {
+        let data = Signal::derive(cx, move || state.get().value.get());
+        let is_stale = make_stale_signal(cx, state);
+        let is_fetching = Signal::derive(cx, move || state.get().fetching.get());
+        let is_loading = Signal::derive(cx, move || {
+            let state = state.get();
+            state.value.get().is_none() && state.fetching.get()
+        });
         let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
         let invalidated = Signal::derive(cx, move || state.get().invalidated.get());
         let refetch = move |_: ()| executor();
@@ -66,9 +93,9 @@ where
 
 impl<V: Copy> Copy for QueryResult<V> where V: 'static {}
 
-fn make_stale_signal_memo<K: Clone, V: Clone>(
+fn make_stale_signal<K: Clone, V: Clone>(
     cx: Scope,
-    state: Memo<QueryState<K, V>>,
+    state: Signal<QueryState<K, V>>,
 ) -> Signal<bool> {
     let stale = create_rw_signal(cx, false);
     create_isomorphic_effect(cx, move |_| {

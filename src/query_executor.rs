@@ -10,20 +10,18 @@ use crate::{
 
 type Executor = Rc<dyn Fn()>;
 
-// Creates state listeners and return executor funtion to run query.
-// When running executor, on query completion it will invoke the callback (notifying the success)
+// Create Executor function which will execute task in `spawn_local` and update state.
 pub(crate) fn create_executor<K, V, Fu>(
-    cx: Scope,
-    state: Memo<QueryState<K, V>>,
+    state: Signal<QueryState<K, V>>,
     query: impl Fn(K) -> Fu + 'static,
-) -> Executor
+) -> impl Fn()
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
     Fu: Future<Output = V> + 'static,
 {
     let query = Rc::new(query);
-    let executor = move || {
+    move || {
         let query = query.clone();
         spawn_local(async move {
             let state = state.get_untracked();
@@ -40,21 +38,27 @@ where
                 }
             }
         })
-    };
+    }
+}
 
-    let executor: Executor = Rc::new(executor);
-
+// Start synchronization effects.
+pub(crate) fn synchronize_state<K, V>(
+    cx: Scope,
+    state: Signal<QueryState<K, V>>,
+    executor: Executor,
+) where
+    K: Hash + Eq + PartialEq + Clone + 'static,
+    V: Clone,
+{
     ensure_not_stale(cx, state, executor.clone());
     sync_refetch(cx, state, executor.clone());
     sync_observers(cx, state);
     ensure_cache_cleanup(cx, state);
-
-    executor
 }
 
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
-    state: Memo<QueryState<K, V>>,
+    state: Signal<QueryState<K, V>>,
     executor: Executor,
 ) {
     create_isomorphic_effect(cx, move |_| {
@@ -73,7 +77,7 @@ fn ensure_not_stale<K: Clone, V: Clone>(
     })
 }
 
-fn sync_refetch<K, V>(cx: Scope, state: Memo<QueryState<K, V>>, executor: Executor)
+fn sync_refetch<K, V>(cx: Scope, state: Signal<QueryState<K, V>>, executor: Executor)
 where
     K: Clone + 'static,
     V: Clone + 'static,
@@ -120,7 +124,7 @@ where
 }
 
 // Ensure that observers are kept track of.
-fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Memo<QueryState<K, V>>) {
+fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Signal<QueryState<K, V>>) {
     type Observer = Rc<Cell<usize>>;
     let last_observer: Rc<Cell<Option<Observer>>> = Rc::new(Cell::new(None));
 
@@ -148,7 +152,7 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Memo<QueryState<K, V>>) 
     });
 }
 
-fn ensure_cache_cleanup<K, V>(cx: Scope, state: Memo<QueryState<K, V>>)
+fn ensure_cache_cleanup<K, V>(cx: Scope, state: Signal<QueryState<K, V>>)
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,

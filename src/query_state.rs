@@ -31,13 +31,13 @@ impl<K: PartialEq, V> Eq for QueryState<K, V> {}
 impl<K, V> QueryState<K, V>
 where
     K: Clone + 'static,
-    V: Clone + Serializable + 'static,
+    V: Clone + 'static,
 {
-    pub(crate) fn new(cx: Scope, key: K, options: QueryOptions<V>) -> Self {
-        let stale_time = ensure_valid_stale_time(&options.stale_time, &options.cache_time);
-        let stale_time = create_rw_signal(cx, stale_time);
-        let cache_time = create_rw_signal(cx, options.cache_time);
-        let refetch_interval = create_rw_signal(cx, options.refetch_interval);
+    pub(crate) fn new(cx: Scope, key: K) -> Self {
+        let stale_time = create_rw_signal(cx, None);
+        let cache_time = create_rw_signal(cx, None);
+        let refetch_interval = create_rw_signal(cx, None);
+
         let value = create_rw_signal(cx, None);
         let updated_at = create_rw_signal(cx, None);
         let invalidated = create_rw_signal(cx, false);
@@ -72,11 +72,19 @@ where
             && !self.fetching.get_untracked()
     }
 
+    pub(crate) fn overwrite_options(&self, options: QueryOptions<V>) {
+        let stale_time = ensure_valid_stale_time(&options.stale_time, &options.cache_time);
+
+        self.stale_time.set(stale_time);
+        self.cache_time.set(options.cache_time);
+        self.refetch_interval.set(options.refetch_interval);
+    }
+
     // Enables having different stale times & refetch intervals for the same query.
     // The lowest stale time & refetch interval will be used.
     // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
     // Cache time behaves differently. It will only use the minimum cache time found.
-    pub(crate) fn set_options(&self, cx: Scope, options: QueryOptions<V>) {
+    pub(crate) fn update_options(&self, cx: Scope, options: QueryOptions<V>) {
         // Use the minimum cache time.
         match (self.cache_time.get_untracked(), options.cache_time) {
             (Some(current), Some(new)) if new < current => self.cache_time.set(Some(new)),

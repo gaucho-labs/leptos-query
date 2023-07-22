@@ -3,20 +3,29 @@
 [![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
 [![docs.rs](https://docs.rs/leptos_query/badge.svg)](https://docs.rs/leptos_query)
 
-Leptos Query is a asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
+## About
+
+Leptos Query is robust asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
 
 Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
 
-Queries are useful for data fetching, caching, and synchronization with server state.
+## Why Choose Leptos Query?
 
-A Query provides:
+Leptos Query was built to simplify your data fetching process and keep your application's state effortlessly synchronized and up-to-date. Here's how it's done:
 
-- Caching
-- De-duplication
-- Invalidation
-- Background refetching
-- Refetch intervals
-- Memory management with cache lifetimes
+### Key Features
+
+- **Configurable Caching & SWR**: Queries are cached by default, ensuring quick access to your data. You can configure your stale and cache times per query with Stale While Revalidate (SWR) system.
+
+- **Reactivity at Its Core**: Leptos Query deeply integrates with Leptos' reactive system to transform asynchronous query fetchers into reactive Signals.
+
+- **Server-Side Rendering (SSR) Compatibility**: Fetch your queries on the server and smoothly serialize them to the client, just as you would with a Leptos Resource.
+
+- **Efficient De-duplication**: No unnecessary fetches here! If you make multiple queries with the same Key, Leptos Query smartly fetches only once.
+
+- **Manual Invalidation**: Control when your queries should be invalidated and refetched for that ultimate flexibility.
+
+- **Scheduled Refetching**: Set up your queries to refetch on a customized schedule, keeping your data fresh as per your needs.
 
 ## Installation
 
@@ -196,7 +205,7 @@ If you want infinite cache/stale time, you can set `stale_time` and `cache_time`
 
 ### <ins> What's a QueryClient? </ins>
 
-A `QueryClient` allows you to interact with the query cache. Mainly to invalidate queries.
+A `QueryClient` allows you to interact with the query cache. You can invalidate queries, prefetch them, and introspect the query cache.
 
 `use_query_client()` will return the `QueryClient` for the current scope.
 

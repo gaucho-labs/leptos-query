@@ -1,17 +1,12 @@
 use crate::instant::get_instant;
-use crate::query_executor::create_executor;
+use crate::query_executor::{create_executor, synchronize_state};
 use crate::query_result::QueryResult;
-use crate::{use_cache, QueryClient, QueryOptions, QueryState, ResourceOption};
+use crate::{get_state, QueryOptions, QueryState, ResourceOption};
 use leptos::*;
-use std::collections::hash_map::Entry;
 use std::future::Future;
 use std::hash::Hash;
+use std::rc::Rc;
 use std::time::Duration;
-
-/// Provides a Query Client to the current scope.
-pub fn provide_query_client(cx: Scope) {
-    provide_context(cx, QueryClient::new(cx));
-}
 
 /// Creates a query. Useful for data fetching, caching, and synchronization with server state.
 ///
@@ -80,35 +75,23 @@ where
     V: Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
-    let key = create_memo(cx, move |_| key());
-
     // Find relevant state.
-    let state = create_memo(cx, {
+    let state = get_state(cx, key);
+
+    // Update options.
+    create_isomorphic_effect(cx, {
         let options = options.clone();
         move |_| {
-            use_cache(cx, {
-                let options = options.clone();
-                let key = key.get();
-                move |(root_scope, cache)| {
-                    let entry = cache.entry(key.clone());
-
-                    let state = match entry {
-                        Entry::Occupied(entry) => {
-                            let entry = entry.into_mut();
-                            // Enable nested options.
-                            entry.set_options(cx, options);
-                            entry
-                        }
-                        Entry::Vacant(entry) => {
-                            let state = QueryState::new(root_scope, key, options);
-                            entry.insert(state.clone())
-                        }
-                    };
-                    state.clone()
-                }
-            })
+            let (state, new) = state.get();
+            if new {
+                state.overwrite_options(options.clone())
+            } else {
+                state.update_options(cx, options.clone())
+            }
         }
     });
+
+    let state = Signal::derive(cx, move || state.get().0);
 
     let fetcher = move |state: QueryState<K, V>| {
         async move {
@@ -153,7 +136,9 @@ where
         }
     });
 
-    let executor = create_executor(cx, state, query);
+    let executor = Rc::new(create_executor(state, query));
+
+    synchronize_state(cx, state, executor.clone());
 
     // Ensure key changes are considered.
     create_isomorphic_effect(cx, {
@@ -205,7 +190,7 @@ where
         (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
     });
 
-    QueryResult::new(cx, state, data, is_loading, executor)
+    QueryResult::from_resource(cx, state, data, is_loading, executor)
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);

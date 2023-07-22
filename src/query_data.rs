@@ -27,7 +27,7 @@ impl<V> QueryData<V>
 where
     V: Clone + 'static,
 {
-    pub(crate) fn from_state<K: Clone>(cx: Scope, state: QueryState<K, V>) -> Self {
+    pub(crate) fn from_state<K: Clone>(cx: Scope, state: &QueryState<K, V>) -> Self {
         let is_stale = create_rw_signal(cx, false);
         let data = state.value.into();
         let is_loading = state.fetching.into();
@@ -36,8 +36,8 @@ where
         let updated_at = state.updated_at.into();
         let invalidated = state.invalidated.into();
 
-        cleanup_observers(cx, &state);
-        sync_stale_signal(cx, state, is_stale);
+        cleanup_observers(cx, state);
+        sync_stale_signal(cx, state.clone(), is_stale);
 
         Self {
             data,

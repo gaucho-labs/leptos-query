@@ -1,12 +1,21 @@
-use crate::*;
+use crate::{
+    query_executor::{create_executor, synchronize_state},
+    *,
+};
 use leptos::*;
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
     collections::HashMap,
+    future::Future,
     hash::Hash,
     rc::Rc,
 };
+
+/// Provides a Query Client to the current scope.
+pub fn provide_query_client(cx: Scope) {
+    provide_context(cx, QueryClient::new(cx));
+}
 
 /// Retrieves a Query Client from the current scope.
 pub fn use_query_client(cx: Scope) -> QueryClient {
@@ -32,16 +41,100 @@ impl QueryClient {
         }
     }
 
-    /// Attempts to retrieve data for a query from the Query Cache.
-    pub fn get_query_data<K, V>(&self, cx: Scope, key: &K) -> Option<QueryData<V>>
+    /// Prefetch a query and store it in cache. Returns QueryResult.
+    /// If you don't need the result opt for [`QueryClient::prefetch_query()`](::prefetch_query)
+    pub fn fetch_query<K, V, Fu>(
+        &self,
+        cx: Scope,
+        key: impl Fn() -> K + 'static,
+        query: impl Fn(K) -> Fu + 'static,
+        isomorphic: bool,
+    ) -> QueryResult<V>
+    where
+        K: Hash + Eq + PartialEq + Clone + 'static,
+        V: Clone + 'static,
+        Fu: Future<Output = V> + 'static,
+    {
+        let state = get_state(cx, key);
+
+        let state = Signal::derive(cx, move || state.get().0);
+
+        let executor = Rc::new(create_executor(state, query));
+
+        let sync = {
+            let executor = executor.clone();
+            move |_| {
+                let _ = state.get();
+                executor()
+            }
+        };
+        if isomorphic {
+            create_isomorphic_effect(cx, sync);
+        } else {
+            create_effect(cx, sync);
+        }
+
+        synchronize_state(cx, state, executor.clone());
+
+        QueryResult::from_state(cx, state, executor)
+    }
+
+    /// Prefetch a query and store it in cache.
+    /// If you need the result opt for [`QueryClient::fetch_query()`](Self::fetch_query)
+    pub fn prefetch_query<K, V, Fu>(
+        &self,
+        cx: Scope,
+        key: impl Fn() -> K + 'static,
+        query: impl Fn(K) -> Fu + 'static,
+        isomorphic: bool,
+    ) where
+        K: Hash + Eq + PartialEq + Clone + 'static,
+        V: Clone + 'static,
+        Fu: Future<Output = V> + 'static,
+    {
+        let state = get_state(cx, key);
+
+        let state = Signal::derive(cx, move || state.get().0);
+
+        let executor = create_executor(state, query);
+
+        let sync = {
+            move |_| {
+                let _ = state.get();
+                executor()
+            }
+        };
+        if isomorphic {
+            create_isomorphic_effect(cx, sync);
+        } else {
+            create_effect(cx, sync);
+        }
+    }
+
+    /// Attempts to retrieve existing data for a query from the Query Cache.
+    /// Does not affect cache time.
+    pub fn get_query_data<K, V>(
+        &self,
+        cx: Scope,
+        key: impl Fn() -> K + 'static,
+    ) -> Signal<Option<QueryData<V>>>
     where
         K: Hash + Eq + PartialEq + Clone + 'static,
         V: Clone + 'static,
     {
-        self.use_cache_option(|cache: &HashMap<K, QueryState<K, V>>| {
-            cache
-                .get(key)
-                .map(|state| QueryData::from_state(cx, state.clone()))
+        let key = create_memo(cx, move |_| key());
+
+        let client = self.clone();
+
+        // TODO: Update on entries inserted.
+
+        Signal::derive(cx, move || {
+            let key = key.get();
+            client.use_cache_option(move |cache| {
+                cache
+                    .get(&key)
+                    .map(|e: &QueryState<K, V>| QueryData::from_state(cx, e))
+            })
         })
     }
 
@@ -128,4 +221,41 @@ where
         .borrow_mut();
 
     func((client.cx, &mut cache))
+}
+
+// bool is if the state was created!
+pub(crate) fn get_state<K, V>(
+    cx: Scope,
+    key: impl Fn() -> K + 'static,
+) -> Signal<(QueryState<K, V>, bool)>
+where
+    K: Hash + Eq + PartialEq + Clone + 'static,
+    V: Clone + 'static,
+{
+    use std::collections::hash_map::Entry;
+    let key = create_memo(cx, move |_| key());
+
+    // Find relevant state.
+    Signal::derive(cx, {
+        move || {
+            let key = key.get();
+            use_cache(cx, {
+                move |(root_scope, cache)| {
+                    let entry = cache.entry(key.clone());
+
+                    let (state, new) = match entry {
+                        Entry::Occupied(entry) => {
+                            let entry = entry.into_mut();
+                            (entry, false)
+                        }
+                        Entry::Vacant(entry) => {
+                            let state = QueryState::new(root_scope, key);
+                            (entry.insert(state.clone()), true)
+                        }
+                    };
+                    (state.clone(), new)
+                }
+            })
+        }
+    })
 }

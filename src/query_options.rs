@@ -37,6 +37,16 @@ pub enum ResourceOption {
 }
 
 impl<V> QueryOptions<V> {
+    /// Empty options.
+    pub fn empty() -> Self {
+        Self {
+            default_value: None,
+            stale_time: None,
+            cache_time: None,
+            refetch_interval: None,
+            resource_option: ResourceOption::NonBlocking,
+        }
+    }
     /// QueryOption with custom stale_time.
     pub fn stale_time(stale_time: Duration) -> Self {
         Self {

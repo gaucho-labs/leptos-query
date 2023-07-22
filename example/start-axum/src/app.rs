@@ -103,7 +103,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
                 <button class="button" on:click=invalidate_one>
                     "Invalidate Post One"
                 </button>
-                <p>"If you prefetch a post, it will load the data, and then on it's usage, ."</p>
+                <p>"If you prefetch a post, it will load the data ahead of visiting the page."</p>
                 <button class="button" on:click=prefetch_two>
                     "Prefetch Post Two"
                 </button>
