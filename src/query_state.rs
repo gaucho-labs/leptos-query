@@ -127,8 +127,9 @@ impl<K, V> QueryState<K, V> {
         self.value.dispose();
         self.stale_time.dispose();
         self.refetch_interval.dispose();
+        self.fetching.dispose();
+        self.cache_time.dispose();
         self.updated_at.dispose();
         self.invalidated.dispose();
-        self.fetching.dispose();
     }
 }
