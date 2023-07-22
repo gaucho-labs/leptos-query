@@ -168,7 +168,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     {move || {
-                        data()
+                        data.get()
                             .map(|post| {
                                 view! { cx, <h2>{post}</h2> }
                             })

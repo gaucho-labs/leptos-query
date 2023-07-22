@@ -31,11 +31,20 @@ pub fn provide_query_client(cx: Scope) {
 ///
 /// Example
 /// ```
+/// use leptos::*;
+/// use leptos_query::*;
+/// use std::time::Duration;
+/// use serde::*;
+///
+/// // Data type.
+/// #[derive(Clone, Deserialize, Serialize)]
+/// struct Monkey {
+///     name: String,
+/// }
 ///
 /// // Create a Newtype for MonkeyId.
-/// #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+/// #[derive(Clone, PartialEq, Eq, Hash)]
 /// struct MonkeyId(String);
-///
 ///
 /// // Monkey fetcher.
 /// async fn get_monkey(id: MonkeyId) -> Monkey {
@@ -53,7 +62,7 @@ pub fn provide_query_client(cx: Scope) {
 ///             refetch_interval: None,
 ///             resource_option: ResourceOption::NonBlocking,
 ///             stale_time: Some(Duration::from_secs(5)),
-///             cache_time: Some(Duration::from_secs(30)),
+///             cache_time: Some(Duration::from_secs(60)),
 ///         },
 ///     )
 /// }
@@ -114,13 +123,21 @@ where
     };
 
     let resource: Resource<QueryState<K, V>, ResourceData<V>> = {
+        let default = options.default_value;
         match options.resource_option {
-            ResourceOption::NonBlocking => create_resource(cx, move || state.get(), fetcher),
+            ResourceOption::NonBlocking => create_resource_with_initial_value(
+                cx,
+                move || state.get(),
+                fetcher,
+                if default.is_some() {
+                    Some(ResourceData(default))
+                } else {
+                    None
+                },
+            ),
             ResourceOption::Blocking => create_blocking_resource(cx, move || state.get(), fetcher),
         }
     };
-
-    let executor = create_executor(cx, state, query);
 
     // Ensure always latest value.
     create_isomorphic_effect(cx, move |_| {
@@ -135,6 +152,8 @@ where
             }
         }
     });
+
+    let executor = create_executor(cx, state, query);
 
     // Ensure key changes are considered.
     create_isomorphic_effect(cx, {

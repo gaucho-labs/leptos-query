@@ -25,8 +25,6 @@ cargo add leptos_query --optional
 
 Then add the relevant feature(s) to your `Cargo.toml`
 
-`...` meaning the rest of the dependencies you may have.
-
 ```toml
 
 [features]
@@ -70,8 +68,19 @@ TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/gen
 
 ```rust
 
+ use leptos::*;
+ use leptos_query::*;
+ use std::time::Duration;
+ use serde::*;
+
+ // Data type.
+ #[derive(Clone, Deserialize, Serialize)]
+ struct Monkey {
+     name: String,
+ }
+
  // Create a Newtype for MonkeyId.
- #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+ #[derive(Clone, PartialEq, Eq, Hash)]
  struct MonkeyId(String);
 
 
@@ -141,7 +150,7 @@ fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
                    view! { cx, <h2>"Loading..."</h2> }
                }>
                {move || {
-                   data()
+                   data.get()
                        .map(|monkey| {
                            view! { cx, <h2>{monkey.name}</h2> }
                        })
@@ -157,19 +166,17 @@ For a complete working example see [the example directory](/example)
 
 ## FAQ
 
-### How's this different from a leptos Resource?
+### <ins>How's this different from a leptos Resource?</ins>
 
 A Query uses a resource under the hood, but provides additional functionality like caching, de-duplication, and invalidation.
 
-Resources are individually bound to the `Scope` they are created in.
-
-Queries are all bound to the `QueryClient` they are created in.
-
-Meaning, once you have a `QueryClient` in your app, you can access the value for a query anywhere in your app.
+Resources are individually bound to the `Scope` they are created in. Queries are all bound to the `QueryClient` they are created in. Meaning, once you have a `QueryClient` in your app, you can access the value for a query anywhere in your app.
 
 With a resource, you have to manually lift it to a higher scope if you want to preserve it. And this can be cumbersome if you have a many resources.
 
-### What is the difference between `stale_time` and `cache_time`?
+Also, queries are stateful on a per-key basis, meaning you can use the same query with for the same key in multiple places and only one request will be made, and they all share the same state.
+
+### <ins>What's the difference between `stale_time` and `cache_time`? </ins>
 
 `staleTime` is the duration until a query transitions from fresh to stale. As long as the query is fresh, data will always be read from the cache only.
 
@@ -183,3 +190,27 @@ When a query is stale, it will be refetched on its next usage.
 These can be configured per-query using `QueryOptions`
 
 If you want infinite cache/stale time, you can set `stale_time` and `cache_time` to `None`.
+
+> NOTE: `stale_time` can never be greater than `cache_time`. If `stale_time` is greater than `cache_time`, `stale_time` will be set to `cache_time`.
+
+### <ins> What's a QueryClient? </ins>
+
+A `QueryClient` allows you to interact with the query cache. Mainly to invalidate queries.
+
+`use_query_client()` will return the `QueryClient` for the current scope.
+
+### <ins> What's invalidating a query do? </ins>
+
+Sometimes you can't wait for a query to become stale before you refetch it. QueryClient has an `invalidate_query` method that lets you intelligently mark queries as stale and potentially refetch them too!
+
+When a query is invalidated, the following happens:
+
+- It is marked as `invalid`. This `invalid` state overrides any `stale_time` configuration.
+- The next time the query is used, it will be refetched in the background.
+  - If a query is currently being used, it will be refetched immediately.
+
+### <ins>What's the difference between `is_loading` and `is_fetching`? </ins>
+
+`is_fetching` is true when the query is in the process of fetching data.
+
+`is_loading` is true when the query is in the process of fetching data FOR THE FIRST TIME.

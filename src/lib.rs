@@ -38,10 +38,20 @@
 //! Then make a query funciton:
 //!
 //! ```
-//!//! // Create a Newtype for MonkeyId.
-//! #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-//! struct MonkeyId(String);
+//! use leptos::*;
+//! use leptos_query::*;
+//! use std::time::Duration;
+//! use serde::*;
 //!
+//! // Data type.
+//! #[derive(Clone, Deserialize, Serialize)]
+//! struct Monkey {
+//!     name: String,
+//! }
+//!
+//! // Create a Newtype for MonkeyId.
+//! #[derive(Clone, PartialEq, Eq, Hash)]
+//! struct MonkeyId(String);
 //!
 //! // Monkey fetcher.
 //! async fn get_monkey(id: MonkeyId) -> Monkey {
@@ -49,7 +59,7 @@
 //! }
 //!
 //! // Query for a Monkey.
-//! fn use_monkey_query(cx: Scope, id: MonkeyId) -> QueryResult<Monkey> {
+//! fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
 //!     leptos_query::use_query(
 //!         cx,
 //!         id,
@@ -59,10 +69,11 @@
 //!             refetch_interval: None,
 //!             resource_option: ResourceOption::NonBlocking,
 //!             stale_time: Some(Duration::from_secs(5)),
-//!             cache_time: Some(Duration::from_secs(30)),
+//!             cache_time: Some(Duration::from_secs(60)),
 //!         },
 //!     )
 //! }
+//!
 //! ```
 //!
 //! Now you can use the query in any component in your app.
