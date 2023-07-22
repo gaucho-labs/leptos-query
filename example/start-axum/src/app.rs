@@ -25,29 +25,40 @@ pub fn App(cx: Scope) -> impl IntoView {
             <main>
                 <Routes>
                     <Route
-                        path="/"
+                        path=""
                         view=|cx| {
-                            view! { cx, <HomePage/> }
+                            view! { cx,
+                                <div id="simple" style:width="50rem" style:margin="auto">
+                                    <Outlet/>
+                                </div>
+                            }
                         }
-                    />
-                    <Route
-                        path="single"
-                        view=|cx| {
-                            view! { cx, <OnePost/> }
-                        }
-                    />
-                    <Route
-                        path="multi"
-                        view=|cx| {
-                            view! { cx, <MultiPost/> }
-                        }
-                    />
-                    <Route
-                        path="reactive"
-                        view=|cx| {
-                            view! { cx, <ReactivePost/> }
-                        }
-                    />
+                    >
+                        <Route
+                            path="/"
+                            view=|cx| {
+                                view! { cx, <HomePage/> }
+                            }
+                        />
+                        <Route
+                            path="single"
+                            view=|cx| {
+                                view! { cx, <OnePost/> }
+                            }
+                        />
+                        <Route
+                            path="multi"
+                            view=|cx| {
+                                view! { cx, <MultiPost/> }
+                            }
+                        />
+                        <Route
+                            path="reactive"
+                            view=|cx| {
+                                view! { cx, <ReactivePost/> }
+                            }
+                        />
+                    </Route>
                 </Routes>
             </main>
         </Router>
@@ -56,33 +67,53 @@ pub fn App(cx: Scope) -> impl IntoView {
 
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
+    let invalidate_one = move |_| {
+        use_query_client(cx).invalidate_query::<PostId, String>(&PostId(1));
+    };
+
+    let prefetch_two = move |_| {
+        use_query_client(cx).prefetch_query(cx, || PostId(2), get_post_unwrapped, true);
+    };
+
     view! { cx,
-        <div>
+        <div class="container">
             <h1>"Welcome to Leptos Query!"</h1>
-            <div id="simple" style:width="20rem" style:margin="auto">
-                <p>"This is a simple example of using a query cache."</p>
-                <p>"Each post has a stale_time of 5 seconds."</p>
-                <h2>"Posts"</h2>
-                <ul>
-                    <li>
-                        <a href="/single">"Post 1"</a>
-                    </li>
-                    <li>
-                        <a href="/multi">"Post 2"</a>
-                    </li>
-                    <li>
-                        <a href="/reactive">"Reactive"</a>
-                    </li>
-                </ul>
-                <br/>
+            <p>"This is a simple example of using a query cache."</p>
+            <p>"Each post has a stale_time of 5 seconds."</p>
+            <h2>"Examples"</h2>
+            <ul>
+                <li>
+                    <a href="/single">"Post 1"</a>
+                </li>
+                <li>
+                    <a href="/multi">"Double use of Post 2"</a>
+                </li>
+                <li>
+                    <a href="/reactive">"Reactive"</a>
+                </li>
+            </ul>
+            <br/>
+            <div
+                style:display="flex"
+                style:flex-direction="column"
+                style:gap="1rem"
+                style:margin-top="1rem"
+            >
+                <p>"If you invalidate a post, it will automatically fetch on it's next usage."</p>
+                <button class="button" on:click=invalidate_one>
+                    "Invalidate Post One"
+                </button>
+                <p>"If you prefetch a post, it will load the data, and then on it's usage, ."</p>
+                <button class="button" on:click=prefetch_two>
+                    "Prefetch Post Two"
+                </button>
             </div>
-            <div id="complex"></div>
         </div>
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct PostId(String);
+pub struct PostId(u32);
 
 fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<String> {
     leptos_query::use_query(
@@ -93,8 +124,8 @@ fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<
             default_value: None,
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
-            stale_time: Some(Duration::from_secs(10)),
-            cache_time: Some(Duration::from_secs(60)),
+            stale_time: Some(Duration::from_secs(5)),
+            cache_time: Some(Duration::from_secs(10)),
         },
     )
 }
@@ -116,7 +147,7 @@ pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
 
 #[component]
 fn OnePost(cx: Scope) -> impl IntoView {
-    view! { cx, <Post post_id=PostId("one".into())/> }
+    view! { cx, <Post post_id=PostId(1)/> }
 }
 
 #[component]
@@ -124,9 +155,9 @@ fn MultiPost(cx: Scope) -> impl IntoView {
     view! { cx,
         <h1>"Requests are de-duplicated across components"</h1>
         <br/>
-        <Post post_id=PostId("two".into())/>
+        <Post post_id=PostId(2)/>
         <hr/>
-        <Post post_id=PostId("two".into())/>
+        <Post post_id=PostId(2)/>
     }
 }
 
@@ -139,11 +170,12 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
         is_loading,
         is_fetching,
         is_stale,
+        invalidated,
         ..
     } = query;
 
     view! { cx,
-        <div class="post">
+        <div class="container">
             <a href="/">"Home"</a>
             <h2>"Post Key: " {move || post_id.get().0}</h2>
             <div>
@@ -152,15 +184,15 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             </div>
             <div>
                 <span>"Fetching Status: "</span>
-                <span>
-                    {move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}
-                </span>
+                <span>{move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}</span>
             </div>
             <div>
                 <span>"Stale Status: "</span>
-                <span>
-                    {move || { if is_stale.get() { "Stale" } else { "Fresh" } }}
-                </span>
+                <span>{move || { if is_stale.get() { "Stale" } else { "Fresh" } }}</span>
+            </div>
+            <div>
+                <span>"Invalidated: "</span>
+                <span>{move || { if invalidated.get() { "Invalid" } else { "Valid" } }}</span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -176,7 +208,9 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                 </Transition>
             </div>
             <div>
-                <button on:click=move |_| query.refetch()>"Refetch query"</button>
+                <button class="button" on:click=move |_| query.refetch()>
+                    "Refetch query"
+                </button>
             </div>
         </div>
     }
@@ -184,20 +218,23 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
 
 #[component]
 fn ReactivePost(cx: Scope) -> impl IntoView {
-    let (post_id, set_post_id) = create_signal(cx, PostId("one".into()));
+    let (post_id, set_post_id) = create_signal(cx, PostId(1));
 
     view! { cx,
-       <Post post_id=post_id/>
-       <div style:padding="1rem">
-           <button on:click=move |_| {
-            if post_id.get().0 == "one" {
-                set_post_id(PostId("two".into()));
-            } else {
-                set_post_id(PostId("one".into()));
-            }
-        }>
-               "Switch Post"
-           </button>
-       </div>
+        <Post post_id=post_id/>
+        <div style:margin-top="1rem">
+            <button
+                class="button"
+                on:click=move |_| {
+                    if post_id.get().0 == 1 {
+                        set_post_id(PostId(2));
+                    } else {
+                        set_post_id(PostId(1));
+                    }
+                }
+            >
+                "Switch Post"
+            </button>
+        </div>
     }
 }
