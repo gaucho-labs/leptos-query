@@ -1,10 +1,10 @@
 use crate::error_template::{AppError, ErrorTemplate};
-use leptos::{leptos_dom::helpers::IntervalHandle, *};
+use leptos::*;
 use leptos_meta::*;
 use leptos_query::*;
 use leptos_router::*;
 use serde::{Deserialize, Serialize};
-use std::{cell::Cell, rc::Rc, time::Duration};
+use std::time::Duration;
 
 #[component]
 pub fn App(cx: Scope) -> impl IntoView {
