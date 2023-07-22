@@ -1,5 +1,7 @@
 # Leptos Query
 
+[![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
+
 Leptos Query is a asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
 
 Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
@@ -18,7 +20,25 @@ A Query provides:
 ## Installation
 
 ```bash
-cargo add leptos_query
+cargo add leptos_query --optional
+```
+
+Then add the relevant feature(s) to your `Cargo.toml`
+
+`...` meaning the rest of the dependencies you may have.
+
+```toml
+
+[features]
+hydrate = [
+    "leptos_query/hydrate",
+    # ...
+]
+ssr = [
+    "leptos_query/ssr",
+    # ...
+ ]
+
 ```
 
 ## Quick Start
