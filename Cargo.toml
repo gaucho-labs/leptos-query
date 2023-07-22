@@ -1,6 +1,6 @@
 [package]
 name = "leptos_query"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["Nico Burniske"]
 description = "Async query manager for Leptos"
@@ -11,7 +11,7 @@ readme = "README.md"
 repository = "https://github.com/nicoburniske/leptos_query"
 
 [dependencies]
-leptos = "0.4.3"
+leptos = "0.4.5"
 cfg-if = "1"
 js-sys = {version = "0.3.64", optional = true}
 gloo-timers = { version = "0.2.6", optional = true, features = ["futures"] }
