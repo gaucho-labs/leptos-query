@@ -36,6 +36,7 @@ where
         let updated_at = state.updated_at.into();
         let invalidated = state.invalidated.into();
 
+        cleanup_observers(cx, &state);
         sync_stale_signal(cx, state, is_stale);
 
         Self {
@@ -47,4 +48,16 @@ where
             invalidated,
         }
     }
+}
+
+fn cleanup_observers<K, V>(cx: Scope, state: &QueryState<K, V>) {
+    let observers = state.observers.clone();
+    observers.set(observers.get() + 1);
+
+    on_cleanup(cx, {
+        let observers = observers.clone();
+        move || {
+            observers.set(observers.get() - 1);
+        }
+    });
 }

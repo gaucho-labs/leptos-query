@@ -186,36 +186,18 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
 fn ReactivePost(cx: Scope) -> impl IntoView {
     let (post_id, set_post_id) = create_signal(cx, PostId("one".into()));
 
-    let last_interval = Rc::new(Cell::new(None as Option<IntervalHandle>));
-
-    on_cleanup(cx, {
-        let last_interval = last_interval.clone();
-        move || {
-            if let Some(interval) = last_interval.get() {
-                interval.clear();
+    view! { cx,
+       <Post post_id=post_id/>
+       <div style:padding="1rem">
+           <button on:click=move |_| {
+            if post_id.get().0 == "one" {
+                set_post_id(PostId("two".into()));
+            } else {
+                set_post_id(PostId("one".into()));
             }
-        }
-    });
-
-    create_effect(cx, move |interval: Option<Option<IntervalHandle>>| {
-        if let Some(interval) = interval.flatten() {
-            interval.clear();
-        }
-        let interval = set_interval_with_handle(
-            move || {
-                log!("changing post !!!");
-                if post_id.get().0 == "one" {
-                    set_post_id(PostId("two".into()));
-                } else {
-                    set_post_id(PostId("one".into()));
-                }
-            },
-            Duration::from_secs(5),
-        )
-        .ok();
-        last_interval.set(interval);
-        interval
-    });
-
-    view! { cx, <Post post_id=post_id/> }
+        }>
+               "Switch Post"
+           </button>
+       </div>
+    }
 }

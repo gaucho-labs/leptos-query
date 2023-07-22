@@ -135,10 +135,12 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Memo<QueryState<K, V>>) 
 
     // Ensure that observers are kept track of.
     create_isomorphic_effect(cx, move |observers: Option<Rc<Cell<usize>>>| {
+        // Decrement previous observers.
         if let Some(observers) = observers {
             last_observer.set(None);
             observers.set(observers.get() - 1);
         }
+        // Deal with latest observers.
         let observers = state.get().observers;
         last_observer.set(Some(observers.clone()));
         observers.set(observers.get() + 1);
