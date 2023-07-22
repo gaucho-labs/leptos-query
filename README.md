@@ -1,6 +1,7 @@
 # Leptos Query
 
 [![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
+[![docs.rs](https://docs.rs/leptos_query/badge.svg)](https://docs.rs/leptos_query)
 
 Leptos Query is a asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
 
