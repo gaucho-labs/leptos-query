@@ -45,7 +45,7 @@
 //!
 //! // Monkey fetcher.
 //! async fn get_monkey(id: MonkeyId) -> Monkey {
-//! ...
+//!     todo!()
 //! }
 //!
 //! // Query for a Monkey.
@@ -53,7 +53,7 @@
 //!     leptos_query::use_query(
 //!         cx,
 //!         id,
-//!         |id| async move { get_monkey(id).await },
+//!         get_monkey,
 //!         QueryOptions {
 //!             default_value: None,
 //!             refetch_interval: None,
@@ -71,11 +71,11 @@
 //!
 //! #[component]
 //! fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
-//!     let query = use_monkey_query(cx, id);
+//!     let query = use_monkey_query(cx, move || id.clone());
 //!     let QueryResult {
 //!         data,
 //!         is_loading,
-//!         is_refetching,
+//!         is_fetching,
 //!         is_stale
 //!         ..
 //!     } = query;
@@ -91,7 +91,7 @@
 //!            <div>
 //!                <span>"Fetching Status: "</span>
 //!                <span>
-//!                    {move || { if is_refetching.get() { "Fetching..." } else { "Idle" } }}
+//!                    {move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}
 //!                </span>
 //!            </div>
 //!            <div>
@@ -120,13 +120,17 @@
 
 mod instant;
 mod query_client;
+mod query_data;
+mod query_executor;
 mod query_options;
 mod query_result;
 mod query_state;
 mod use_query;
 mod util;
 
+pub use instant::*;
 pub use query_client::*;
+pub use query_data::*;
 pub use query_options::*;
 pub use query_result::*;
 use query_state::*;

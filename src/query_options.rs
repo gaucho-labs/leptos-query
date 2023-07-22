@@ -13,11 +13,13 @@ pub struct QueryOptions<V> {
     /// Stale time is checked when [`QueryState::read`](#impl-<K,V>-for-QueryState<K,V>) is used.
     /// Stale time can never be greater than cache_time.
     /// Default is 0 milliseconds.
+    /// NOTE: If different stale times are used for the same key, the minimum time for the currently ACTIVE query will be used.
     pub stale_time: Option<Duration>,
     /// The amount of time a query will be cached, once it's considered stale.
     /// If no cache time, the query will never be revoked from cache.
     /// cache_time can never be less than stale_time.
     /// Default is 5 minutes.
+    /// NOTE: If different cache times are used for the same key, the minimum time will be used.
     pub cache_time: Option<Duration>,
     /// If no refetch interval, the query will never refetch.
     pub refetch_interval: Option<Duration>,
@@ -65,12 +67,12 @@ pub(crate) fn ensure_valid_stale_time(
     match (stale_time, cache_time) {
         (Some(ref stale_time), Some(ref cache_time)) => {
             if stale_time > cache_time {
-                Some(cache_time.clone())
+                Some(*cache_time)
             } else {
-                Some(stale_time.clone())
+                Some(*stale_time)
             }
         }
-        (stale_time, _) => stale_time.clone(),
+        (stale_time, _) => *stale_time,
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::{QueryResult, QueryState};
+use crate::*;
 use leptos::*;
 use std::{
     any::{Any, TypeId},
@@ -7,6 +7,11 @@ use std::{
     hash::Hash,
     rc::Rc,
 };
+
+/// Retrieves a Query Client from the current scope.
+pub fn use_query_client(cx: Scope) -> QueryClient {
+    use_context::<QueryClient>(cx).expect("Query Client Missing.")
+}
 
 /// The Cache Client to store query data.
 /// Exposes utility functions to manage queries.
@@ -28,15 +33,15 @@ impl QueryClient {
     }
 
     /// Attempts to retrieve data for a query from the Query Cache.
-    pub fn get_query_data<K, V>(&self, cx: Scope, key: &K) -> Option<QueryResult<V>>
+    pub fn get_query_data<K, V>(&self, cx: Scope, key: &K) -> Option<QueryData<V>>
     where
         K: Hash + Eq + PartialEq + Clone + 'static,
         V: Clone + 'static,
     {
-        self.use_cache(|cache: &HashMap<K, QueryState<K, V>>| {
+        self.use_cache_option(|cache: &HashMap<K, QueryState<K, V>>| {
             cache
                 .get(key)
-                .map(|state| QueryResult::from_state(cx, state.clone()))
+                .map(|state| QueryData::from_state(cx, state.clone()))
         })
     }
 
@@ -47,7 +52,7 @@ impl QueryClient {
         K: Hash + Eq + PartialEq + Clone + 'static,
         V: Clone + 'static,
     {
-        self.use_cache(|cache: &HashMap<K, QueryState<K, V>>| {
+        self.use_cache_option(|cache: &HashMap<K, QueryState<K, V>>| {
             cache.get(key).map(|state| state.invalidate())
         })
         .is_some()
@@ -68,12 +73,12 @@ impl QueryClient {
                 let cache = cache.borrow();
                 let invalidated = keys
                     .into_iter()
-                    .filter_map(|key| {
-                        if let Some(state) = cache.get(&key) {
+                    .filter(|key| {
+                        if let Some(state) = cache.get(key) {
                             state.invalidate();
-                            Some(key)
+                            true
                         } else {
-                            None
+                            false
                         }
                     })
                     .collect::<Vec<_>>();
@@ -83,7 +88,7 @@ impl QueryClient {
         None
     }
 
-    fn use_cache<K, V, R, F>(&self, func: F) -> Option<R>
+    fn use_cache_option<K, V, R, F>(&self, func: F) -> Option<R>
     where
         K: Clone + 'static,
         V: Clone + 'static,
@@ -98,4 +103,29 @@ impl QueryClient {
         }
         None
     }
+}
+
+pub(crate) fn use_cache<K, V, R>(
+    cx: Scope,
+    func: impl FnOnce((Scope, &mut HashMap<K, QueryState<K, V>>)) -> R + 'static,
+) -> R
+where
+    K: 'static,
+    V: 'static,
+{
+    let client = use_query_client(cx);
+    let mut cache = client.cache.borrow_mut();
+    let entry = cache.entry(TypeId::of::<K>());
+
+    let cache = entry.or_insert_with(|| {
+        let wrapped: CacheEntry<K, V> = Rc::new(RefCell::new(HashMap::new()));
+        Box::new(wrapped) as Box<dyn Any>
+    });
+
+    let mut cache = cache
+        .downcast_ref::<CacheEntry<K, V>>()
+        .expect("Query Cache Type Mismatch.")
+        .borrow_mut();
+
+    func((client.cx, &mut cache))
 }

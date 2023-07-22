@@ -1,6 +1,6 @@
 [package]
 name = "leptos_query"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Nico Burniske"]
 description = "Async query manager for Leptos"
@@ -14,6 +14,9 @@ repository = "https://github.com/nicoburniske/leptos_query"
 leptos = "0.4.3"
 cfg-if = "1"
 js-sys = {version = "0.3.64", optional = true}
+gloo-timers = { version = "0.2.6", optional = true, features = ["futures"] }
+tokio = { version = "1.29.1", optional = true, features = ["time"]}
 
 [features]
-hydrate = ["dep:js-sys"] 
+hydrate = ["dep:js-sys", "dep:gloo-timers"] 
+ssr = ["dep:tokio"]

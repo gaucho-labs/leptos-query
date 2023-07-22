@@ -1,25 +1,16 @@
-use crate::instant::Instant;
+use crate::instant::get_instant;
+use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
-use crate::util::{time_until_stale, use_timeout};
-use crate::{CacheEntry, QueryClient, QueryOptions, QueryState};
+use crate::{use_cache, QueryClient, QueryOptions, QueryState, ResourceOption};
 use leptos::*;
-use std::any::{Any, TypeId};
-use std::cell::{Cell, RefCell};
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use std::future::Future;
 use std::hash::Hash;
-use std::rc::Rc;
 use std::time::Duration;
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client(cx: Scope) {
     provide_context(cx, QueryClient::new(cx));
-}
-
-/// Retrieves a Query Client from the current scope.
-pub fn use_query_client(cx: Scope) -> QueryClient {
-    use_context::<QueryClient>(cx).expect("Query Client Missing.")
 }
 
 /// Creates a query. Useful for data fetching, caching, and synchronization with server state.
@@ -48,15 +39,15 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
 ///
 /// // Monkey fetcher.
 /// async fn get_monkey(id: MonkeyId) -> Monkey {
-/// ...
+///     todo!()
 /// }
 ///
 /// // Query for a Monkey.
-/// fn use_monkey_query(cx: Scope, id: MonkeyId) -> QueryResult<Monkey> {
+/// fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
 ///     leptos_query::use_query(
 ///         cx,
 ///         id,
-///         |id| async move { get_monkey(id).await },
+///         get_monkey,
 ///         QueryOptions {
 ///             default_value: None,
 ///             refetch_interval: None,
@@ -71,118 +62,149 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
 ///
 pub fn use_query<K, V, Fu>(
     cx: Scope,
-    key: K,
+    key: impl Fn() -> K + 'static,
     query: impl Fn(K) -> Fu + 'static,
     options: QueryOptions<V>,
 ) -> QueryResult<V>
 where
+    K: Hash + Eq + PartialEq + Clone + 'static,
+    V: Clone
+        + Serializable
+        + 'static
+        + server_fn::serde::de::DeserializeOwned
+        + server_fn::serde::Serialize,
     Fu: Future<Output = V> + 'static,
-    K: Hash + Eq + PartialEq + Clone + 'static,
-    V: Clone + Serializable + 'static,
 {
-    let cache_time = options.cache_time.clone();
-    let state = use_cache(cx, {
-        let key = key.clone();
-        move |(root_scope, cache)| {
-            let entry = cache.entry(key.clone());
+    let key = create_memo(cx, move |_| key());
 
-            let state = match entry {
-                Entry::Occupied(entry) => {
-                    let entry = entry.into_mut();
-                    entry.set_options(cx, options);
-                    entry
-                }
-                Entry::Vacant(entry) => {
-                    let state = QueryState::new(root_scope, key.clone(), query, options);
-                    entry.insert(state.clone())
-                }
-            };
-            state.observers.set(state.observers.get() + 1);
-            state.clone()
-        }
-    });
+    // Find relevant state.
+    let state = create_memo(cx, {
+        let options = options.clone();
+        move |_| {
+            use_cache(cx, {
+                let options = options.clone();
+                let key = key.get();
+                move |(root_scope, cache)| {
+                    let entry = cache.entry(key.clone());
 
-    // Keep track of the number of observers for this query.
-    let observers = state.observers.clone();
-    on_cleanup(cx, {
-        let observers = observers.clone();
-        move || {
-            observers.set(observers.get() - 1);
-        }
-    });
-
-    // Ensure that the Query is removed from cache up after the specified cache_time.
-    let root_scope = use_query_client(cx).cx;
-    cache_cleanup::<K, V>(
-        root_scope,
-        key,
-        state.updated_at.into(),
-        cache_time,
-        observers,
-    );
-
-    QueryResult::from_state(cx, state)
-}
-
-// Will cleanup the cache corresponding to the key when the cache_time has elapsed, and the query has not been updated.
-fn cache_cleanup<K, V>(
-    cx: Scope,
-    key: K,
-    last_updated: Signal<Option<Instant>>,
-    cache_time: Option<Duration>,
-    observers: Rc<Cell<usize>>,
-) where
-    K: Hash + Eq + PartialEq + Clone + 'static,
-    V: 'static,
-{
-    use_timeout(cx, move || match (last_updated.get(), cache_time) {
-        (Some(last_updated), Some(cache_time)) => {
-            let timeout = time_until_stale(last_updated, cache_time);
-            let key = key.clone();
-            let observers = observers.clone();
-            set_timeout_with_handle(
-                move || {
-                    let removed =
-                        use_cache::<K, V, Option<QueryState<K, V>>>(cx, move |(_, cache)| {
-                            cache.remove(&key)
-                        });
-                    if let Some(query) = removed {
-                        if observers.get() == 0 {
-                            query.dispose();
-                            drop(query)
+                    let state = match entry {
+                        Entry::Occupied(entry) => {
+                            let entry = entry.into_mut();
+                            // Enable nested options.
+                            entry.set_options(cx, options);
+                            entry
+                        }
+                        Entry::Vacant(entry) => {
+                            let state = QueryState::new(root_scope, key, options);
+                            entry.insert(state.clone())
                         }
                     };
-                },
-                timeout,
-            )
-            .ok()
+                    state.clone()
+                }
+            })
         }
-        _ => None,
     });
+
+    let fetcher = move |state: QueryState<K, V>| {
+        async move {
+            if state.fetching.get_untracked() || state.value.get_untracked().is_none() {
+                // Suspend indefinitely and wait for interruption.
+                sleep(LONG_TIME).await;
+                None
+            } else {
+                state.value.get_untracked()
+            }
+        }
+    };
+
+    let resource: Resource<QueryState<K, V>, Option<V>> = {
+        match options.resource_option {
+            ResourceOption::NonBlocking => create_resource(cx, move || state.get(), fetcher),
+            ResourceOption::Blocking => create_blocking_resource(cx, move || state.get(), fetcher),
+        }
+    };
+
+    let executor = create_executor(cx, state, query);
+
+    // Ensure always latest value.
+    create_isomorphic_effect(cx, move |_| {
+        let state = state.get();
+        let value = state.value.get();
+        if value.is_some() {
+            // Interrupt suspense.
+            if resource.loading().get_untracked() {
+                resource.set(value);
+            } else {
+                resource.refetch();
+            }
+        }
+    });
+
+    // Ensure key changes are considered.
+    create_isomorphic_effect(cx, {
+        let executor = executor.clone();
+        move |prev_state: Option<QueryState<K, V>>| {
+            let state = state.get();
+            if let Some(prev_state) = prev_state {
+                if prev_state != state && state.needs_init() {
+                    executor()
+                }
+            }
+            state
+        }
+    });
+
+    let data = Signal::derive(cx, {
+        let executor = executor.clone();
+        move || {
+            let read = resource.read(cx).flatten();
+            let state = state.get_untracked();
+            let updated_at = state.updated_at;
+
+            // First Read.
+            // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
+            if read.is_none() && state.needs_init() {
+                executor()
+            // SSR edge case.
+            // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
+            } else if read.is_some() {
+                if updated_at.get_untracked().is_none() {
+                    updated_at.set(Some(get_instant()));
+                }
+                if state.value.get_untracked().is_none() {
+                    state.value.set(read.clone());
+                }
+                if state.fetching.get_untracked() {
+                    state.fetching.set(false);
+                }
+            }
+            read
+        }
+    });
+
+    // Doing this outside of QueryResult because of the need for `resource`.
+    let is_loading = Signal::derive(cx, move || {
+        let state = state.get();
+
+        // Need to consider both because of SSR resource <-> signal mismatches.
+        (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
+    });
+
+    QueryResult::new(cx, state, data, is_loading, executor)
 }
 
-fn use_cache<K, V, R>(
-    cx: Scope,
-    func: impl FnOnce((Scope, &mut HashMap<K, QueryState<K, V>>)) -> R + 'static,
-) -> R
-where
-    K: 'static,
-    V: 'static,
-{
-    let client = use_query_client(cx);
-    let mut cache = client.cache.borrow_mut();
-    let entry = cache.entry(TypeId::of::<K>());
+const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 
-    let cache = entry.or_insert_with(|| {
-        let wrapped: CacheEntry<K, V> = Rc::new(RefCell::new(HashMap::new()));
-        let boxed = Box::new(wrapped) as Box<dyn Any>;
-        boxed
-    });
-
-    let mut cache = cache
-        .downcast_ref::<CacheEntry<K, V>>()
-        .expect("Query Cache Type Mismatch.")
-        .borrow_mut();
-
-    func((client.cx, &mut cache))
+async fn sleep(duration: Duration) {
+    use cfg_if::cfg_if;
+    cfg_if! {
+        if #[cfg(all(target_arch = "wasm32", any(feature = "hydrate")))] {
+            gloo_timers::future::sleep(duration).await;
+        } else if #[cfg(feature = "ssr")] {
+            tokio::time::sleep(duration).await;
+        } else {
+            let _ = duration;
+            debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
+        }
+    }
 }

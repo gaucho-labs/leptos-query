@@ -1,5 +1,7 @@
 # Leptos Query
 
+[![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
+
 Leptos Query is a asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
 
 Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
@@ -18,7 +20,25 @@ A Query provides:
 ## Installation
 
 ```bash
-cargo add leptos_query
+cargo add leptos_query --optional
+```
+
+Then add the relevant feature(s) to your `Cargo.toml`
+
+`...` meaning the rest of the dependencies you may have.
+
+```toml
+
+[features]
+hydrate = [
+    "leptos_query/hydrate",
+    # ...
+]
+ssr = [
+    "leptos_query/ssr",
+    # ...
+ ]
+
 ```
 
 ## Quick Start
@@ -57,15 +77,15 @@ TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/gen
 
  // Monkey fetcher.
  async fn get_monkey(id: MonkeyId) -> Monkey {
- ...
+    todo!()
  }
 
  // Query for a Monkey.
- fn use_monkey_query(cx: Scope, id: MonkeyId) -> QueryResult<Monkey> {
+ fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
      leptos_query::use_query(
          cx,
          id,
-         |id| async move { get_monkey(id).await },
+         get_monkey,
          QueryOptions {
              default_value: None,
              refetch_interval: None,
@@ -86,11 +106,11 @@ Now you can use the query in any component in your app.
 
 #[component]
 fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
-    let query = use_monkey_query(cx, id);
+    let query = use_monkey_query(cx, move || id.clone());
     let QueryResult {
         data,
         is_loading,
-        is_refetching,
+        is_fetching,
         is_stale
         ..
     } = query;
@@ -106,7 +126,7 @@ fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
            <div>
                <span>"Fetching Status: "</span>
                <span>
-                   {move || { if is_refetching.get() { "Fetching..." } else { "Idle" } }}
+                   {move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}
                </span>
            </div>
            <div>
