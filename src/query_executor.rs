@@ -8,7 +8,14 @@ use crate::{
     util::{time_until_stale, use_timeout},
 };
 
-type Executor = Rc<dyn Fn()>;
+thread_local! {
+    static SUPPRESS_QUERY_LOAD: Cell<bool> = Cell::new(false);
+}
+
+#[doc(hidden)]
+pub fn suppress_query_load(suppress: bool) {
+    SUPPRESS_QUERY_LOAD.with(|w| w.set(suppress));
+}
 
 // Create Executor function which will execute task in `spawn_local` and update state.
 pub(crate) fn create_executor<K, V, Fu>(
@@ -23,19 +30,23 @@ where
     let query = Rc::new(query);
     move || {
         let query = query.clone();
-        spawn_local(async move {
-            let state = state.get_untracked();
-            if !state.fetching.get_untracked() {
-                state.fetching.set(true);
+        SUPPRESS_QUERY_LOAD.with(|supressed| {
+            if !supressed.get() {
+                spawn_local(async move {
+                    let state = state.get_untracked();
+                    if !state.fetching.get_untracked() {
+                        state.fetching.set(true);
 
-                let result = query(state.key.clone()).await;
+                        let result = query(state.key.clone()).await;
 
-                state.updated_at.set(Some(get_instant()));
-                state.fetching.set(false);
-                state.value.set(Some(result.clone()));
-                if state.invalidated.get_untracked() {
-                    state.invalidated.set(false);
-                }
+                        state.updated_at.set(Some(get_instant()));
+                        state.fetching.set(false);
+                        state.value.set(Some(result.clone()));
+                        if state.invalidated.get_untracked() {
+                            state.invalidated.set(false);
+                        }
+                    }
+                })
             }
         })
     }
@@ -45,7 +56,7 @@ where
 pub(crate) fn synchronize_state<K, V>(
     cx: Scope,
     state: Signal<QueryState<K, V>>,
-    executor: Executor,
+    executor: Rc<dyn Fn()>,
 ) where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone,
@@ -59,7 +70,7 @@ pub(crate) fn synchronize_state<K, V>(
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
     state: Signal<QueryState<K, V>>,
-    executor: Executor,
+    executor: Rc<dyn Fn()>,
 ) {
     create_isomorphic_effect(cx, move |_| {
         let state = state.get();
@@ -77,7 +88,7 @@ fn ensure_not_stale<K: Clone, V: Clone>(
     })
 }
 
-fn sync_refetch<K, V>(cx: Scope, state: Signal<QueryState<K, V>>, executor: Executor)
+fn sync_refetch<K, V>(cx: Scope, state: Signal<QueryState<K, V>>, executor: Rc<dyn Fn()>)
 where
     K: Clone + 'static,
     V: Clone + 'static,

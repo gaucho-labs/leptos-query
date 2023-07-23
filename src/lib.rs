@@ -142,6 +142,7 @@ mod util;
 pub use instant::*;
 pub use query_client::*;
 pub use query_data::*;
+pub use query_executor::*;
 pub use query_options::*;
 pub use query_result::*;
 use query_state::*;
