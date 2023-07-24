@@ -5,13 +5,13 @@
 
 ## About
 
-Leptos Query is robust asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos).
+Leptos Query is a robust asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos), providing simplified data fetching, integrated reactivity, server-side rendering support, and intelligent cache management.
 
 Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
 
 ## Why Choose Leptos Query?
 
-Leptos Query was built to simplify your data fetching process and keep your application's state effortlessly synchronized and up-to-date. Here's how it's done:
+Leptos Query focuses on simplifying your data fetching process and keeping your application's state effortlessly synchronized and up-to-date. Here's how it's done:
 
 ### Key Features
 
