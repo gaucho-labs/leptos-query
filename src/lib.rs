@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 #![forbid(unsafe_code)]
 
 //! # About Query
@@ -130,6 +129,7 @@
 //!
 
 mod instant;
+mod query;
 mod query_client;
 mod query_data;
 mod query_executor;
@@ -140,10 +140,11 @@ mod use_query;
 mod util;
 
 pub use instant::*;
+use query::*;
 pub use query_client::*;
 pub use query_data::*;
 pub use query_executor::*;
 pub use query_options::*;
 pub use query_result::*;
-use query_state::*;
+pub use query_state::*;
 pub use use_query::*;

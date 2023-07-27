@@ -2,7 +2,7 @@ use crate::error_template::{AppError, ErrorTemplate};
 use leptos::*;
 use leptos_meta::*;
 use leptos_query::*;
-use leptos_router::*;
+use leptos_router::{Outlet, Route, Router, Routes};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -58,6 +58,12 @@ pub fn App(cx: Scope) -> impl IntoView {
                                 view! { cx, <ReactivePost/> }
                             }
                         />
+                        <Route
+                            path="unique"
+                            view=|cx| {
+                                view! { cx, <UniqueKey/> }
+                            }
+                        />
                     </Route>
                 </Routes>
             </main>
@@ -91,6 +97,9 @@ fn HomePage(cx: Scope) -> impl IntoView {
                 <li>
                     <a href="/reactive">"Reactive"</a>
                 </li>
+                <li>
+                    <a href="/unique">"Non-Dynamic Key"</a>
+                </li>
             </ul>
             <br/>
             <div
@@ -116,7 +125,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
 pub struct PostId(u32);
 
 fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<String> {
-    leptos_query::use_query(
+    use_query(
         cx,
         key,
         get_post_unwrapped,
@@ -165,14 +174,13 @@ fn MultiPost(cx: Scope) -> impl IntoView {
 fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView {
     let query = use_post_query(cx, post_id.clone());
 
-    let QueryResult {
-        data,
-        is_loading,
-        is_fetching,
-        is_stale,
-        invalidated,
-        ..
-    } = query;
+    create_effect(cx, move |_| match query.state.get() {
+        QueryState::Invalid { .. } => log!("Invalid..."),
+        QueryState::Loaded { .. } => log!("Loaded..."),
+        QueryState::Stale { .. } => log!("Stale..."),
+        QueryState::Fetching { .. } => log!("Fetching..."),
+        QueryState::Loading => log!("Loading..."),
+    });
 
     view! { cx,
         <div class="container">
@@ -180,19 +188,19 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             <h2>"Post Key: " {move || post_id.get().0}</h2>
             <div>
                 <span>"Loading Status: "</span>
-                <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
+                <span>{move || { if query.is_loading().get() { "Loading..." } else { "Loaded" } }}</span>
             </div>
             <div>
                 <span>"Fetching Status: "</span>
-                <span>{move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}</span>
+                <span>{move || { if query.is_fetching().get() { "Fetching..." } else { "Idle" } }}</span>
             </div>
             <div>
                 <span>"Stale Status: "</span>
-                <span>{move || { if is_stale.get() { "Stale" } else { "Fresh" } }}</span>
+                <span>{move || { if query.is_stale().get() { "Stale" } else { "Fresh" } }}</span>
             </div>
             <div>
                 <span>"Invalidated: "</span>
-                <span>{move || { if invalidated.get() { "Invalid" } else { "Valid" } }}</span>
+                <span>{move || { if query.invalidated().get() { "Invalid" } else { "Valid" } }}</span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -200,7 +208,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     {move || {
-                        data.get()
+                        query.data.get()
                             .map(|post| {
                                 view! { cx, <h2>{post}</h2> }
                             })
@@ -235,6 +243,46 @@ fn ReactivePost(cx: Scope) -> impl IntoView {
             >
                 "Switch Post"
             </button>
+        </div>
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Unique();
+
+#[server(GetUnique, "/api")]
+pub async fn get_unique() -> Result<String, ServerFnError> {
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    Ok("Super duper unique value".into())
+}
+
+#[component]
+fn UniqueKey(cx: Scope) -> impl IntoView {
+    let query = use_query(
+        cx,
+        || Unique(),
+        |_| async { get_unique().await.expect("Failed to retrieve unique") },
+        QueryOptions::empty(),
+    );
+
+    view! { cx,
+        <div class="container">
+            <a href="/">"Home"</a>
+            <div class="post-body">
+                <p>"Unique Key"</p>
+                <Transition fallback=move || {
+                    view! { cx, <h2>"Loading..."</h2> }
+                }>
+                    {move || {
+                        query
+                            .data
+                            .get()
+                            .map(|response| {
+                                view! { cx, <h2>{response}</h2> }
+                            })
+                    }}
+                </Transition>
+            </div>
         </div>
     }
 }

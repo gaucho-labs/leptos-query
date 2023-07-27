@@ -1,7 +1,7 @@
 use crate::instant::get_instant;
 use crate::query_executor::{create_executor, synchronize_state};
 use crate::query_result::QueryResult;
-use crate::{get_state, QueryOptions, QueryState, ResourceOption};
+use crate::{get_state, Query, QueryData, QueryOptions, QueryState, ResourceOption};
 use leptos::*;
 use std::future::Future;
 use std::hash::Hash;
@@ -93,19 +93,25 @@ where
 
     let state = Signal::derive(cx, move || state.get().0);
 
-    let fetcher = move |state: QueryState<K, V>| {
+    let fetcher = move |state: Query<K, V>| {
         async move {
-            if state.fetching.get_untracked() || state.value.get_untracked().is_none() {
+            match state.data.get_untracked() {
+                // Immediately provide cached value.
+                QueryState::Loaded(data)
+                | QueryState::Stale(data)
+                | QueryState::Invalid(data)
+                | QueryState::Fetching(data) => ResourceData(Some(data.data)),
+
                 // Suspend indefinitely and wait for interruption.
-                sleep(LONG_TIME).await;
-                ResourceData(None)
-            } else {
-                ResourceData(state.value.get_untracked())
+                QueryState::Loading => {
+                    sleep(LONG_TIME).await;
+                    ResourceData(None)
+                }
             }
         }
     };
 
-    let resource: Resource<QueryState<K, V>, ResourceData<V>> = {
+    let resource: Resource<Query<K, V>, ResourceData<V>> = {
         let default = options.default_value;
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource_with_initial_value(
@@ -124,15 +130,18 @@ where
 
     // Ensure always latest value.
     create_isomorphic_effect(cx, move |_| {
-        let state = state.get();
-        let value = state.value.get();
-        if value.is_some() {
-            // Interrupt suspense.
-            if resource.loading().get_untracked() {
-                resource.set(ResourceData(value));
-            } else {
-                resource.refetch();
+        let state = state.get().data.get();
+        match state {
+            // TODO: Why do I need fetching here?
+            QueryState::Loaded(data) | QueryState::Fetching(data) => {
+                // Interrupt suspense.
+                if resource.loading().get_untracked() {
+                    resource.set(ResourceData(Some(data.data)));
+                } else {
+                    resource.refetch();
+                }
             }
+            _ => (),
         }
     });
 
@@ -143,10 +152,10 @@ where
     // Ensure key changes are considered.
     create_isomorphic_effect(cx, {
         let executor = executor.clone();
-        move |prev_state: Option<QueryState<K, V>>| {
+        move |prev_state: Option<Query<K, V>>| {
             let state = state.get();
             if let Some(prev_state) = prev_state {
-                if prev_state != state && state.needs_init() {
+                if prev_state != state && state.data.get_untracked().is_loading() {
                     executor()
                 }
             }
@@ -159,38 +168,28 @@ where
         move || {
             let read = resource.read(cx).map(|r| r.0).flatten();
             let state = state.get_untracked();
-            let updated_at = state.updated_at;
 
             // First Read.
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
-            if read.is_none() && state.needs_init() {
+            if read.is_none() && state.data.get_untracked().is_loading() {
                 executor()
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
-            } else if read.is_some() {
-                if updated_at.get_untracked().is_none() {
-                    updated_at.set(Some(get_instant()));
-                }
-                if state.value.get_untracked().is_none() {
-                    state.value.set(read.clone());
-                }
-                if state.fetching.get_untracked() {
-                    state.fetching.set(false);
+            } else if let Some(ref data) = read {
+                if let QueryState::Loading = state.data.get_untracked() {
+                    let updated_at = get_instant();
+                    let data = QueryData {
+                        data: data.clone(),
+                        updated_at,
+                    };
+                    state.data.set(QueryState::Loaded(data))
                 }
             }
             read
         }
     });
 
-    // Doing this outside of QueryResult because of the need for `resource`.
-    let is_loading = Signal::derive(cx, move || {
-        let state = state.get();
-
-        // Need to consider both because of SSR resource <-> signal mismatches.
-        (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
-    });
-
-    QueryResult::from_resource(cx, state, data, is_loading, executor)
+    QueryResult::from_resource(cx, state, data, executor)
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
