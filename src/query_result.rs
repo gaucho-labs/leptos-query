@@ -23,6 +23,8 @@ where
     pub refetch: SignalSetter<()>,
 }
 
+impl<V> Copy for QueryResult<V> where V: Clone + 'static {}
+
 impl<V> QueryResult<V> {
     /// Refetch the query.
     pub fn refetch(&self) {
@@ -107,5 +109,3 @@ where
         })
     }
 }
-
-impl<V> Copy for QueryResult<V> where V: Clone + 'static {}
