@@ -71,14 +71,14 @@ where
                 (Some(updated_at), Some(stale_time)) => {
                     let timeout = time_until_stale(updated_at, stale_time);
                     if timeout.is_zero() {
-                        set_stale(true);
+                        set_stale.set(true);
                         None
                     } else {
-                        set_stale(false);
+                        set_stale.set(false);
                         set_timeout_with_handle(
                             {
                                 move || {
-                                    set_stale(true);
+                                    set_stale.set(true);
                                 }
                             },
                             timeout,
