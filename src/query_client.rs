@@ -43,41 +43,46 @@ impl QueryClient {
 
     /// Prefetch a query and store it in cache. Returns QueryResult.
     /// If you don't need the result opt for [`QueryClient::prefetch_query()`](::prefetch_query)
-    // pub fn fetch_query<K, V, Fu>(
-    //     &self,
-    //     cx: Scope,
-    //     key: impl Fn() -> K + 'static,
-    //     query: impl Fn(K) -> Fu + 'static,
-    //     isomorphic: bool,
-    // ) -> QueryResult<V>
-    // where
-    //     K: Hash + Eq + PartialEq + Clone + 'static,
-    //     V: Clone + 'static,
-    //     Fu: Future<Output = V> + 'static,
-    // {
-    //     let state = get_state(cx, key);
+    pub fn fetch_query<K, V, Fu>(
+        &self,
+        cx: Scope,
+        key: impl Fn() -> K + 'static,
+        query: impl Fn(K) -> Fu + 'static,
+        isomorphic: bool,
+    ) -> QueryResult<V>
+    where
+        K: Hash + Eq + PartialEq + Clone + 'static,
+        V: Clone + 'static,
+        Fu: Future<Output = V> + 'static,
+    {
+        let state = get_state(cx, key);
 
-    //     let state = Signal::derive(cx, move || state.get().0);
+        let state = Signal::derive(cx, move || state.get().0);
 
-    //     let executor = Rc::new(create_executor(state, query));
+        let executor = Rc::new(create_executor(state, query));
 
-    //     let sync = {
-    //         let executor = executor.clone();
-    //         move |_| {
-    //             let _ = state.get();
-    //             executor()
-    //         }
-    //     };
-    //     if isomorphic {
-    //         create_isomorphic_effect(cx, sync);
-    //     } else {
-    //         create_effect(cx, sync);
-    //     }
+        let sync = {
+            let executor = executor.clone();
+            move |_| {
+                let _ = state.get();
+                executor()
+            }
+        };
+        if isomorphic {
+            create_isomorphic_effect(cx, sync);
+        } else {
+            create_effect(cx, sync);
+        }
 
-    //     synchronize_state(cx, state, executor.clone());
+        synchronize_state(cx, state, executor.clone());
 
-    //     QueryResult::from_state(cx, state, executor)
-    // }
+        QueryResult::new(
+            cx,
+            state,
+            Signal::derive(self.cx, move || state.get().data.get().data().cloned()),
+            executor,
+        )
+    }
 
     /// Prefetch a query and store it in cache.
     /// If you need the result opt for [`QueryClient::fetch_query()`](Self::fetch_query)
@@ -110,33 +115,6 @@ impl QueryClient {
             create_effect(cx, sync);
         }
     }
-
-    /// Attempts to retrieve existing data for a query from the Query Cache.
-    /// Does not affect cache time.
-    // pub fn get_query_data<K, V>(
-    //     &self,
-    //     cx: Scope,
-    //     key: impl Fn() -> K + 'static,
-    // ) -> Signal<Option<QueryData<V>>>
-    // where
-    //     K: Hash + Eq + PartialEq + Clone + 'static,
-    //     V: Clone + 'static,
-    // {
-    //     let key = create_memo(cx, move |_| key());
-
-    //     let client = self.clone();
-
-    //     // TODO: Update on entries inserted.
-
-    //     Signal::derive(cx, move || {
-    //         let key = key.get();
-    //         client.use_cache_option(move |cache| {
-    //             cache
-    //                 .get(&key)
-    //                 .map(|e: &Query<K, V>| QueryData::from_state(cx, e))
-    //         })
-    //     })
-    // }
 
     /// Attempts to invalidate an entry in the Query Cache.
     /// Returns true if the entry was successfully invalidated.

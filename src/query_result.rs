@@ -1,6 +1,10 @@
 use std::{rc::Rc, time::Duration};
 
-use crate::{query::Query, util::time_until_stale, QueryState};
+use crate::{
+    query::Query,
+    util::{time_until_stale, use_timeout},
+    QueryState,
+};
 use leptos::*;
 
 /// Reactive query result.
@@ -19,8 +23,6 @@ where
     pub refetch: SignalSetter<()>,
 }
 
-// TODO: Should this be signal or memo?
-
 impl<V> QueryResult<V> {
     /// Refetch the query.
     pub fn refetch(&self) {
@@ -32,7 +34,7 @@ impl<V> QueryResult<V>
 where
     V: Clone,
 {
-    pub(crate) fn from_resource<K: Clone>(
+    pub(crate) fn new<K: Clone>(
         cx: Scope,
         state: Signal<Query<K, V>>,
         data: Signal<Option<V>>,
@@ -60,16 +62,33 @@ where
     pub fn is_stale(&self) -> Signal<bool> {
         let state = self.state;
         let stale_time = self.stale_time;
-        Signal::derive(self.cx, move || {
-            if let (Some(updated_at), Some(stale_time)) =
-                (state.get().updated_at(), stale_time.get())
-            {
-                if time_until_stale(updated_at, stale_time).is_zero() {
-                    return true;
+        let (stale, set_stale) = create_signal(self.cx, false);
+
+        let _ = use_timeout(self.cx, {
+            move || match (state.get().updated_at(), stale_time.get()) {
+                (Some(updated_at), Some(stale_time)) => {
+                    let timeout = time_until_stale(updated_at, stale_time);
+                    if timeout.is_zero() {
+                        set_stale(true);
+                        None
+                    } else {
+                        set_stale(false);
+                        set_timeout_with_handle(
+                            {
+                                move || {
+                                    set_stale(true);
+                                }
+                            },
+                            timeout,
+                        )
+                        .ok()
+                    }
                 }
+                _ => None,
             }
-            false
-        })
+        });
+
+        stale.into()
     }
 
     pub fn is_fetching(&self) -> Signal<bool> {
@@ -87,33 +106,6 @@ where
             _ => false,
         })
     }
-
-    // pub(crate) fn from_state<K: Clone>(
-    //     cx: Scope,
-    //     state: Signal<QueryState<K, V>>,
-    //     executor: Rc<dyn Fn()>,
-    // ) -> QueryResult<V> {
-    //     let data = Signal::derive(cx, move || state.get().data.get());
-    //     let is_stale = make_stale_signal(cx, state);
-    //     let is_fetching = Signal::derive(cx, move || state.get().fetching.get());
-    //     let is_loading = Signal::derive(cx, move || {
-    //         let state = state.get();
-    //         state.data.get().is_none() && state.fetching.get()
-    //     });
-    //     let updated_at = Signal::derive(cx, move || state.get().updated_at.get());
-    //     let invalidated = Signal::derive(cx, move || state.get().invalidated.get());
-    //     let refetch = move |_: ()| executor();
-
-    //     QueryResult {
-    //         data,
-    //         is_loading,
-    //         is_stale,
-    //         is_fetching,
-    //         updated_at,
-    //         invalidated,
-    //         refetch: refetch.mapped_signal_setter(cx),
-    //     }
-    // }
 }
 
 impl<V> Copy for QueryResult<V> where V: Clone + 'static {}

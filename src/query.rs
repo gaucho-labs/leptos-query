@@ -37,7 +37,7 @@ where
         let cache_time = create_rw_signal(cx, None);
         let refetch_interval = create_rw_signal(cx, None);
 
-        let data = create_rw_signal(cx, QueryState::Loading);
+        let data = create_rw_signal(cx, QueryState::Created);
 
         Query {
             key,
@@ -55,21 +55,10 @@ where
     K: Clone + 'static,
     V: Clone + 'static,
 {
-    /// Marks the resource as stale, which will cause it to be refetched on next read.
-    pub(crate) fn mark_stale(&self) {
-        match self.data.get_untracked() {
-            QueryState::Loaded(data) => self.data.set(QueryState::Stale(data)),
-            // Invalid takes precedence.
-            _ => (),
-        }
-    }
-
     /// Marks the resource as invalid, which will cause it to be refetched on next read.
     pub(crate) fn mark_invalid(&self) {
         match self.data.get_untracked() {
-            QueryState::Loaded(data) | QueryState::Stale(data) => {
-                self.data.set(QueryState::Invalid(data))
-            }
+            QueryState::Loaded(data) => self.data.set(QueryState::Invalid(data)),
             _ => (),
         }
     }

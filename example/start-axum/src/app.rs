@@ -175,11 +175,11 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
     let query = use_post_query(cx, post_id.clone());
 
     create_effect(cx, move |_| match query.state.get() {
-        QueryState::Invalid { .. } => log!("Invalid..."),
-        QueryState::Loaded { .. } => log!("Loaded..."),
-        QueryState::Stale { .. } => log!("Stale..."),
-        QueryState::Fetching { .. } => log!("Fetching..."),
+        QueryState::Created => log!("Created..."),
         QueryState::Loading => log!("Loading..."),
+        QueryState::Loaded { .. } => log!("Loaded..."),
+        QueryState::Fetching { .. } => log!("Fetching..."),
+        QueryState::Invalid { .. } => log!("Invalid..."),
     });
 
     view! { cx,
@@ -188,11 +188,15 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             <h2>"Post Key: " {move || post_id.get().0}</h2>
             <div>
                 <span>"Loading Status: "</span>
-                <span>{move || { if query.is_loading().get() { "Loading..." } else { "Loaded" } }}</span>
+                <span>
+                    {move || { if query.is_loading().get() { "Loading..." } else { "Loaded" } }}
+                </span>
             </div>
             <div>
                 <span>"Fetching Status: "</span>
-                <span>{move || { if query.is_fetching().get() { "Fetching..." } else { "Idle" } }}</span>
+                <span>
+                    {move || { if query.is_fetching().get() { "Fetching..." } else { "Idle" } }}
+                </span>
             </div>
             <div>
                 <span>"Stale Status: "</span>
@@ -200,7 +204,9 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             </div>
             <div>
                 <span>"Invalidated: "</span>
-                <span>{move || { if query.invalidated().get() { "Invalid" } else { "Valid" } }}</span>
+                <span>
+                    {move || { if query.invalidated().get() { "Invalid" } else { "Valid" } }}
+                </span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -208,7 +214,9 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     {move || {
-                        query.data.get()
+                        query
+                            .data
+                            .get()
                             .map(|post| {
                                 view! { cx, <h2>{post}</h2> }
                             })
