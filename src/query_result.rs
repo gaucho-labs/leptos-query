@@ -2,7 +2,7 @@ use std::{rc::Rc, time::Duration};
 
 use crate::{
     query::Query,
-    util::{time_until_stale, use_timeout},
+    util::{maybe_time_until_stale, use_timeout},
     QueryState,
 };
 use leptos::*;
@@ -38,7 +38,7 @@ where
 {
     pub(crate) fn new<K: Clone>(
         cx: Scope,
-        state: Signal<Query<K, V>>,
+        query: Signal<Query<K, V>>,
         data: Signal<Option<V>>,
         executor: Rc<dyn Fn()>,
     ) -> QueryResult<V> {
@@ -46,19 +46,16 @@ where
 
         QueryResult {
             cx,
-            stale_time: Signal::derive(cx, move || state.get().stale_time.get()),
+            stale_time: Signal::derive(cx, move || query.get().stale_time.get()),
             data,
-            state: Signal::derive(cx, move || state.get().data.get()),
+            state: Signal::derive(cx, move || query.get().state.get()),
             refetch,
         }
     }
 
     pub fn is_loading(&self) -> Signal<bool> {
         let state = self.state;
-        Signal::derive(self.cx, move || match state.get() {
-            QueryState::Loading => true,
-            _ => false,
-        })
+        Signal::derive(self.cx, move || matches!(state.get(), QueryState::Loading))
     }
 
     pub fn is_stale(&self) -> Signal<bool> {
@@ -67,26 +64,26 @@ where
         let (stale, set_stale) = create_signal(self.cx, false);
 
         let _ = use_timeout(self.cx, {
-            move || match (state.get().updated_at(), stale_time.get()) {
-                (Some(updated_at), Some(stale_time)) => {
-                    let timeout = time_until_stale(updated_at, stale_time);
+            move || {
+                if let Some(timeout) =
+                    maybe_time_until_stale(state.get().updated_at(), stale_time.get())
+                {
                     if timeout.is_zero() {
                         set_stale.set(true);
                         None
                     } else {
                         set_stale.set(false);
                         set_timeout_with_handle(
-                            {
-                                move || {
-                                    set_stale.set(true);
-                                }
+                            move || {
+                                set_stale.set(true);
                             },
                             timeout,
                         )
                         .ok()
                     }
+                } else {
+                    None
                 }
-                _ => None,
             }
         });
 
@@ -95,17 +92,15 @@ where
 
     pub fn is_fetching(&self) -> Signal<bool> {
         let state = self.state;
-        Signal::derive(self.cx, move || match state.get() {
-            QueryState::Loading | QueryState::Fetching(_) => true,
-            _ => false,
+        Signal::derive(self.cx, move || {
+            matches!(state.get(), QueryState::Loading | QueryState::Fetching(_))
         })
     }
 
     pub fn invalidated(&self) -> Signal<bool> {
         let state = self.state;
-        Signal::derive(self.cx, move || match state.get() {
-            QueryState::Invalid(_) => true,
-            _ => false,
+        Signal::derive(self.cx, move || {
+            matches!(state.get(), QueryState::Invalid(_))
         })
     }
 }

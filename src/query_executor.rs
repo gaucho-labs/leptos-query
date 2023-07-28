@@ -5,15 +5,14 @@ use std::{
     future::Future,
     hash::Hash,
     rc::Rc,
-    time::Duration,
 };
 
 use crate::{
     instant::get_instant,
     query::Query,
     use_cache, use_query_client,
-    util::{time_until_stale, use_timeout},
-    Instant, QueryData, QueryState,
+    util::{maybe_time_until_stale, time_until_stale, use_timeout},
+    QueryData, QueryState,
 };
 
 thread_local! {
@@ -27,39 +26,39 @@ pub fn suppress_query_load(suppress: bool) {
 
 // Create Executor function which will execute task in `spawn_local` and update state.
 pub(crate) fn create_executor<K, V, Fu>(
-    state: Signal<Query<K, V>>,
-    query: impl Fn(K) -> Fu + 'static,
+    query: Signal<Query<K, V>>,
+    fetcher: impl Fn(K) -> Fu + 'static,
 ) -> impl Fn()
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
     Fu: Future<Output = V> + 'static,
 {
-    let query = Rc::new(query);
+    let fetcher = Rc::new(fetcher);
     move || {
-        let query = query.clone();
+        let fetcher = fetcher.clone();
         SUPPRESS_QUERY_LOAD.with(|supressed| {
             if !supressed.get() {
                 spawn_local(async move {
-                    let state = state.get_untracked();
-                    let data_state = state.data.get_untracked();
+                    let query = query.get_untracked();
+                    let data_state = query.state.get_untracked();
                     match data_state {
                         QueryState::Fetching(_) | QueryState::Loading => (),
                         // First load.
                         QueryState::Created => {
-                            state.data.set(QueryState::Loading);
-                            let data = query(state.key.clone()).await;
+                            query.state.set(QueryState::Loading);
+                            let data = fetcher(query.key.clone()).await;
                             let updated_at = get_instant();
                             let data = QueryData { data, updated_at };
-                            state.data.set(QueryState::Loaded(data));
+                            query.state.set(QueryState::Loaded(data));
                         }
                         // Subsequent loads.
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                            state.data.set(QueryState::Fetching(data));
-                            let data = query(state.key.clone()).await;
+                            query.state.set(QueryState::Fetching(data));
+                            let data = fetcher(query.key.clone()).await;
                             let updated_at = get_instant();
                             let data = QueryData { data, updated_at };
-                            state.data.set(QueryState::Loaded(data));
+                            query.state.set(QueryState::Loaded(data));
                         }
                     }
                 })
@@ -92,7 +91,7 @@ fn ensure_not_stale<K: Clone, V: Clone>(
         let stale_time = query.stale_time;
 
         if let (Some(updated_at), Some(stale_time)) = (
-            query.data.get_untracked().updated_at(),
+            query.state.get_untracked().updated_at(),
             stale_time.get_untracked(),
         ) {
             if time_until_stale(updated_at, stale_time).is_zero() {
@@ -111,9 +110,8 @@ fn ensure_not_invalid<K: Clone, V: Clone>(
     create_isomorphic_effect(cx, move |_| {
         let state = state.get();
         // Refetch query if Invalid.
-        match state.data.get() {
-            QueryState::Invalid(_) => executor(),
-            _ => (),
+        if let QueryState::Invalid(_) = state.state.get() {
+            executor()
         }
     });
 }
@@ -127,7 +125,7 @@ where
     let _ = use_timeout(cx, {
         move || {
             let query = query.get();
-            let updated_at = query.data.get().updated_at();
+            let updated_at = query.state.get().updated_at();
             let refetch_interval = query.refetch_interval.get();
             match (updated_at, refetch_interval) {
                 (Some(updated_at), Some(refetch_interval)) => {
@@ -207,7 +205,7 @@ where
     create_effect(cx, move |_| {
         // These signals can't go inside use_timeout because they will be disposed of before the timeout executes.
         let query = query.get();
-        let updated_at = query.data.get().updated_at();
+        let updated_at = query.state.get().updated_at();
         let cache_time = query.cache_time.get();
 
         // Remove key from cleanup map.
@@ -273,14 +271,4 @@ where
 
         timeout_map.insert(query.key.clone(), Box::new(clear_timeout));
     });
-}
-
-fn maybe_time_until_stale(
-    updated_at: Option<Instant>,
-    stale_time: Option<Duration>,
-) -> Option<Duration> {
-    match (updated_at, stale_time) {
-        (Some(last_updated), Some(stale_time)) => Some(time_until_stale(last_updated, stale_time)),
-        _ => None,
-    }
 }

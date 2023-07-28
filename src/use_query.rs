@@ -67,7 +67,7 @@ use std::time::Duration;
 pub fn use_query<K, V, Fu>(
     cx: Scope,
     key: impl Fn() -> K + 'static,
-    query: impl Fn(K) -> Fu + 'static,
+    fetcher: impl Fn(K) -> Fu + 'static,
     options: QueryOptions<V>,
 ) -> QueryResult<V>
 where
@@ -93,9 +93,9 @@ where
 
     let state = Signal::derive(cx, move || state.get().0);
 
-    let fetcher = move |state: Query<K, V>| {
+    let resource_fetcher = move |state: Query<K, V>| {
         async move {
-            match state.data.get_untracked() {
+            match state.state.get_untracked() {
                 // Immediately provide cached value.
                 QueryState::Loaded(data)
                 | QueryState::Invalid(data)
@@ -116,34 +116,33 @@ where
             ResourceOption::NonBlocking => create_resource_with_initial_value(
                 cx,
                 move || state.get(),
-                fetcher,
+                resource_fetcher,
                 if default.is_some() {
                     Some(ResourceData(default))
                 } else {
                     None
                 },
             ),
-            ResourceOption::Blocking => create_blocking_resource(cx, move || state.get(), fetcher),
+            ResourceOption::Blocking => {
+                create_blocking_resource(cx, move || state.get(), resource_fetcher)
+            }
         }
     };
 
     // Ensure always latest value.
     create_isomorphic_effect(cx, move |_| {
-        let state = state.get().data.get();
-        match state {
-            QueryState::Loaded(data) => {
-                // Interrupt suspense.
-                if resource.loading().get_untracked() {
-                    resource.set(ResourceData(Some(data.data)));
-                } else {
-                    resource.refetch();
-                }
+        let state = state.get().state.get();
+        if let QueryState::Loaded(data) = state {
+            // Interrupt Suspense.
+            if resource.loading().get_untracked() {
+                resource.set(ResourceData(Some(data.data)));
+            } else {
+                resource.refetch();
             }
-            _ => (),
         }
     });
 
-    let executor = Rc::new(create_executor(state, query));
+    let executor = Rc::new(create_executor(state, fetcher));
 
     synchronize_state(cx, state, executor.clone());
 
@@ -154,7 +153,7 @@ where
             let state = state.get();
             if let Some(prev_state) = prev_state {
                 if prev_state != state {
-                    if let QueryState::Created = state.data.get_untracked() {
+                    if let QueryState::Created = state.state.get_untracked() {
                         executor()
                     }
                 }
@@ -166,23 +165,23 @@ where
     let data = Signal::derive(cx, {
         let executor = executor.clone();
         move || {
-            let read = resource.read(cx).map(|r| r.0).flatten();
+            let read = resource.read(cx).and_then(|r| r.0);
             let state = state.get_untracked();
 
             // First Read.
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
-            if read.is_none() && state.data.get_untracked().data().is_none() {
+            if read.is_none() && state.state.get_untracked().data().is_none() {
                 executor()
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
             } else if let Some(ref data) = read {
-                if let QueryState::Created = state.data.get_untracked() {
+                if let QueryState::Created = state.state.get_untracked() {
                     let updated_at = get_instant();
                     let data = QueryData {
                         data: data.clone(),
                         updated_at,
                     };
-                    state.data.set(QueryState::Loaded(data))
+                    state.state.set(QueryState::Loaded(data))
                 }
             }
             read

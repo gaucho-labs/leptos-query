@@ -12,7 +12,7 @@ where
     pub(crate) key: K,
     // State.
     pub(crate) observers: Rc<Cell<usize>>,
-    pub(crate) data: RwSignal<QueryState<V>>,
+    pub(crate) state: RwSignal<QueryState<V>>,
     // Config.
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) cache_time: RwSignal<Option<Duration>>,
@@ -37,12 +37,12 @@ where
         let cache_time = create_rw_signal(cx, None);
         let refetch_interval = create_rw_signal(cx, None);
 
-        let data = create_rw_signal(cx, QueryState::Created);
+        let state = create_rw_signal(cx, QueryState::Created);
 
         Query {
             key,
             observers: Rc::new(Cell::new(0)),
-            data,
+            state,
             stale_time,
             cache_time,
             refetch_interval,
@@ -57,9 +57,8 @@ where
 {
     /// Marks the resource as invalid, which will cause it to be refetched on next read.
     pub(crate) fn mark_invalid(&self) {
-        match self.data.get_untracked() {
-            QueryState::Loaded(data) => self.data.set(QueryState::Invalid(data)),
-            _ => (),
+        if let QueryState::Loaded(data) = self.state.get_untracked() {
+            self.state.set(QueryState::Invalid(data))
         }
     }
 
@@ -123,7 +122,7 @@ where
 
 impl<K, V> Query<K, V> {
     pub(crate) fn dispose(&self) {
-        self.data.dispose();
+        self.state.dispose();
         self.stale_time.dispose();
         self.refetch_interval.dispose();
         self.cache_time.dispose();

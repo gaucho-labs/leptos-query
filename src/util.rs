@@ -44,3 +44,13 @@ pub(crate) fn time_until_stale(updated_at: Instant, stale_time: Duration) -> Dur
     let ensure_non_negative = result.max(0);
     Duration::from_millis(ensure_non_negative as u64)
 }
+
+pub(crate) fn maybe_time_until_stale(
+    updated_at: Option<Instant>,
+    stale_time: Option<Duration>,
+) -> Option<Duration> {
+    match (updated_at, stale_time) {
+        (Some(last_updated), Some(stale_time)) => Some(time_until_stale(last_updated, stale_time)),
+        _ => None,
+    }
+}
