@@ -16,8 +16,7 @@ pub enum QueryState<V> {
     /// Query is fetching for the first time.
     ///
     /// In this state, the query has started its first data fetching process. It is actively communicating
-    /// with the data source and waiting for the data to be returned. This state is typically associated with
-    /// showing loading indicators in a user interface.
+    /// with the data source and waiting for the data to be returned.
     Loading,
 
     /// A Query is in the process of fetching, not being its first fetch.
@@ -60,8 +59,11 @@ impl<V> QueryState<V> {
     }
 }
 
+/// The latest data for a Query.
 #[derive(Clone, PartialEq, Eq)]
 pub struct QueryData<V> {
+    /// The Data.
     pub data: V,
+    /// The instant this data was retrieved.
     pub updated_at: Instant,
 }

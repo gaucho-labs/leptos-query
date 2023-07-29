@@ -31,7 +31,7 @@ pub struct QueryOptions<V> {
 #[derive(Clone, Copy)]
 pub enum ResourceOption {
     /// Query will use [`create_resource()`](leptos::create_resource)
-    NonBlocking,
+    Serializable,
     /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
     Blocking,
 }
@@ -44,7 +44,7 @@ impl<V> QueryOptions<V> {
             stale_time: None,
             cache_time: None,
             refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: ResourceOption::Serializable,
         }
     }
     /// QueryOption with custom stale_time.
@@ -54,7 +54,7 @@ impl<V> QueryOptions<V> {
             stale_time: Some(stale_time),
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: ResourceOption::Serializable,
         }
     }
 
@@ -65,7 +65,7 @@ impl<V> QueryOptions<V> {
             stale_time: Some(DEFAULT_STALE_TIME),
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: Some(refetch_interval),
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: ResourceOption::Serializable,
         }
     }
 }
@@ -96,7 +96,7 @@ impl<V> Default for QueryOptions<V> {
             stale_time: Some(DEFAULT_STALE_TIME),
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: ResourceOption::Serializable,
         }
     }
 }

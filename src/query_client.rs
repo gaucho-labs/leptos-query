@@ -49,17 +49,17 @@ impl QueryClient {
         key: impl Fn() -> K + 'static,
         fetcher: impl Fn(K) -> Fu + 'static,
         isomorphic: bool,
-    ) -> QueryResult<V>
+    ) -> QueryResult<V, impl RefetchFn>
     where
         K: Hash + Eq + PartialEq + Clone + 'static,
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = get_state(cx, key);
+        let state = get_query(cx, key);
 
         let state = Signal::derive(cx, move || state.get().0);
 
-        let executor = Rc::new(create_executor(state, fetcher));
+        let executor = create_executor(state, fetcher);
 
         let sync = {
             let executor = executor.clone();
@@ -76,7 +76,7 @@ impl QueryClient {
 
         synchronize_state(cx, state, executor.clone());
 
-        QueryResult::new(
+        create_query_result(
             cx,
             state,
             Signal::derive(self.cx, move || state.get().state.get().data().cloned()),
@@ -97,7 +97,7 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = get_state(cx, key);
+        let state = get_query(cx, key);
 
         let state = Signal::derive(cx, move || state.get().0);
 
@@ -202,7 +202,7 @@ where
 }
 
 // bool is if the state was created!
-pub(crate) fn get_state<K, V>(
+pub(crate) fn get_query<K, V>(
     cx: Scope,
     key: impl Fn() -> K + 'static,
 ) -> Signal<(Query<K, V>, bool)>
@@ -214,26 +214,24 @@ where
     let key = create_memo(cx, move |_| key());
 
     // Find relevant state.
-    Signal::derive(cx, {
-        move || {
-            let key = key.get();
-            use_cache(cx, {
-                move |(root_scope, cache)| {
-                    let entry = cache.entry(key.clone());
+    Signal::derive(cx, move || {
+        let key = key.get();
+        use_cache(cx, {
+            move |(root_scope, cache)| {
+                let entry = cache.entry(key.clone());
 
-                    let (state, new) = match entry {
-                        Entry::Occupied(entry) => {
-                            let entry = entry.into_mut();
-                            (entry, false)
-                        }
-                        Entry::Vacant(entry) => {
-                            let state = Query::new(root_scope, key);
-                            (entry.insert(state.clone()), true)
-                        }
-                    };
-                    (state.clone(), new)
-                }
-            })
-        }
+                let (query, new) = match entry {
+                    Entry::Occupied(entry) => {
+                        let entry = entry.into_mut();
+                        (entry, false)
+                    }
+                    Entry::Vacant(entry) => {
+                        let query = Query::new(root_scope, key);
+                        (entry.insert(query.clone()), true)
+                    }
+                };
+                (query.clone(), new)
+            }
+        })
     })
 }

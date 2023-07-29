@@ -124,7 +124,10 @@ fn HomePage(cx: Scope) -> impl IntoView {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(u32);
 
-fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<String> {
+fn use_post_query(
+    cx: Scope,
+    key: impl Fn() -> PostId + 'static,
+) -> QueryResult<String, impl RefetchFn> {
     use_query(
         cx,
         key,
@@ -132,9 +135,9 @@ fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<
         QueryOptions {
             default_value: None,
             refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: ResourceOption::Serializable,
             stale_time: Some(Duration::from_secs(5)),
-            cache_time: Some(Duration::from_secs(10)),
+            cache_time: Some(Duration::from_secs(60)),
         },
     )
 }
@@ -172,9 +175,17 @@ fn MultiPost(cx: Scope) -> impl IntoView {
 
 #[component]
 fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView {
-    let query = use_post_query(cx, post_id.clone());
+    let QueryResult {
+        data,
+        state,
+        is_loading,
+        is_fetching,
+        is_stale,
+        is_invalid,
+        refetch,
+    } = use_post_query(cx, post_id.clone());
 
-    create_effect(cx, move |_| match query.state.get() {
+    create_effect(cx, move |_| match state.get() {
         QueryState::Created => log!("Created..."),
         QueryState::Loading => log!("Loading..."),
         QueryState::Loaded { .. } => log!("Loaded..."),
@@ -188,25 +199,19 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             <h2>"Post Key: " {move || post_id.get().0}</h2>
             <div>
                 <span>"Loading Status: "</span>
-                <span>
-                    {move || { if query.is_loading().get() { "Loading..." } else { "Loaded" } }}
-                </span>
+                <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
             </div>
             <div>
                 <span>"Fetching Status: "</span>
-                <span>
-                    {move || { if query.is_fetching().get() { "Fetching..." } else { "Idle" } }}
-                </span>
+                <span>{move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}</span>
             </div>
             <div>
                 <span>"Stale Status: "</span>
-                <span>{move || { if query.is_stale().get() { "Stale" } else { "Fresh" } }}</span>
+                <span>{move || { if is_stale.get() { "Stale" } else { "Fresh" } }}</span>
             </div>
             <div>
                 <span>"Invalidated: "</span>
-                <span>
-                    {move || { if query.invalidated().get() { "Invalid" } else { "Valid" } }}
-                </span>
+                <span>{move || { if is_invalid.get() { "Invalid" } else { "Valid" } }}</span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -214,9 +219,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     {move || {
-                        query
-                            .data
-                            .get()
+                        data.get()
                             .map(|post| {
                                 view! { cx, <h2>{post}</h2> }
                             })
@@ -224,7 +227,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                 </Transition>
             </div>
             <div>
-                <button class="button" on:click=move |_| query.refetch()>
+                <button class="button" on:click=move |_| refetch()>
                     "Refetch query"
                 </button>
             </div>

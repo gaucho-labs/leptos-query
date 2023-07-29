@@ -28,7 +28,7 @@ pub fn suppress_query_load(suppress: bool) {
 pub(crate) fn create_executor<K, V, Fu>(
     query: Signal<Query<K, V>>,
     fetcher: impl Fn(K) -> Fu + 'static,
-) -> impl Fn()
+) -> impl Fn() + Clone
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
@@ -68,8 +68,11 @@ where
 }
 
 // Start synchronization effects.
-pub(crate) fn synchronize_state<K, V>(cx: Scope, query: Signal<Query<K, V>>, executor: Rc<dyn Fn()>)
-where
+pub(crate) fn synchronize_state<K, V>(
+    cx: Scope,
+    query: Signal<Query<K, V>>,
+    executor: impl Fn() + Clone + 'static,
+) where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone,
 {
@@ -84,7 +87,7 @@ where
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
     query: Signal<Query<K, V>>,
-    executor: Rc<dyn Fn()>,
+    executor: impl Fn() + Clone + 'static,
 ) {
     create_isomorphic_effect(cx, move |_| {
         let query = query.get();
@@ -105,7 +108,7 @@ fn ensure_not_stale<K: Clone, V: Clone>(
 fn ensure_not_invalid<K: Clone, V: Clone>(
     cx: Scope,
     state: Signal<Query<K, V>>,
-    executor: Rc<dyn Fn()>,
+    executor: impl Fn() + 'static,
 ) {
     create_isomorphic_effect(cx, move |_| {
         let state = state.get();
@@ -117,30 +120,28 @@ fn ensure_not_invalid<K: Clone, V: Clone>(
 }
 
 /// Effect for refetching query on interval, if present.
-fn sync_refetch<K, V>(cx: Scope, query: Signal<Query<K, V>>, executor: Rc<dyn Fn()>)
+fn sync_refetch<K, V>(cx: Scope, query: Signal<Query<K, V>>, executor: impl Fn() + Clone + 'static)
 where
     K: Clone + 'static,
     V: Clone + 'static,
 {
-    let _ = use_timeout(cx, {
-        move || {
-            let query = query.get();
-            let updated_at = query.state.get().updated_at();
-            let refetch_interval = query.refetch_interval.get();
-            match (updated_at, refetch_interval) {
-                (Some(updated_at), Some(refetch_interval)) => {
-                    let executor = executor.clone();
-                    let timeout = time_until_stale(updated_at, refetch_interval);
-                    set_timeout_with_handle(
-                        move || {
-                            executor();
-                        },
-                        timeout,
-                    )
-                    .ok()
-                }
-                _ => None,
+    let _ = use_timeout(cx, move || {
+        let query = query.get();
+        let updated_at = query.state.get().updated_at();
+        let refetch_interval = query.refetch_interval.get();
+        match (updated_at, refetch_interval) {
+            (Some(updated_at), Some(refetch_interval)) => {
+                let executor = executor.clone();
+                let timeout = time_until_stale(updated_at, refetch_interval);
+                set_timeout_with_handle(
+                    move || {
+                        executor();
+                    },
+                    timeout,
+                )
+                .ok()
             }
+            _ => None,
         }
     });
 }
