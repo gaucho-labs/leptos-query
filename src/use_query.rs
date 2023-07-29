@@ -115,7 +115,7 @@ where
     let resource: Resource<Query<K, V>, ResourceData<V>> = {
         let default = options.default_value;
         match options.resource_option {
-            ResourceOption::Serializable => create_resource_with_initial_value(
+            ResourceOption::NonBlocking => create_resource_with_initial_value(
                 cx,
                 move || query.get(),
                 resource_fetcher,

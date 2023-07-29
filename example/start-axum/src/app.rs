@@ -135,7 +135,7 @@ fn use_post_query(
         QueryOptions {
             default_value: None,
             refetch_interval: None,
-            resource_option: ResourceOption::Serializable,
+            resource_option: ResourceOption::NonBlocking,
             stale_time: Some(Duration::from_secs(5)),
             cache_time: Some(Duration::from_secs(60)),
         },
