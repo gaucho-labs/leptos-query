@@ -1,11 +1,13 @@
 use crate::instant::get_instant;
 use crate::query_executor::{create_executor, synchronize_state};
 use crate::query_result::QueryResult;
-use crate::{get_state, QueryOptions, QueryState, ResourceOption};
+use crate::{
+    create_query_result, get_query, Query, QueryData, QueryOptions, QueryState, RefetchFn,
+    ResourceOption,
+};
 use leptos::*;
 use std::future::Future;
 use std::hash::Hash;
-use std::rc::Rc;
 use std::time::Duration;
 
 /// Creates a query. Useful for data fetching, caching, and synchronization with server state.
@@ -47,7 +49,7 @@ use std::time::Duration;
 /// }
 ///
 /// // Query for a Monkey.
-/// fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
+/// fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey, impl RefetchFn> {
 ///     leptos_query::use_query(
 ///         cx,
 ///         id,
@@ -67,130 +69,124 @@ use std::time::Duration;
 pub fn use_query<K, V, Fu>(
     cx: Scope,
     key: impl Fn() -> K + 'static,
-    query: impl Fn(K) -> Fu + 'static,
+    fetcher: impl Fn(K) -> Fu + 'static,
     options: QueryOptions<V>,
-) -> QueryResult<V>
+) -> QueryResult<V, impl RefetchFn>
 where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
     // Find relevant state.
-    let state = get_state(cx, key);
+    let query = get_query(cx, key);
 
     // Update options.
     create_isomorphic_effect(cx, {
         let options = options.clone();
         move |_| {
-            let (state, new) = state.get();
+            let (query, new) = query.get();
             if new {
-                state.overwrite_options(options.clone())
+                query.overwrite_options(options.clone())
             } else {
-                state.update_options(cx, options.clone())
+                query.update_options(cx, options.clone())
             }
         }
     });
 
-    let state = Signal::derive(cx, move || state.get().0);
+    let query = Signal::derive(cx, move || query.get().0);
 
-    let fetcher = move |state: QueryState<K, V>| {
+    let resource_fetcher = move |query: Query<K, V>| {
         async move {
-            if state.fetching.get_untracked() || state.value.get_untracked().is_none() {
+            match query.state.get_untracked() {
+                // Immediately provide cached value.
+                QueryState::Loaded(data)
+                | QueryState::Invalid(data)
+                | QueryState::Fetching(data) => ResourceData(Some(data.data)),
+
                 // Suspend indefinitely and wait for interruption.
-                sleep(LONG_TIME).await;
-                ResourceData(None)
-            } else {
-                ResourceData(state.value.get_untracked())
+                QueryState::Created | QueryState::Loading => {
+                    sleep(LONG_TIME).await;
+                    ResourceData(None)
+                }
             }
         }
     };
 
-    let resource: Resource<QueryState<K, V>, ResourceData<V>> = {
+    let resource: Resource<Query<K, V>, ResourceData<V>> = {
         let default = options.default_value;
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource_with_initial_value(
                 cx,
-                move || state.get(),
-                fetcher,
-                if default.is_some() {
-                    Some(ResourceData(default))
-                } else {
-                    None
-                },
+                move || query.get(),
+                resource_fetcher,
+                default.map(|default| ResourceData(Some(default))),
             ),
-            ResourceOption::Blocking => create_blocking_resource(cx, move || state.get(), fetcher),
+            ResourceOption::Blocking => {
+                create_blocking_resource(cx, move || query.get(), resource_fetcher)
+            }
         }
     };
 
     // Ensure always latest value.
     create_isomorphic_effect(cx, move |_| {
-        let state = state.get();
-        let value = state.value.get();
-        if value.is_some() {
-            // Interrupt suspense.
+        let state = query.get().state.get();
+        if let QueryState::Loaded(data) = state {
+            // Interrupt Suspense.
             if resource.loading().get_untracked() {
-                resource.set(ResourceData(value));
+                resource.set(ResourceData(Some(data.data)));
             } else {
                 resource.refetch();
             }
         }
     });
 
-    let executor = Rc::new(create_executor(state, query));
+    let executor = create_executor(query, fetcher);
 
-    synchronize_state(cx, state, executor.clone());
+    synchronize_state(cx, query, executor.clone());
 
     // Ensure key changes are considered.
     create_isomorphic_effect(cx, {
         let executor = executor.clone();
-        move |prev_state: Option<QueryState<K, V>>| {
-            let state = state.get();
-            if let Some(prev_state) = prev_state {
-                if prev_state != state && state.needs_init() {
-                    executor()
+        move |prev_query: Option<Query<K, V>>| {
+            let query = query.get();
+            if let Some(prev_query) = prev_query {
+                if prev_query != query {
+                    if let QueryState::Created = query.state.get_untracked() {
+                        executor()
+                    }
                 }
             }
-            state
+            query
         }
     });
 
     let data = Signal::derive(cx, {
         let executor = executor.clone();
         move || {
-            let read = resource.read(cx).map(|r| r.0).flatten();
-            let state = state.get_untracked();
-            let updated_at = state.updated_at;
+            let read = resource.read(cx).and_then(|r| r.0);
+            let query = query.get_untracked();
 
             // First Read.
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
-            if read.is_none() && state.needs_init() {
+            if read.is_none() && matches!(query.state.get_untracked(), QueryState::Created) {
                 executor()
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
-            } else if read.is_some() {
-                if updated_at.get_untracked().is_none() {
-                    updated_at.set(Some(get_instant()));
-                }
-                if state.value.get_untracked().is_none() {
-                    state.value.set(read.clone());
-                }
-                if state.fetching.get_untracked() {
-                    state.fetching.set(false);
+            } else if let Some(ref data) = read {
+                if let QueryState::Created = query.state.get_untracked() {
+                    let updated_at = get_instant();
+                    let data = QueryData {
+                        data: data.clone(),
+                        updated_at,
+                    };
+                    query.state.set(QueryState::Loaded(data))
                 }
             }
             read
         }
     });
 
-    // Doing this outside of QueryResult because of the need for `resource`.
-    let is_loading = Signal::derive(cx, move || {
-        let state = state.get();
-
-        // Need to consider both because of SSR resource <-> signal mismatches.
-        (resource.loading().get() || state.fetching.get()) && state.value.get().is_none()
-    });
-
-    QueryResult::from_resource(cx, state, data, is_loading, executor)
+    create_query_result(cx, query, data, executor)
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
@@ -198,7 +194,7 @@ const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 async fn sleep(duration: Duration) {
     use cfg_if::cfg_if;
     cfg_if! {
-        if #[cfg(all(target_arch = "wasm32", any(feature = "hydrate")))] {
+        if #[cfg(feature = "hydrate")] {
             gloo_timers::future::sleep(duration).await;
         } else if #[cfg(feature = "ssr")] {
             tokio::time::sleep(duration).await;

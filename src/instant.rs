@@ -5,7 +5,7 @@ use std::{
 
 /// Instant that can be used in both wasm and non-wasm environments.
 /// Contains Duration since Unix Epoch (Unix Timestamp).
-#[derive(Copy, Clone, Debug, Hash)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Instant(pub std::time::Duration);
 
 impl Instant {

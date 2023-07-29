@@ -59,7 +59,7 @@
 //! }
 //!
 //! // Query for a Monkey.
-//! fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
+//! fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey, impl RefetchFn> {
 //!     leptos_query::use_query(
 //!         cx,
 //!         id,
@@ -82,14 +82,13 @@
 //!
 //! #[component]
 //! fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
-//!     let query = use_monkey_query(cx, move || id.clone());
 //!     let QueryResult {
 //!         data,
 //!         is_loading,
 //!         is_fetching,
 //!         is_stale
 //!         ..
-//!     } = query;
+//!     } = use_monkey_query(cx, move || id.clone());
 //!
 //!     view! { cx,
 //!       // You can use the query result data here.
@@ -130,8 +129,8 @@
 //!
 
 mod instant;
+mod query;
 mod query_client;
-mod query_data;
 mod query_executor;
 mod query_options;
 mod query_result;
@@ -140,10 +139,10 @@ mod use_query;
 mod util;
 
 pub use instant::*;
+use query::*;
 pub use query_client::*;
-pub use query_data::*;
 pub use query_executor::*;
 pub use query_options::*;
 pub use query_result::*;
-use query_state::*;
+pub use query_state::*;
 pub use use_query::*;

@@ -30,7 +30,7 @@ pub struct QueryClient {
     pub(crate) cache: Rc<RefCell<HashMap<TypeId, Box<dyn Any>>>>,
 }
 
-pub(crate) type CacheEntry<K, V> = Rc<RefCell<HashMap<K, QueryState<K, V>>>>;
+pub(crate) type CacheEntry<K, V> = Rc<RefCell<HashMap<K, Query<K, V>>>>;
 
 impl QueryClient {
     /// Creates a new Query Client.
@@ -47,19 +47,19 @@ impl QueryClient {
         &self,
         cx: Scope,
         key: impl Fn() -> K + 'static,
-        query: impl Fn(K) -> Fu + 'static,
+        fetcher: impl Fn(K) -> Fu + 'static,
         isomorphic: bool,
-    ) -> QueryResult<V>
+    ) -> QueryResult<V, impl RefetchFn>
     where
         K: Hash + Eq + PartialEq + Clone + 'static,
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = get_state(cx, key);
+        let state = get_query(cx, key);
 
         let state = Signal::derive(cx, move || state.get().0);
 
-        let executor = Rc::new(create_executor(state, query));
+        let executor = create_executor(state, fetcher);
 
         let sync = {
             let executor = executor.clone();
@@ -76,7 +76,12 @@ impl QueryClient {
 
         synchronize_state(cx, state, executor.clone());
 
-        QueryResult::from_state(cx, state, executor)
+        create_query_result(
+            cx,
+            state,
+            Signal::derive(self.cx, move || state.get().state.get().data().cloned()),
+            executor,
+        )
     }
 
     /// Prefetch a query and store it in cache.
@@ -92,7 +97,7 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = get_state(cx, key);
+        let state = get_query(cx, key);
 
         let state = Signal::derive(cx, move || state.get().0);
 
@@ -111,33 +116,6 @@ impl QueryClient {
         }
     }
 
-    /// Attempts to retrieve existing data for a query from the Query Cache.
-    /// Does not affect cache time.
-    pub fn get_query_data<K, V>(
-        &self,
-        cx: Scope,
-        key: impl Fn() -> K + 'static,
-    ) -> Signal<Option<QueryData<V>>>
-    where
-        K: Hash + Eq + PartialEq + Clone + 'static,
-        V: Clone + 'static,
-    {
-        let key = create_memo(cx, move |_| key());
-
-        let client = self.clone();
-
-        // TODO: Update on entries inserted.
-
-        Signal::derive(cx, move || {
-            let key = key.get();
-            client.use_cache_option(move |cache| {
-                cache
-                    .get(&key)
-                    .map(|e: &QueryState<K, V>| QueryData::from_state(cx, e))
-            })
-        })
-    }
-
     /// Attempts to invalidate an entry in the Query Cache.
     /// Returns true if the entry was successfully invalidated.
     pub fn invalidate_query<K, V>(&self, key: &K) -> bool
@@ -145,8 +123,8 @@ impl QueryClient {
         K: Hash + Eq + PartialEq + Clone + 'static,
         V: Clone + 'static,
     {
-        self.use_cache_option(|cache: &HashMap<K, QueryState<K, V>>| {
-            cache.get(key).map(|state| state.invalidate())
+        self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+            cache.get(key).map(|state| state.mark_invalid())
         })
         .is_some()
     }
@@ -168,7 +146,7 @@ impl QueryClient {
                     .into_iter()
                     .filter(|key| {
                         if let Some(state) = cache.get(key) {
-                            state.invalidate();
+                            state.mark_invalid();
                             true
                         } else {
                             false
@@ -186,7 +164,7 @@ impl QueryClient {
         K: Clone + 'static,
         V: Clone + 'static,
         R: 'static,
-        F: FnOnce(&HashMap<K, QueryState<K, V>>) -> Option<R>,
+        F: FnOnce(&HashMap<K, Query<K, V>>) -> Option<R>,
     {
         let cache = self.cache.borrow();
         if let Some(cache) = cache.get(&TypeId::of::<K>()) {
@@ -200,7 +178,7 @@ impl QueryClient {
 
 pub(crate) fn use_cache<K, V, R>(
     cx: Scope,
-    func: impl FnOnce((Scope, &mut HashMap<K, QueryState<K, V>>)) -> R + 'static,
+    func: impl FnOnce((Scope, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
 ) -> R
 where
     K: 'static,
@@ -224,10 +202,10 @@ where
 }
 
 // bool is if the state was created!
-pub(crate) fn get_state<K, V>(
+pub(crate) fn get_query<K, V>(
     cx: Scope,
     key: impl Fn() -> K + 'static,
-) -> Signal<(QueryState<K, V>, bool)>
+) -> Signal<(Query<K, V>, bool)>
 where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone + 'static,
@@ -236,26 +214,24 @@ where
     let key = create_memo(cx, move |_| key());
 
     // Find relevant state.
-    Signal::derive(cx, {
-        move || {
-            let key = key.get();
-            use_cache(cx, {
-                move |(root_scope, cache)| {
-                    let entry = cache.entry(key.clone());
+    Signal::derive(cx, move || {
+        let key = key.get();
+        use_cache(cx, {
+            move |(root_scope, cache)| {
+                let entry = cache.entry(key.clone());
 
-                    let (state, new) = match entry {
-                        Entry::Occupied(entry) => {
-                            let entry = entry.into_mut();
-                            (entry, false)
-                        }
-                        Entry::Vacant(entry) => {
-                            let state = QueryState::new(root_scope, key);
-                            (entry.insert(state.clone()), true)
-                        }
-                    };
-                    (state.clone(), new)
-                }
-            })
-        }
+                let (query, new) = match entry {
+                    Entry::Occupied(entry) => {
+                        let entry = entry.into_mut();
+                        (entry, false)
+                    }
+                    Entry::Vacant(entry) => {
+                        let query = Query::new(root_scope, key);
+                        (entry.insert(query.clone()), true)
+                    }
+                };
+                (query.clone(), new)
+            }
+        })
     })
 }

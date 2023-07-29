@@ -100,7 +100,7 @@ TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/gen
  }
 
  // Query for a Monkey.
- fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey> {
+ fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey, impl RefetchFn> {
      leptos_query::use_query(
          cx,
          id,
@@ -125,14 +125,13 @@ Now you can use the query in any component in your app.
 
 #[component]
 fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
-    let query = use_monkey_query(cx, move || id.clone());
     let QueryResult {
         data,
         is_loading,
         is_fetching,
         is_stale
         ..
-    } = query;
+    } = use_monkey_query(cx, move || id.clone());
 
     view! { cx,
       // You can use the query result data here.

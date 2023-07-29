@@ -2,7 +2,7 @@ use crate::error_template::{AppError, ErrorTemplate};
 use leptos::*;
 use leptos_meta::*;
 use leptos_query::*;
-use leptos_router::*;
+use leptos_router::{Outlet, Route, Router, Routes};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -58,6 +58,12 @@ pub fn App(cx: Scope) -> impl IntoView {
                                 view! { cx, <ReactivePost/> }
                             }
                         />
+                        <Route
+                            path="unique"
+                            view=|cx| {
+                                view! { cx, <UniqueKey/> }
+                            }
+                        />
                     </Route>
                 </Routes>
             </main>
@@ -91,6 +97,9 @@ fn HomePage(cx: Scope) -> impl IntoView {
                 <li>
                     <a href="/reactive">"Reactive"</a>
                 </li>
+                <li>
+                    <a href="/unique">"Non-Dynamic Key"</a>
+                </li>
             </ul>
             <br/>
             <div
@@ -115,8 +124,11 @@ fn HomePage(cx: Scope) -> impl IntoView {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PostId(u32);
 
-fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<String> {
-    leptos_query::use_query(
+fn use_post_query(
+    cx: Scope,
+    key: impl Fn() -> PostId + 'static,
+) -> QueryResult<String, impl RefetchFn> {
+    use_query(
         cx,
         key,
         get_post_unwrapped,
@@ -125,7 +137,7 @@ fn use_post_query(cx: Scope, key: impl Fn() -> PostId + 'static) -> QueryResult<
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
             stale_time: Some(Duration::from_secs(5)),
-            cache_time: Some(Duration::from_secs(10)),
+            cache_time: Some(Duration::from_secs(60)),
         },
     )
 }
@@ -163,16 +175,17 @@ fn MultiPost(cx: Scope) -> impl IntoView {
 
 #[component]
 fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView {
-    let query = use_post_query(cx, post_id.clone());
-
     let QueryResult {
         data,
+        state,
         is_loading,
         is_fetching,
         is_stale,
-        invalidated,
-        ..
-    } = query;
+        is_invalid,
+        refetch,
+    } = use_post_query(cx, post_id.clone());
+
+    create_effect(cx, move |_| log!("State: {:?}", state.get()));
 
     view! { cx,
         <div class="container">
@@ -192,7 +205,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
             </div>
             <div>
                 <span>"Invalidated: "</span>
-                <span>{move || { if invalidated.get() { "Invalid" } else { "Valid" } }}</span>
+                <span>{move || { if is_invalid.get() { "Invalid" } else { "Valid" } }}</span>
             </div>
             <div class="post-body">
                 <p>"Post Body"</p>
@@ -208,7 +221,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
                 </Transition>
             </div>
             <div>
-                <button class="button" on:click=move |_| query.refetch()>
+                <button class="button" on:click=move |_| refetch()>
                     "Refetch query"
                 </button>
             </div>
@@ -235,6 +248,46 @@ fn ReactivePost(cx: Scope) -> impl IntoView {
             >
                 "Switch Post"
             </button>
+        </div>
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Unique();
+
+#[server(GetUnique, "/api")]
+pub async fn get_unique() -> Result<String, ServerFnError> {
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    Ok("Super duper unique value".into())
+}
+
+#[component]
+fn UniqueKey(cx: Scope) -> impl IntoView {
+    let query = use_query(
+        cx,
+        || Unique(),
+        |_| async { get_unique().await.expect("Failed to retrieve unique") },
+        QueryOptions::empty(),
+    );
+
+    view! { cx,
+        <div class="container">
+            <a href="/">"Home"</a>
+            <div class="post-body">
+                <p>"Unique Key"</p>
+                <Transition fallback=move || {
+                    view! { cx, <h2>"Loading..."</h2> }
+                }>
+                    {move || {
+                        query
+                            .data
+                            .get()
+                            .map(|response| {
+                                view! { cx, <h2>{response}</h2> }
+                            })
+                    }}
+                </Transition>
+            </div>
         </div>
     }
 }

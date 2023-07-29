@@ -1,11 +1,18 @@
 use leptos::*;
-use std::{cell::Cell, future::Future, hash::Hash, rc::Rc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    future::Future,
+    hash::Hash,
+    rc::Rc,
+};
 
 use crate::{
-    instant::{get_instant, Instant},
-    query_state::QueryState,
+    instant::get_instant,
+    query::Query,
     use_cache, use_query_client,
-    util::{time_until_stale, use_timeout},
+    util::{maybe_time_until_stale, time_until_stale, use_timeout},
+    QueryData, QueryState,
 };
 
 thread_local! {
@@ -19,31 +26,39 @@ pub fn suppress_query_load(suppress: bool) {
 
 // Create Executor function which will execute task in `spawn_local` and update state.
 pub(crate) fn create_executor<K, V, Fu>(
-    state: Signal<QueryState<K, V>>,
-    query: impl Fn(K) -> Fu + 'static,
-) -> impl Fn()
+    query: Signal<Query<K, V>>,
+    fetcher: impl Fn(K) -> Fu + 'static,
+) -> impl Fn() + Clone
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
     Fu: Future<Output = V> + 'static,
 {
-    let query = Rc::new(query);
+    let fetcher = Rc::new(fetcher);
     move || {
-        let query = query.clone();
+        let fetcher = fetcher.clone();
         SUPPRESS_QUERY_LOAD.with(|supressed| {
             if !supressed.get() {
                 spawn_local(async move {
-                    let state = state.get_untracked();
-                    if !state.fetching.get_untracked() {
-                        state.fetching.set(true);
-
-                        let result = query(state.key.clone()).await;
-
-                        state.updated_at.set(Some(get_instant()));
-                        state.fetching.set(false);
-                        state.value.set(Some(result.clone()));
-                        if state.invalidated.get_untracked() {
-                            state.invalidated.set(false);
+                    let query = query.get_untracked();
+                    let data_state = query.state.get_untracked();
+                    match data_state {
+                        QueryState::Fetching(_) | QueryState::Loading => (),
+                        // First load.
+                        QueryState::Created => {
+                            query.state.set(QueryState::Loading);
+                            let data = fetcher(query.key.clone()).await;
+                            let updated_at = get_instant();
+                            let data = QueryData { data, updated_at };
+                            query.state.set(QueryState::Loaded(data));
+                        }
+                        // Subsequent loads.
+                        QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                            query.state.set(QueryState::Fetching(data));
+                            let data = fetcher(query.key.clone()).await;
+                            let updated_at = get_instant();
+                            let data = QueryData { data, updated_at };
+                            query.state.set(QueryState::Loaded(data));
                         }
                     }
                 })
@@ -55,32 +70,33 @@ where
 // Start synchronization effects.
 pub(crate) fn synchronize_state<K, V>(
     cx: Scope,
-    state: Signal<QueryState<K, V>>,
-    executor: Rc<dyn Fn()>,
+    query: Signal<Query<K, V>>,
+    executor: impl Fn() + Clone + 'static,
 ) where
     K: Hash + Eq + PartialEq + Clone + 'static,
     V: Clone,
 {
-    ensure_not_stale(cx, state, executor.clone());
-    sync_refetch(cx, state, executor.clone());
-    sync_observers(cx, state);
-    ensure_cache_cleanup(cx, state);
+    ensure_not_stale(cx, query, executor.clone());
+    ensure_not_invalid(cx, query, executor.clone());
+    sync_refetch(cx, query, executor.clone());
+    sync_observers(cx, query);
+    ensure_cache_cleanup(cx, query);
 }
 
+/// On mount, ensure that the resource is not stale
 fn ensure_not_stale<K: Clone, V: Clone>(
     cx: Scope,
-    state: Signal<QueryState<K, V>>,
-    executor: Rc<dyn Fn()>,
+    query: Signal<Query<K, V>>,
+    executor: impl Fn() + Clone + 'static,
 ) {
     create_isomorphic_effect(cx, move |_| {
-        let state = state.get();
-        let updated_at = state.updated_at;
-        let stale_time = state.stale_time;
+        let query = query.get();
+        let stale_time = query.stale_time;
 
-        // On mount, ensure that the resource is not stale
-        if let (Some(updated_at), Some(stale_time)) =
-            (updated_at.get_untracked(), stale_time.get_untracked())
-        {
+        if let (Some(updated_at), Some(stale_time)) = (
+            query.state.get_untracked().updated_at(),
+            stale_time.get_untracked(),
+        ) {
             if time_until_stale(updated_at, stale_time).is_zero() {
                 executor();
             }
@@ -88,54 +104,50 @@ fn ensure_not_stale<K: Clone, V: Clone>(
     })
 }
 
-fn sync_refetch<K, V>(cx: Scope, state: Signal<QueryState<K, V>>, executor: Rc<dyn Fn()>)
+/// Refetch data once marked as invalid.
+fn ensure_not_invalid<K: Clone, V: Clone>(
+    cx: Scope,
+    state: Signal<Query<K, V>>,
+    executor: impl Fn() + 'static,
+) {
+    create_isomorphic_effect(cx, move |_| {
+        let state = state.get();
+        // Refetch query if Invalid.
+        if let QueryState::Invalid(_) = state.state.get() {
+            executor()
+        }
+    });
+}
+
+/// Effect for refetching query on interval, if present.
+fn sync_refetch<K, V>(cx: Scope, query: Signal<Query<K, V>>, executor: impl Fn() + Clone + 'static)
 where
     K: Clone + 'static,
     V: Clone + 'static,
 {
-    create_effect(cx, {
-        let executor = executor.clone();
-        move |_| {
-            let executor = executor.clone();
-
-            let state = state.get();
-            let invalidated = state.invalidated;
-            let refetch_interval = state.refetch_interval;
-            let updated_at = state.updated_at;
-
-            // Effect for refetching query on interval.
-            use_timeout(cx, {
+    let _ = use_timeout(cx, move || {
+        let query = query.get();
+        let updated_at = query.state.get().updated_at();
+        let refetch_interval = query.refetch_interval.get();
+        match (updated_at, refetch_interval) {
+            (Some(updated_at), Some(refetch_interval)) => {
                 let executor = executor.clone();
-                move || match (updated_at.get(), refetch_interval.get()) {
-                    (Some(updated_at), Some(refetch_interval)) => {
-                        let executor = executor.clone();
-                        let timeout = time_until_stale(updated_at, refetch_interval);
-                        set_timeout_with_handle(
-                            move || {
-                                executor();
-                            },
-                            timeout,
-                        )
-                        .ok()
-                    }
-                    _ => None,
-                }
-            });
-
-            // Refetch query if invalidated.
-            create_effect(cx, {
-                move |_| {
-                    if invalidated.get() {
+                let timeout = time_until_stale(updated_at, refetch_interval);
+                set_timeout_with_handle(
+                    move || {
                         executor();
-                    }
-                }
-            });
+                    },
+                    timeout,
+                )
+                .ok()
+            }
+            _ => None,
         }
-    })
+    });
 }
 
 // Ensure that observers are kept track of.
-fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Signal<QueryState<K, V>>) {
+fn sync_observers<K: Clone, V: Clone>(cx: Scope, query: Signal<Query<K, V>>) {
     type Observer = Rc<Cell<usize>>;
     let last_observer: Rc<Cell<Option<Observer>>> = Rc::new(Cell::new(None));
 
@@ -156,66 +168,108 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, state: Signal<QueryState<K, V>>
             observers.set(observers.get() - 1);
         }
         // Deal with latest observers.
-        let observers = state.get().observers;
+        let observers = query.get().observers;
         last_observer.set(Some(observers.clone()));
         observers.set(observers.get() + 1);
         observers
     });
 }
 
-fn ensure_cache_cleanup<K, V>(cx: Scope, state: Signal<QueryState<K, V>>)
+/// This is a very finicky function. Be cautious with edits.
+fn ensure_cache_cleanup<K, V>(cx: Scope, query: Signal<Query<K, V>>)
 where
     K: Clone + Hash + Eq + PartialEq + 'static,
     V: Clone + 'static,
 {
     let root_scope = use_query_client(cx).cx;
-    create_isomorphic_effect(cx, move |_| {
-        let state = state.get();
-        let key = state.key.clone();
-        let observers = state.observers.clone();
-        cache_cleanup::<K, V>(
-            root_scope,
-            key,
-            state.updated_at.into(),
-            state.cache_time.get(),
-            observers,
-        );
-    });
-}
 
-// Will cleanup the cache corresponding to the key when the cache_time has elapsed, and the query has not been updated.
-fn cache_cleanup<K, V>(
-    cx: Scope,
-    key: K,
-    last_updated: Signal<Option<Instant>>,
-    cache_time: Option<Duration>,
-    observers: Rc<Cell<usize>>,
-) where
-    K: Hash + Eq + PartialEq + Clone + 'static,
-    V: 'static,
-{
-    use_timeout(cx, move || match (last_updated.get(), cache_time) {
-        (Some(last_updated), Some(cache_time)) => {
-            let timeout = time_until_stale(last_updated, cache_time);
-            let key = key.clone();
-            let observers = observers.clone();
-            set_timeout_with_handle(
-                move || {
-                    let removed =
-                        use_cache::<K, V, Option<QueryState<K, V>>>(cx, move |(_, cache)| {
-                            cache.remove(&key)
-                        });
-                    if let Some(query) = removed {
-                        if observers.get() == 0 {
-                            query.dispose();
-                            drop(query)
-                        }
-                    };
-                },
-                timeout,
-            )
-            .ok()
+    let child_disposed = Rc::new(Cell::new(false));
+    on_cleanup(cx, {
+        let child_disposed = child_disposed.clone();
+        move || child_disposed.set(true)
+    });
+
+    // Keep track of existing timeouts for keys.
+    let timeout_map = Rc::new(RefCell::new(HashMap::<K, Box<dyn Fn()>>::new()));
+
+    // Functions that should be run on scope cleanup.
+    let cleanup_map = Rc::new(RefCell::new(HashMap::<K, Box<dyn FnOnce()>>::new()));
+    on_cleanup(cx, {
+        let key_to_on_cleanup = cleanup_map.clone();
+        move || {
+            let mut map = key_to_on_cleanup.borrow_mut();
+            map.drain().for_each(|(_, cleanup)| cleanup());
         }
-        _ => None,
+    });
+
+    // Create outer effect with child scope, and create timeout on root scope.
+    create_effect(cx, move |_| {
+        // These signals can't go inside use_timeout because they will be disposed of before the timeout executes.
+        let query = query.get();
+        let updated_at = query.state.get().updated_at();
+        let cache_time = query.cache_time.get();
+
+        // Remove key from cleanup map.
+        {
+            let mut cleanup_map = cleanup_map.borrow_mut();
+            cleanup_map.remove(&query.key);
+            drop(cleanup_map);
+        }
+
+        // Clear previous timeout for key.
+        let mut timeout_map = timeout_map.borrow_mut();
+        if let Some(clear) = timeout_map.remove(&query.key) {
+            clear()
+        }
+
+        let child_disposed = child_disposed.clone();
+        let cleanup_map = cleanup_map.clone();
+
+        // use_timeout ensures no leaky timeouts. Old timeout is always cleared.
+        let clear_timeout = use_timeout(root_scope, {
+            let query = query.clone();
+            move || {
+                if let Some(timeout) = maybe_time_until_stale(updated_at, cache_time) {
+                    let child_disposed = child_disposed.clone();
+                    let cleanup_map = cleanup_map.clone();
+                    let query = query.clone();
+
+                    set_timeout_with_handle(
+                        move || {
+                            // Remove from cache & dispose.
+                            let dispose = {
+                                let query = query.clone();
+                                move || {
+                                    let removed = use_cache::<K, V, Option<Query<K, V>>>(
+                                        root_scope,
+                                        move |(_, cache)| cache.remove(&query.key),
+                                    );
+                                    if let Some(query) = removed {
+                                        if query.observers.get() == 0 {
+                                            query.dispose();
+                                            drop(query)
+                                        }
+                                    }
+                                }
+                            };
+
+                            // Check if scope has been disposed. If it has, then dispose immediately. Otherwise add cleanup function.
+                            if child_disposed.get() {
+                                dispose();
+                            } else {
+                                let mut map = cleanup_map.borrow_mut();
+                                map.insert(query.key.clone(), Box::new(dispose));
+                            }
+                        },
+                        timeout,
+                    )
+                    .ok()
+                } else {
+                    None
+                }
+            }
+        });
+
+        timeout_map.insert(query.key.clone(), Box::new(clear_timeout));
     });
 }

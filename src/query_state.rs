@@ -1,143 +1,96 @@
-use leptos::*;
-use std::{cell::Cell, rc::Rc, time::Duration};
+use crate::Instant;
 
-use crate::{ensure_valid_stale_time, instant::Instant, QueryOptions};
+/// The lifecycle of a query.
+///
+/// Each variant in the enum corresponds to a particular state of a query in its lifecycle,
+/// starting from creation and covering all possible transitions up to invalidation.
+#[derive(Clone, PartialEq, Eq)]
+pub enum QueryState<V> {
+    /// The initial state of a Query upon its creation.
+    ///
+    /// In this state, a query is instantiated but no fetching operation has been initiated yet.
+    /// This means that no data has been requested or received, and the query is in a "pending" state,
+    /// waiting to begin its first fetch operation.
+    Created,
 
-#[derive(Clone)]
-pub(crate) struct QueryState<K, V>
-where
-    K: 'static,
-    V: 'static,
-{
-    pub(crate) key: K,
-    pub(crate) observers: Rc<Cell<usize>>,
-    pub(crate) value: RwSignal<Option<V>>,
-    pub(crate) stale_time: RwSignal<Option<Duration>>,
-    pub(crate) cache_time: RwSignal<Option<Duration>>,
-    pub(crate) refetch_interval: RwSignal<Option<Duration>>,
-    pub(crate) updated_at: RwSignal<Option<Instant>>,
-    pub(crate) invalidated: RwSignal<bool>,
-    pub(crate) fetching: RwSignal<bool>,
+    /// Query is fetching for the first time.
+    ///
+    /// In this state, the query has started its first data fetching process. It is actively communicating
+    /// with the data source and waiting for the data to be returned.
+    Loading,
+
+    /// A Query is in the process of fetching, not being its first fetch.
+    ///
+    /// In this state, a query is undergoing another fetch operation following a previous one.
+    /// The associated `QueryData<V>` object holds the previous data was fetched.
+    Fetching(QueryData<V>),
+
+    /// The state indicating that a query has successfully completed a fetch operation.
+    ///
+    /// In this state, the query has finished fetching data.
+    /// The associated `QueryData<V>` object holds the successfully loaded data.
+    Loaded(QueryData<V>),
+
+    /// The state indicating that a query has completed a fetch, but the fetched data is marked as invalid.
+    ///
+    /// The associated `QueryData<V>` object holds the invalidated data.
+    Invalid(QueryData<V>),
 }
 
-impl<K: PartialEq, V> PartialEq for QueryState<K, V> {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
-    }
-}
-
-impl<K: PartialEq, V> Eq for QueryState<K, V> {}
-
-impl<K, V> QueryState<K, V>
-where
-    K: Clone + 'static,
-    V: Clone + 'static,
-{
-    pub(crate) fn new(cx: Scope, key: K) -> Self {
-        let stale_time = create_rw_signal(cx, None);
-        let cache_time = create_rw_signal(cx, None);
-        let refetch_interval = create_rw_signal(cx, None);
-
-        let value = create_rw_signal(cx, None);
-        let updated_at = create_rw_signal(cx, None);
-        let invalidated = create_rw_signal(cx, false);
-        let fetching = create_rw_signal(cx, false);
-
-        QueryState {
-            key,
-            observers: Rc::new(Cell::new(0)),
-            value,
-            stale_time,
-            cache_time,
-            refetch_interval,
-            updated_at,
-            invalidated,
-            fetching,
-        }
-    }
-}
-
-impl<K, V> QueryState<K, V>
-where
-    K: Clone + 'static,
-    V: Clone + 'static,
-{
-    /// Marks the resource as invalidated, which will cause it to be refetched on next read.
-    pub(crate) fn invalidate(&self) {
-        self.invalidated.set(true);
-    }
-
-    pub(crate) fn needs_init(&self) -> bool {
-        (self.value.get_untracked().is_none() || self.updated_at.get_untracked().is_none())
-            && !self.fetching.get_untracked()
-    }
-
-    pub(crate) fn overwrite_options(&self, options: QueryOptions<V>) {
-        let stale_time = ensure_valid_stale_time(&options.stale_time, &options.cache_time);
-
-        self.stale_time.set(stale_time);
-        self.cache_time.set(options.cache_time);
-        self.refetch_interval.set(options.refetch_interval);
-    }
-
-    // Enables having different stale times & refetch intervals for the same query.
-    // The lowest stale time & refetch interval will be used.
-    // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
-    // Cache time behaves differently. It will only use the minimum cache time found.
-    pub(crate) fn update_options(&self, cx: Scope, options: QueryOptions<V>) {
-        // Use the minimum cache time.
-        match (self.cache_time.get_untracked(), options.cache_time) {
-            (Some(current), Some(new)) if new < current => self.cache_time.set(Some(new)),
-            (None, Some(new)) => self.cache_time.set(Some(new)),
-            _ => (),
-        }
-
-        let curr_stale = self.stale_time.get_untracked();
-        let curr_refetch_interval = self.refetch_interval.get_untracked();
-
-        let (prev_stale, new_stale) = match (curr_stale, options.stale_time) {
-            (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
-            (None, Some(new)) => (None, Some(new)),
-            _ => (None, None),
-        };
-
-        let (prev_refetch, new_refetch) = match (curr_refetch_interval, options.refetch_interval) {
-            (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
-            (None, Some(new)) => (None, Some(new)),
-            _ => (None, None),
-        };
-
-        if let Some(new_stale) = new_stale {
-            self.stale_time.set(Some(new_stale));
-        }
-
-        if let Some(new_refetch) = new_refetch {
-            self.refetch_interval.set(Some(new_refetch));
-        }
-
-        // Reset stale time and refetch interval to previous values when scope is dropped.
-        let stale_time = self.stale_time;
-        let refetch_interval = self.refetch_interval;
-        on_cleanup(cx, move || {
-            if let Some(prev_stale) = prev_stale {
-                stale_time.set(Some(prev_stale));
+impl<V> QueryState<V> {
+    /// Returns the data contained within the QueryState, if present.
+    pub fn data(&self) -> Option<&V> {
+        match self {
+            QueryState::Loading | QueryState::Created => None,
+            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                Some(&data.data)
             }
+        }
+    }
 
-            if let Some(prev_refetch) = prev_refetch {
-                refetch_interval.set(Some(prev_refetch));
+    /// Returns the last updated timestamp for the QueryState, if present.
+    pub fn updated_at(&self) -> Option<Instant> {
+        match self {
+            QueryState::Loading | QueryState::Created => None,
+            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                Some(data.updated_at)
             }
-        })
+        }
     }
 }
 
-impl<K, V> QueryState<K, V> {
-    pub(crate) fn dispose(&self) {
-        self.value.dispose();
-        self.stale_time.dispose();
-        self.refetch_interval.dispose();
-        self.fetching.dispose();
-        self.cache_time.dispose();
-        self.updated_at.dispose();
-        self.invalidated.dispose();
+impl<V> std::fmt::Debug for QueryState<V>
+where
+    V: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Created => write!(f, "Created"),
+            Self::Loading => write!(f, "Loading"),
+            Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
+            Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
+            Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
+        }
+    }
+}
+
+/// The latest data for a Query.
+#[derive(Clone, PartialEq, Eq)]
+pub struct QueryData<V> {
+    /// The Data.
+    pub data: V,
+    /// The instant this data was retrieved.
+    pub updated_at: Instant,
+}
+
+impl<V> std::fmt::Debug for QueryData<V>
+where
+    V: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryData")
+            .field("data", &self.data)
+            .field("updated_at", &self.updated_at)
+            .finish()
     }
 }
