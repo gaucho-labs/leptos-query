@@ -185,13 +185,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
         refetch,
     } = use_post_query(cx, post_id.clone());
 
-    create_effect(cx, move |_| match state.get() {
-        QueryState::Created => log!("Created..."),
-        QueryState::Loading => log!("Loading..."),
-        QueryState::Loaded { .. } => log!("Loaded..."),
-        QueryState::Fetching { .. } => log!("Fetching..."),
-        QueryState::Invalid { .. } => log!("Invalid..."),
-    });
+    create_effect(cx, move |_| log!("State: {:?}", state.get()));
 
     view! { cx,
         <div class="container">

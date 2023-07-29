@@ -59,6 +59,21 @@ impl<V> QueryState<V> {
     }
 }
 
+impl<V> std::fmt::Debug for QueryState<V>
+where
+    V: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Created => write!(f, "Created"),
+            Self::Loading => write!(f, "Loading"),
+            Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
+            Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
+            Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
+        }
+    }
+}
+
 /// The latest data for a Query.
 #[derive(Clone, PartialEq, Eq)]
 pub struct QueryData<V> {
@@ -66,4 +81,16 @@ pub struct QueryData<V> {
     pub data: V,
     /// The instant this data was retrieved.
     pub updated_at: Instant,
+}
+
+impl<V> std::fmt::Debug for QueryData<V>
+where
+    V: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryData")
+            .field("data", &self.data)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }

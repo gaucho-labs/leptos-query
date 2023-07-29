@@ -194,7 +194,7 @@ const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 async fn sleep(duration: Duration) {
     use cfg_if::cfg_if;
     cfg_if! {
-        if #[cfg(all(target_arch = "wasm32", any(feature = "hydrate")))] {
+        if #[cfg(feature = "hydrate")] {
             gloo_timers::future::sleep(duration).await;
         } else if #[cfg(feature = "ssr")] {
             tokio::time::sleep(duration).await;
