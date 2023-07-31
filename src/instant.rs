@@ -33,9 +33,8 @@ impl Add<Instant> for Instant {
 }
 
 pub(crate) fn get_instant() -> Instant {
-    use cfg_if::cfg_if;
-    cfg_if! {
-        if #[cfg(feature = "hydrate")] {
+    cfg_if::cfg_if! {
+        if #[cfg(all(feature = "hydrate", target_arch = "wasm32"))] {
             let millis = js_sys::Date::now();
             let duration = std::time::Duration::from_millis(millis as u64);
             Instant(duration)

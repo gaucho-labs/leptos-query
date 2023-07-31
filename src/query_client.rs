@@ -237,11 +237,13 @@ impl QueryClient {
     /// If you need to fetch the data asynchronously, use [`fetch_query`](Self::fetch_query) or [`prefetch_query`](Self::prefetch_query).
     /// If the updater function returns None, the query data will not be updated.
     /// If the updater function receives None as input, you can return None to bail out of the update and thus not create a new cache entry.
-    pub fn set_query_data<K, V, F>(&self, key: K, updater: F)
-    where
+    pub fn set_query_data<K, V>(
+        &self,
+        key: K,
+        updater: impl FnOnce(Option<&QueryData<V>>) -> Option<QueryData<V>> + 'static,
+    ) where
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
-        F: FnOnce(Option<&QueryData<V>>) -> Option<QueryData<V>> + 'static,
     {
         enum SetResult {
             Inserted,
@@ -393,4 +395,95 @@ where
         use_query_client(cx).notify.set(());
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prefetch_loads_data() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+
+            assert_eq!(0, use_query_client(cx).size().get_untracked());
+
+            let state = use_query_client(cx).get_query_state::<u32, String>(cx, || 0);
+
+            assert_eq!(None, state.get_untracked());
+
+            use_query_client(cx).prefetch_query(
+                cx,
+                || 0,
+                |num: u32| async move { num.to_string() },
+                true,
+            );
+
+            assert_eq!(
+                Some("0".to_string()),
+                state.get_untracked().and_then(|q| q.data().cloned())
+            );
+
+            assert!(matches!(
+                state.get_untracked(),
+                Some(QueryState::Loaded { .. })
+            ));
+
+            assert_eq!(1, use_query_client(cx).size().get_untracked());
+
+            use_query_client(cx).invalidate_query::<u32, String>(&0);
+
+            assert!(matches!(
+                state.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
+        });
+    }
+
+    #[test]
+    fn set_query_data() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+
+            let state = use_query_client(cx).get_query_state::<u32, String>(cx, || 0);
+            assert_eq!(None, state.get_untracked());
+            assert_eq!(0, use_query_client(cx).size().get_untracked());
+
+            use_query_client(cx).set_query_data::<u32, String>(0, |_| None);
+
+            assert_eq!(None, state.get_untracked());
+            assert_eq!(0, use_query_client(cx).size().get_untracked());
+
+            use_query_client(cx).set_query_data::<u32, String>(0, |_| {
+                Some(QueryData {
+                    data: "0".to_string(),
+                    updated_at: Instant::now(),
+                })
+            });
+
+            assert_eq!(1, use_query_client(cx).size().get_untracked());
+
+            assert_eq!(
+                Some("0".to_string()),
+                state.get_untracked().and_then(|q| q.data().cloned())
+            );
+
+            assert!(matches!(
+                state.get_untracked(),
+                Some(QueryState::Loaded { .. })
+            ));
+
+            use_query_client(cx).set_query_data::<u32, String>(0, |_| {
+                Some(QueryData {
+                    data: "1".to_string(),
+                    updated_at: Instant::now(),
+                })
+            });
+
+            assert_eq!(
+                Some("1".to_string()),
+                state.get_untracked().and_then(|q| q.data().cloned())
+            );
+        });
+    }
 }
