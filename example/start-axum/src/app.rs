@@ -108,6 +108,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
                 style:gap="1rem"
                 style:margin-top="1rem"
             >
+                <p>"Cache Size " {move || use_query_client(cx).size()}</p>
                 <p>"If you invalidate a post, it will automatically fetch on it's next usage."</p>
                 <button class="button" on:click=invalidate_one>
                     "Invalidate Post One"

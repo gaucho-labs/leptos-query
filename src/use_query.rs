@@ -2,7 +2,7 @@ use crate::instant::get_instant;
 use crate::query_executor::{create_executor, synchronize_state};
 use crate::query_result::QueryResult;
 use crate::{
-    create_query_result, get_query, Query, QueryData, QueryOptions, QueryState, RefetchFn,
+    create_query_result, get_query_signal, Query, QueryData, QueryOptions, QueryState, RefetchFn,
     ResourceOption,
 };
 use leptos::*;
@@ -78,7 +78,7 @@ where
     Fu: Future<Output = V> + 'static,
 {
     // Find relevant state.
-    let query = get_query(cx, key);
+    let query = get_query_signal(cx, key);
 
     // Update options.
     create_isomorphic_effect(cx, {

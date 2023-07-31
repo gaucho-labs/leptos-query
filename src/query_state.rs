@@ -38,24 +38,24 @@ pub enum QueryState<V> {
 }
 
 impl<V> QueryState<V> {
-    /// Returns the data contained within the QueryState, if present.
-    pub fn data(&self) -> Option<&V> {
+    /// Returns the QueryData for the current QueryState, if present.
+    pub fn query_data(&self) -> Option<&QueryData<V>> {
         match self {
             QueryState::Loading | QueryState::Created => None,
             QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                Some(&data.data)
+                Some(data)
             }
         }
     }
 
+    /// Returns the data contained within the QueryState, if present.
+    pub fn data(&self) -> Option<&V> {
+        self.query_data().map(|s| &s.data)
+    }
+
     /// Returns the last updated timestamp for the QueryState, if present.
     pub fn updated_at(&self) -> Option<Instant> {
-        match self {
-            QueryState::Loading | QueryState::Created => None,
-            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                Some(data.updated_at)
-            }
-        }
+        self.query_data().map(|s| s.updated_at)
     }
 }
 
