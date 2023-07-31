@@ -25,6 +25,16 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
 
 /// The Cache Client to store query data.
 /// Exposes utility functions to manage queries.
+///
+/// Queries can be:
+/// - [Prefetched](Self::prefetch_query)
+///     - Query will start loading before you invoke [use_query](use_query::use_query).
+/// - [Invalidated](Self::invalidate_query)
+///     - Query will refetch on next usage. Active queries are immediately refetched in the background.
+/// - [Introspected](Self::get_query_state)
+///     - Let's you see what the current value is of a query is.
+/// - [Manually updated](Self::set_query_data)
+///     - Useful when you have updated a value and you want to manually set it in cache instead of waiting for query to refetch.
 #[derive(Clone)]
 pub struct QueryClient {
     pub(crate) cx: Scope,
@@ -72,7 +82,8 @@ impl QueryClient {
     }
 
     /// Prefetch a query and store it in cache. Returns QueryResult.
-    /// If you don't need the result opt for [`QueryClient::prefetch_query()`](Self::prefetch_query)
+    /// If the entry already exists it will still be refetched.
+    /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
     pub fn fetch_query<K, V, Fu>(
         &self,
         cx: Scope,
@@ -115,7 +126,8 @@ impl QueryClient {
     }
 
     /// Prefetch a query and store it in cache.
-    /// If you need the result opt for [`QueryClient::fetch_query()`](Self::fetch_query)
+    /// If the entry already exists it will still be refetched.
+    /// If you need the result opt for [`fetch_query()`](Self::fetch_query)
     pub fn prefetch_query<K, V, Fu>(
         &self,
         cx: Scope,
@@ -146,8 +158,8 @@ impl QueryClient {
         }
     }
 
-    /// Retrieve the current state for an query in the cache.
-    /// If the query does not exist, None will be returned.
+    /// Retrieve the current state for an existing query's cached state.
+    /// If the query does not exist, [`None`](Option::None) will be returned.
     pub fn get_query_state<K, V>(
         self,
         cx: Scope,
@@ -235,8 +247,8 @@ impl QueryClient {
     /// A synchronous function that can be used to immediately set a query's data.
     /// If the query does not exist, it will be created.
     /// If you need to fetch the data asynchronously, use [`fetch_query`](Self::fetch_query) or [`prefetch_query`](Self::prefetch_query).
-    /// If the updater function returns None, the query data will not be updated.
-    /// If the updater function receives None as input, you can return None to bail out of the update and thus not create a new cache entry.
+    /// If the updater function returns [`None`](Option::None), the query data will not be updated.
+    /// If the updater function receives [`None`](Option::None) as input, you can return [`None`](Option::None) to bail out of the update and thus not create a new cache entry.
     pub fn set_query_data<K, V>(
         &self,
         key: K,
@@ -369,6 +381,7 @@ where
     })
 }
 
+// bool is if the state was created!
 pub(crate) fn get_query<K, V>(cx: Scope, key: K) -> (Query<K, V>, bool)
 where
     K: Hash + Eq + PartialEq + Clone + 'static,
