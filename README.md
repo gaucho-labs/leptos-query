@@ -169,7 +169,7 @@ For a complete working example see [the example directory](/example)
 
 A Query uses a resource under the hood, but provides additional functionality like caching, de-duplication, and invalidation.
 
-Resources are individually bound to the `Scope` they are created in. Queries are all bound to the `QueryClient` they are created in. Meaning, once you have a `QueryClient` in your app, you can access the value for a query anywhere in your app.
+[Resources](https://leptos-rs.github.io/leptos/async/10_resources.html) are individually bound to the `Scope` they are created in. Queries are all bound to the `QueryClient` they are created in. Meaning, once you have a `QueryClient` in your app, you can access the value for a query anywhere in your app.
 
 With a resource, you have to manually lift it to a higher scope if you want to preserve it. And this can be cumbersome if you have a many resources.
 
