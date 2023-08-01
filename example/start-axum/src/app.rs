@@ -3,7 +3,6 @@ use leptos::*;
 use leptos_meta::*;
 use leptos_query::*;
 use leptos_router::{Outlet, Route, Router, Routes};
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 #[component]
@@ -74,11 +73,11 @@ pub fn App(cx: Scope) -> impl IntoView {
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
     let invalidate_one = move |_| {
-        use_query_client(cx).invalidate_query::<PostId, String>(&PostId(1));
+        use_query_client(cx).invalidate_query::<u32, String>(&1);
     };
 
     let prefetch_two = move |_| {
-        use_query_client(cx).prefetch_query(cx, || PostId(2), get_post_unwrapped, true);
+        use_query_client(cx).prefetch_query(cx, || 2, get_post_unwrapped, true);
     };
 
     view! { cx,
@@ -122,12 +121,9 @@ fn HomePage(cx: Scope) -> impl IntoView {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct PostId(u32);
-
 fn use_post_query(
     cx: Scope,
-    key: impl Fn() -> PostId + 'static,
+    key: impl Fn() -> u32 + 'static,
 ) -> QueryResult<String, impl RefetchFn> {
     use_query(
         cx,
@@ -143,24 +139,24 @@ fn use_post_query(
     )
 }
 
-async fn get_post_unwrapped(id: PostId) -> String {
-    get_post(id).await.unwrap()
+async fn get_post_unwrapped(id: u32) -> String {
+    get_post(id).await.expect("Post to exist")
 }
 
 // Server function that fetches a post.
 #[server(GetPost, "/api")]
-pub async fn get_post(id: PostId) -> Result<String, ServerFnError> {
-    use std::time::Instant;
+pub async fn get_post(id: u32) -> Result<String, ServerFnError> {
+    use leptos_query::Instant;
 
-    log!("Fetching post: {:?}", id.0);
+    log!("Fetching post: {}", id);
     tokio::time::sleep(Duration::from_millis(2000)).await;
     let instant = Instant::now();
-    Ok(format!("Post {} : timestamp {:?}", id.0, instant))
+    Ok(format!("Post {}: Timestamp {}", id, instant))
 }
 
 #[component]
 fn OnePost(cx: Scope) -> impl IntoView {
-    view! { cx, <Post post_id=PostId(1)/> }
+    view! { cx, <Post post_id=1/> }
 }
 
 #[component]
@@ -168,14 +164,14 @@ fn MultiPost(cx: Scope) -> impl IntoView {
     view! { cx,
         <h1>"Requests are de-duplicated across components"</h1>
         <br/>
-        <Post post_id=PostId(2)/>
+        <Post post_id=2/>
         <hr/>
-        <Post post_id=PostId(2)/>
+        <Post post_id=2/>
     }
 }
 
 #[component]
-fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView {
+fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
     let QueryResult {
         data,
         state,
@@ -186,12 +182,12 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
         refetch,
     } = use_post_query(cx, post_id.clone());
 
-    create_effect(cx, move |_| log!("State: {:?}", state.get()));
+    create_effect(cx, move |_| log!("State: {:#?}", state.get()));
 
     view! { cx,
         <div class="container">
             <a href="/">"Home"</a>
-            <h2>"Post Key: " {move || post_id.get().0}</h2>
+            <h2>"Post Key: " {move || post_id.get()}</h2>
             <div>
                 <span>"Loading Status: "</span>
                 <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
@@ -232,7 +228,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<PostId>) -> impl IntoView 
 
 #[component]
 fn ReactivePost(cx: Scope) -> impl IntoView {
-    let (post_id, set_post_id) = create_signal(cx, PostId(1));
+    let (post_id, set_post_id) = create_signal(cx, 1);
 
     view! { cx,
         <Post post_id=post_id/>
@@ -240,10 +236,10 @@ fn ReactivePost(cx: Scope) -> impl IntoView {
             <button
                 class="button"
                 on:click=move |_| {
-                    if post_id.get().0 == 1 {
-                        set_post_id(PostId(2));
+                    if post_id.get() == 1 {
+                        set_post_id(2);
                     } else {
-                        set_post_id(PostId(1));
+                        set_post_id(1);
                     }
                 }
             >
@@ -266,7 +262,7 @@ pub async fn get_unique() -> Result<String, ServerFnError> {
 fn UniqueKey(cx: Scope) -> impl IntoView {
     let query = use_query(
         cx,
-        || Unique(),
+        || (),
         |_| async { get_unique().await.expect("Failed to retrieve unique") },
         QueryOptions::empty(),
     );

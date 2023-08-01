@@ -49,17 +49,13 @@
 //!     name: String,
 //! }
 //!
-//! // Create a Newtype for MonkeyId.
-//! #[derive(Clone, PartialEq, Eq, Hash)]
-//! struct MonkeyId(String);
-//!
 //! // Monkey fetcher.
-//! async fn get_monkey(id: MonkeyId) -> Monkey {
+//! async fn get_monkey(id: String) -> Monkey {
 //!     todo!()
 //! }
 //!
 //! // Query for a Monkey.
-//! fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+//! fn use_monkey_query(cx: Scope, id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
 //!     leptos_query::use_query(
 //!         cx,
 //!         id,
@@ -81,7 +77,7 @@
 //! ```rust
 //!
 //! #[component]
-//! fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
+//! fn MonkeyView(cx: Scope, id: String) -> impl IntoView {
 //!     let QueryResult {
 //!         data,
 //!         is_loading,

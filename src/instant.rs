@@ -5,13 +5,24 @@ use std::{
 
 /// Instant that can be used in both wasm and non-wasm environments.
 /// Contains Duration since Unix Epoch (Unix Timestamp).
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Instant(pub std::time::Duration);
 
 impl Instant {
     /// Get the current time as a Unix Timestamp.
     pub fn now() -> Self {
-        get_instant()
+        cfg_if::cfg_if! {
+            if #[cfg(all(feature = "hydrate", target_arch = "wasm32"))] {
+                let millis = js_sys::Date::now();
+                let duration = std::time::Duration::from_millis(millis as u64);
+                Instant(duration)
+            } else {
+                let duration = std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .expect("System clock was before 1970.");
+                Instant(duration)
+            }
+        }
     }
 }
 
@@ -32,17 +43,14 @@ impl Add<Instant> for Instant {
     }
 }
 
-pub(crate) fn get_instant() -> Instant {
-    cfg_if::cfg_if! {
-        if #[cfg(all(feature = "hydrate", target_arch = "wasm32"))] {
-            let millis = js_sys::Date::now();
-            let duration = std::time::Duration::from_millis(millis as u64);
-            Instant(duration)
-        } else {
-            let duration = std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .expect("System clock was before 1970.");
-            Instant(duration)
-        }
+impl std::fmt::Display for Instant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.as_millis())
+    }
+}
+
+impl std::fmt::Debug for Instant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Instant").field(&self.0.as_millis()).finish()
     }
 }

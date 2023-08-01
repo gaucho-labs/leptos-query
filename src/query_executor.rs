@@ -9,7 +9,6 @@ use std::{
 
 use crate::{
     evict_and_notify,
-    instant::get_instant,
     query::Query,
     use_query_client,
     util::{maybe_time_until_stale, time_until_stale, use_timeout},
@@ -31,7 +30,7 @@ pub(crate) fn create_executor<K, V, Fu>(
     fetcher: impl Fn(K) -> Fu + 'static,
 ) -> impl Fn() + Clone
 where
-    K: Clone + Hash + Eq + PartialEq + 'static,
+    K: Clone + Hash + Eq + 'static,
     V: Clone + 'static,
     Fu: Future<Output = V> + 'static,
 {
@@ -49,7 +48,7 @@ where
                         QueryState::Created => {
                             query.state.set(QueryState::Loading);
                             let data = fetcher(query.key.clone()).await;
-                            let updated_at = get_instant();
+                            let updated_at = crate::Instant::now();
                             let data = QueryData { data, updated_at };
                             query.state.set(QueryState::Loaded(data));
                         }
@@ -57,7 +56,7 @@ where
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
                             query.state.set(QueryState::Fetching(data));
                             let data = fetcher(query.key.clone()).await;
-                            let updated_at = get_instant();
+                            let updated_at = crate::Instant::now();
                             let data = QueryData { data, updated_at };
                             query.state.set(QueryState::Loaded(data));
                         }
@@ -74,7 +73,7 @@ pub(crate) fn synchronize_state<K, V>(
     query: Signal<Query<K, V>>,
     executor: impl Fn() + Clone + 'static,
 ) where
-    K: Hash + Eq + PartialEq + Clone + 'static,
+    K: Hash + Eq + Clone + 'static,
     V: Clone,
 {
     ensure_not_stale(cx, query, executor.clone());
@@ -87,7 +86,7 @@ pub(crate) fn synchronize_state<K, V>(
 
 pub(crate) fn synchronize_observer<K, V>(cx: Scope, query: Signal<Option<Query<K, V>>>)
 where
-    K: Hash + Eq + PartialEq + Clone + 'static,
+    K: Hash + Eq + Clone + 'static,
     V: Clone,
 {
     sync_observers(cx, query);

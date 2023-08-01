@@ -17,7 +17,7 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 
 - **Configurable Caching & SWR**: Queries are cached by default, ensuring quick access to your data. You can configure your stale and cache times per query with Stale While Revalidate (SWR) system.
 
-- **Reactivity at Its Core**: Leptos Query deeply integrates with Leptos' reactive system to transform asynchronous query fetchers into reactive Signals.
+- **Reactivity at the Core**: Leptos Query deeply integrates with Leptos' reactive system to transform asynchronous query fetchers into reactive Signals.
 
 - **Server-Side Rendering (SSR) Compatibility**: Fetch your queries on the server and smoothly serialize them to the client, just as you would with a Leptos Resource.
 
@@ -26,6 +26,8 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 - **Manual Invalidation**: Control when your queries should be invalidated and refetched for that ultimate flexibility.
 
 - **Scheduled Refetching**: Set up your queries to refetch on a customized schedule, keeping your data fresh as per your needs.
+
+- **Manual Query Data Mutations**: Useful when you have updated a value and you want to manually set it in cache instead of waiting for query to refetch.
 
 ## Installation
 
@@ -68,14 +70,6 @@ pub fn App(cx: Scope) -> impl IntoView {
 
 Then make a query function.
 
-**NOTE**:
-
-- A query is unique per Key `K`.
-- A query Key type `K` must only correspond to ONE UNIQUE Value `V` Type.
-  - Meaning a query Key type `K` cannot correspond to multiple `V` Types.
-
-TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/generics/new_types.html) when needed to ensure uniqueness.
-
 ```rust
 
  use leptos::*;
@@ -89,18 +83,14 @@ TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/gen
      name: String,
  }
 
- // Create a Newtype for MonkeyId.
- #[derive(Clone, PartialEq, Eq, Hash)]
- struct MonkeyId(String);
-
 
  // Monkey fetcher.
- async fn get_monkey(id: MonkeyId) -> Monkey {
+ async fn get_monkey(id: String) -> Monkey {
     todo!()
  }
 
  // Query for a Monkey.
- fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+ fn use_monkey_query(cx: Scope, id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
      leptos_query::use_query(
          cx,
          id,
@@ -109,8 +99,8 @@ TLDR: Wrap your key in a [Newtype](https://doc.rust-lang.org/rust-by-example/gen
              default_value: None,
              refetch_interval: None,
              resource_option: ResourceOption::NonBlocking,
-             // Considered stale after 5 seconds.
-             stale_time: Some(Duration::from_secs(5)),
+             // Considered stale after 10 seconds.
+             stale_time: Some(Duration::from_secs(10)),
              // Infinite cache time.
              cache_time: None,
          },
@@ -124,7 +114,7 @@ Now you can use the query in any component in your app.
 ```rust
 
 #[component]
-fn MonkeyView(cx: Scope, id: MonkeyId) -> impl IntoView {
+fn MonkeyView(cx: Scope, id: String) -> impl IntoView {
     let QueryResult {
         data,
         is_loading,

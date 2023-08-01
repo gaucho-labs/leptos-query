@@ -1,4 +1,3 @@
-use crate::instant::get_instant;
 use crate::query_executor::{create_executor, synchronize_state};
 use crate::query_result::QueryResult;
 use crate::{
@@ -13,18 +12,13 @@ use std::time::Duration;
 /// Creates a query. Useful for data fetching, caching, and synchronization with server state.
 ///
 /// A Query provides:
-/// - caching
-/// - de-duplication
-/// - invalidation
-/// - background refetching
-/// - refetch intervals
-/// - memory management with cache lifetimes
+/// - Caching
+/// - De-duplication
+/// - Invalidation
+/// - Background refetching
+/// - Refetch intervals
+/// - Memory management with cache lifetimes
 ///
-///
-/// Details:
-/// - A query is unique per Key `K`.
-/// - A query Key type `K` must only correspond to ONE UNIQUE Value `V` Type.
-/// - Meaning a query Key type `K` cannot correspond to multiple Value `V` Types.
 ///
 /// Example
 /// ```
@@ -39,17 +33,13 @@ use std::time::Duration;
 ///     name: String,
 /// }
 ///
-/// // Create a Newtype for MonkeyId.
-/// #[derive(Clone, PartialEq, Eq, Hash)]
-/// struct MonkeyId(String);
-///
 /// // Monkey fetcher.
-/// async fn get_monkey(id: MonkeyId) -> Monkey {
+/// async fn get_monkey(id: String) -> Monkey {
 ///     todo!()
 /// }
 ///
 /// // Query for a Monkey.
-/// fn use_monkey_query(cx: Scope, id: impl Fn() -> MonkeyId + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+/// fn use_monkey_query(cx: Scope, id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
 ///     leptos_query::use_query(
 ///         cx,
 ///         id,
@@ -73,7 +63,7 @@ pub fn use_query<K, V, Fu>(
     options: QueryOptions<V>,
 ) -> QueryResult<V, impl RefetchFn>
 where
-    K: Hash + Eq + PartialEq + Clone + 'static,
+    K: Hash + Eq + Clone + 'static,
     V: Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
@@ -174,7 +164,7 @@ where
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
             } else if let Some(ref data) = read {
                 if let QueryState::Created = query.state.get_untracked() {
-                    let updated_at = get_instant();
+                    let updated_at = crate::Instant::now();
                     let data = QueryData {
                         data: data.clone(),
                         updated_at,
