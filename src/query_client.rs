@@ -201,10 +201,10 @@ impl QueryClient {
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
     {
-        self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
-            cache.get(key).map(|state| state.mark_invalid())
-        })
-        .is_some()
+        let result = self
+            .use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(key).map(|q| q.state));
+
+        result.map(|state| try_mark_invalid(state)).unwrap_or(false)
     }
 
     /// Attempts to invalidate multiple entries in the Query Cache.
@@ -215,28 +215,45 @@ impl QueryClient {
     where
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
-        Keys: Iterator<Item = &'k K>,
+        Keys: IntoIterator<Item = &'k K> + 'static,
     {
-        let cache = self.cache.borrow();
-
+        // Find all states, drop borrow, then mark invalid.
+        let cache_borrowed = self.cache.borrow();
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
-        if let Some(cache) = cache.get(&type_key) {
-            if let Some(cache) = cache.as_any().downcast_ref::<CacheEntry<K, V>>() {
-                let invalidated = keys
-                    .into_iter()
-                    .filter(|key| {
-                        if let Some(state) = cache.0.get(key) {
-                            state.mark_invalid();
-                            true
-                        } else {
-                            false
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                return Some(invalidated);
-            }
+        let cache = cache_borrowed.get(&type_key)?;
+        let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
+        let states = keys
+            .into_iter()
+            .filter_map(|key| cache.0.get(key).map(move |q| (key, q.state)))
+            .collect::<Vec<_>>();
+
+        drop(cache_borrowed);
+
+        Some(
+            states
+                .into_iter()
+                .filter(|(_, state)| try_mark_invalid(*state))
+                .map(|(key, _)| key)
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    pub fn invalidate_all_queries<K, V>(&self) -> &Self
+    where
+        K: Clone + 'static,
+        V: Clone + 'static,
+    {
+        let result = self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+            Some(cache.values().map(|q| q.state).collect::<Vec<_>>())
+        });
+
+        if let Some(queries) = result {
+            queries.into_iter().for_each(|q| {
+                try_mark_invalid(q);
+            })
         }
-        None
+
+        self
     }
 
     /// Returns the current size of the cache.
@@ -263,46 +280,27 @@ impl QueryClient {
         &self,
         key: K,
         updater: impl FnOnce(Option<&QueryData<V>>) -> Option<QueryData<V>> + 'static,
-    ) where
+    ) -> &Self
+    where
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        enum SetResult {
-            Inserted,
-            Updated,
-            Nothing,
-        }
-        let result = self.use_cache(
-            move |(root_scope, cache): (Scope, &mut HashMap<K, Query<K, V>>)| match cache
-                .entry(key.clone())
-            {
-                Entry::Occupied(entry) => {
-                    let query = entry.get();
-                    // Only update query data if updater returns Some.
-                    if let Some(result) = updater(query.state.get_untracked().query_data()) {
-                        query.state.set(QueryState::Loaded(result));
-                        SetResult::Updated
-                    } else {
-                        SetResult::Nothing
-                    }
-                }
-                Entry::Vacant(entry) => {
-                    // Only insert query if updater returns Some.
-                    if let Some(result) = updater(None) {
-                        let query = Query::new(root_scope, key);
-                        query.state.set(QueryState::Loaded(result));
-                        entry.insert(query);
-                        SetResult::Inserted
-                    } else {
-                        SetResult::Nothing
-                    }
-                }
-            },
-        );
+        let result = {
+            let key = key.clone();
+            self.use_cache_option::<K, V, _, _>(move |cache| cache.get(&key).map(|q| q.state))
+        };
 
-        if let SetResult::Inserted = result {
-            self.notify.set(());
+        if let Some(state) = result {
+            // Only update query data if updater returns Some.
+            if let Some(result) = updater(state.get_untracked().query_data()) {
+                state.set(QueryState::Loaded(result));
+            }
+        } else if let Some(new_data) = updater(None) {
+            let (q, _) = self.get_or_create_query(key);
+            q.state.set(QueryState::Loaded(new_data));
         }
+
+        self
     }
 
     /// A synchronous function that can be used to immediately set a query's data. Will use [`Instant::now`](Instant::now) for [`updated_at`](QueryData::updated_at) if set is successful.
@@ -318,7 +316,8 @@ impl QueryClient {
         &self,
         key: K,
         updater: impl FnOnce(Option<&V>) -> Option<V> + 'static,
-    ) where
+    ) -> &Self
+    where
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
@@ -329,7 +328,8 @@ impl QueryClient {
                 data,
                 updated_at: Instant::now(),
             })
-        })
+        });
+        self
     }
 
     fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
@@ -341,12 +341,9 @@ impl QueryClient {
     {
         let cache = self.cache.borrow();
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
-        if let Some(cache) = cache.get(&type_key) {
-            if let Some(cache) = cache.as_any().downcast_ref::<CacheEntry<K, V>>() {
-                return func(&cache.0);
-            }
-        }
-        None
+        let cache = cache.get(&type_key)?;
+        let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
+        func(&cache.0)
     }
 
     fn use_cache<K, V, R>(
@@ -357,6 +354,8 @@ impl QueryClient {
         K: 'static,
         V: 'static,
     {
+        log!("Borrowing!");
+        // the AnyMap!
         let mut cache = self.cache.borrow_mut();
 
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
@@ -377,6 +376,35 @@ impl QueryClient {
         );
 
         func((self.cx, &mut cache.0))
+    }
+
+    fn get_or_create_query<K, V>(&self, key: K) -> (Query<K, V>, bool)
+    where
+        K: Clone + Eq + Hash + 'static,
+        V: Clone + 'static,
+    {
+        let result = self.use_cache(move |(root_scope, cache)| {
+            let entry = cache.entry(key.clone());
+
+            let (query, new) = match entry {
+                Entry::Occupied(entry) => {
+                    let entry = entry.into_mut();
+                    (entry, false)
+                }
+                Entry::Vacant(entry) => {
+                    let query = Query::new(root_scope, key);
+                    (entry.insert(query.clone()), true)
+                }
+            };
+            (query.clone(), new)
+        });
+
+        // Notify on insert.
+        if result.1 {
+            self.notify.set(());
+        }
+
+        result
     }
 }
 
@@ -414,42 +442,20 @@ where
     K: Hash + Eq + Clone + 'static,
     V: Clone + 'static,
 {
-    let key = create_memo(cx, move |_| key());
-
-    // Find relevant state.
-    Signal::derive(cx, move || {
-        let key = key.get();
-        get_query(cx, key)
+    create_memo(cx, move |_| {
+        let key = key();
+        use_query_client(cx).get_or_create_query(key)
     })
+    .into()
 }
 
-// bool is if the state was created!
-pub(crate) fn get_query<K, V>(cx: Scope, key: K) -> (Query<K, V>, bool)
-where
-    K: Hash + Eq + Clone + 'static,
-    V: Clone + 'static,
-{
-    let result = use_cache(cx, {
-        move |(root_scope, cache)| {
-            let entry = cache.entry(key.clone());
-
-            let (query, new) = match entry {
-                Entry::Occupied(entry) => {
-                    let entry = entry.into_mut();
-                    (entry, false)
-                }
-                Entry::Vacant(entry) => {
-                    let query = Query::new(root_scope, key);
-                    (entry.insert(query.clone()), true)
-                }
-            };
-            (query.clone(), new)
-        }
-    });
-    if result.1 {
-        use_query_client(cx).notify.set(());
+pub(crate) fn try_mark_invalid<V: Clone>(query_state: RwSignal<QueryState<V>>) -> bool {
+    if let QueryState::Loaded(data) = query_state.get_untracked() {
+        query_state.set(QueryState::Invalid(data));
+        true
+    } else {
+        false
     }
-    result
 }
 
 #[cfg(test)]
@@ -550,15 +556,29 @@ mod tests {
             provide_query_client(cx);
             let client = use_query_client(cx);
 
-            client
-                .clone()
-                .set_query_data_now::<u32, String>(0, |_| Some("0".to_string()));
+            client.set_query_data_now::<u32, String>(0, |_| Some("0".to_string()));
 
-            client
-                .clone()
-                .set_query_data_now::<u32, u32>(0, |_| Some(1234));
+            client.set_query_data_now::<u32, u32>(0, |_| Some(1234));
 
             assert_eq!(2, client.size().get_untracked());
+        });
+    }
+
+    #[test]
+    fn can_invalidate_while_subscribed() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+            let client = use_query_client(cx);
+
+            let subscription = client.clone().get_query_state::<u32, u32>(cx, || 0_u32);
+
+            create_isomorphic_effect(cx, move |_| {
+                subscription.get();
+            });
+
+            client.set_query_data_now::<u32, u32>(0_u32, |_| Some(1234));
+
+            client.invalidate_query::<u32, u32>(&0);
         });
     }
 }
