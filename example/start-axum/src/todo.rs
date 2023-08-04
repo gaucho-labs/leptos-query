@@ -43,7 +43,7 @@ fn TodoWithResource(cx: Scope) -> impl IntoView {
             style:align-items="center"
             style:height="30vh"
         >
-            <h2>"Todo with Resource" </h2>
+            <h2>"Todo with Resource"</h2>
             <label>"Todo ID"</label>
             <input
                 type="number"
@@ -77,12 +77,7 @@ fn TodoWithResource(cx: Scope) -> impl IntoView {
 fn TodoWithQuery(cx: Scope) -> impl IntoView {
     let (todo_id, set_todo_id) = create_signal(cx, 0_u32);
 
-    let QueryResult { data, .. } = use_query(
-        cx,
-        todo_id,
-        |id| async move { get_todo(id).await.unwrap() },
-        QueryOptions::default(),
-    );
+    let QueryResult { data, .. } = use_query(cx, todo_id, get_todo, QueryOptions::default());
 
     view! { cx,
         <div
@@ -92,7 +87,7 @@ fn TodoWithQuery(cx: Scope) -> impl IntoView {
             style:align-items="center"
             style:height="30vh"
         >
-            <h2>"Todo with Query" </h2>
+            <h2>"Todo with Query"</h2>
             <label>"Todo ID"</label>
             <input
                 type="number"
@@ -110,9 +105,8 @@ fn TodoWithQuery(cx: Scope) -> impl IntoView {
                     {move || {
                         data.get()
                             .map(|a| {
-                                match a {
+                                match a.ok().flatten() {
                                     Some(todo) => todo.content,
-                                    // This case breaks the hydration on SSR.
                                     None => "Not found".into(),
                                 }
                             })
@@ -162,7 +156,7 @@ fn AllTodos(cx: Scope) -> impl IntoView {
         async move {
             let _ = delete_todo(id.clone()).await;
             refetch();
-            use_query_client(cx).invalidate_query::<u32, Option<Todo>>(&id);
+            use_query_client(cx).invalidate_query::<u32, TodoResponse>(&id);
         }
     });
 
@@ -172,23 +166,28 @@ fn AllTodos(cx: Scope) -> impl IntoView {
             view! { cx, <p>"Loading..."</p> }
         }>
             <ul>
-                <For
-                    each=todos
-                    key=|todo| todo.id
-                    view=move |cx, todo| {
-                        view! { cx,
-                            <li>
-                                <span>{todo.id}</span>
-                                <span>": "</span>
-                                <span>{todo.content}</span>
-                                <span>" "</span>
-                                <button on:click=move |_| delete_todo.dispatch(todo.id) >
-                                    "X"
-                                </button>
-                            </li>
-                        }
+                <Show
+                    when=move || !todos.get().is_empty()
+                    fallback=|cx| {
+                        view! { cx, <p>"No todos"</p> }
                     }
-                />
+                >
+                    <For
+                        each=todos
+                        key=|todo| todo.id
+                        view=move |cx, todo| {
+                            view! { cx,
+                                <li>
+                                    <span>{todo.id}</span>
+                                    <span>": "</span>
+                                    <span>{todo.content}</span>
+                                    <span>" "</span>
+                                    <button on:click=move |_| delete_todo.dispatch(todo.id)>"X"</button>
+                                </li>
+                            }
+                        }
+                    />
+                </Show>
             </ul>
         </Suspense>
     }
@@ -204,7 +203,9 @@ fn AddTodoComponent(cx: Scope) -> impl IntoView {
 
     create_effect(cx, move |_| {
         if response.get().is_some() {
-            client.clone().invalidate_all_queries::<u32, Option<Todo>>();
+            // Invalidate individual TodoResponse.
+            client.clone().invalidate_all_queries::<u32, TodoResponse>();
+            // Invalidate all Todos.
             client.clone().invalidate_all_queries::<(), Vec<Todo>>();
         }
     });
@@ -220,6 +221,7 @@ fn AddTodoComponent(cx: Scope) -> impl IntoView {
 #[cfg(feature = "ssr")]
 static GLOBAL_TODOS: RwLock<Vec<Todo>> = RwLock::new(vec![]);
 
+type TodoResponse = Result<Option<Todo>, ServerFnError>;
 #[server(GetTodo, "/api")]
 async fn get_todo(id: u32) -> Result<Option<Todo>, ServerFnError> {
     tokio::time::sleep(Duration::from_millis(1000)).await;
