@@ -1,7 +1,6 @@
 use leptos::*;
 use leptos_query::*;
 use leptos_router::ActionForm;
-use std::{sync::RwLock, time::Duration};
 
 use serde::*;
 #[derive(Serialize, Deserialize, Clone)]
@@ -30,10 +29,7 @@ fn TodoWithResource(cx: Scope) -> impl IntoView {
 
     // todo_id is a Signal<String>, and that is fed into the resource fetcher function.
     // any time todo_id changes, the resource will re-execute.
-    let todo_resource: Resource<u32, Option<Todo>> =
-        create_resource(cx, todo_id, |id| async move { get_todo(id).await.unwrap() });
-
-    let todo = Signal::derive(cx, move || todo_resource.read(cx));
+    let todo_resource: Resource<u32, TodoResponse> = create_resource(cx, todo_id, get_todo);
 
     view! { cx,
         <div
@@ -59,9 +55,10 @@ fn TodoWithResource(cx: Scope) -> impl IntoView {
             }>
                 <p>
                     {move || {
-                        todo.get()
+                        todo_resource
+                            .read(cx)
                             .map(|a| {
-                                match a {
+                                match a.ok().flatten() {
                                     Some(todo) => todo.content,
                                     None => "Not found".into(),
                                 }
@@ -121,7 +118,7 @@ fn TodoWithQuery(cx: Scope) -> impl IntoView {
 #[component]
 fn TodoBody(cx: Scope, todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
     view! { cx,
-        <Suspense fallback=move || {
+        <Transition fallback=move || {
             view! { cx, <p>"Loading..."</p> }
         }>
             <p>
@@ -135,7 +132,7 @@ fn TodoBody(cx: Scope, todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
                         })
                 }}
             </p>
-        </Suspense>
+        </Transition>
     }
 }
 
@@ -162,7 +159,7 @@ fn AllTodos(cx: Scope) -> impl IntoView {
 
     view! { cx,
         <h2>"All Todos"</h2>
-        <Suspense fallback=move || {
+        <Transition fallback=move || {
             view! { cx, <p>"Loading..."</p> }
         }>
             <ul>
@@ -189,7 +186,7 @@ fn AllTodos(cx: Scope) -> impl IntoView {
                     />
                 </Show>
             </ul>
-        </Suspense>
+        </Transition>
     }
 }
 
@@ -202,26 +199,40 @@ fn AddTodoComponent(cx: Scope) -> impl IntoView {
     let client = use_query_client(cx);
 
     create_effect(cx, move |_| {
-        if response.get().is_some() {
+        // If action is successful.
+        if let Some(Ok(todo)) = response.get() {
+            let id = todo.id;
             // Invalidate individual TodoResponse.
-            client.clone().invalidate_all_queries::<u32, TodoResponse>();
-            // Invalidate all Todos.
+            client.clone().invalidate_query::<u32, TodoResponse>(&id);
+
+            // Invalidate AllTodos.
             client.clone().invalidate_all_queries::<(), Vec<Todo>>();
+
+            // Optimistic update.
+            let as_response = Ok(Some(todo));
+            client.set_query_data::<u32, TodoResponse>(id, |_| Some(as_response));
         }
     });
 
     view! { cx,
         <ActionForm action=add_todo>
             <label>"Add a Todo " <input type="text" name="content"/></label>
-            <input type="submit" value="Add"/>
+            <input type="submit" autocomplete="off" value="Add"/>
         </ActionForm>
     }
 }
 
-#[cfg(feature = "ssr")]
-static GLOBAL_TODOS: RwLock<Vec<Todo>> = RwLock::new(vec![]);
+cfg_if::cfg_if! {
+    if #[cfg(feature = "ssr")] {
+        use std::{sync::RwLock, time::Duration};
+        static GLOBAL_TODOS: RwLock<Vec<Todo>> = RwLock::new(vec![]);
+    }
+}
+
+// Read.
 
 type TodoResponse = Result<Option<Todo>, ServerFnError>;
+
 #[server(GetTodo, "/api")]
 async fn get_todo(id: u32) -> Result<Option<Todo>, ServerFnError> {
     tokio::time::sleep(Duration::from_millis(1000)).await;
@@ -236,23 +247,27 @@ pub async fn get_todos() -> Result<Vec<Todo>, ServerFnError> {
     Ok(todos.clone())
 }
 
-#[server(DeleteTodo, "/api")]
-async fn delete_todo(id: u32) -> Result<(), ServerFnError> {
-    let mut todos = GLOBAL_TODOS.write().unwrap();
-    todos.retain(|t| t.id != id);
-    Ok(())
-}
+// Mutate.
 
 #[server(AddTodo, "/api")]
-pub async fn add_todo(content: String) -> Result<(), ServerFnError> {
+pub async fn add_todo(content: String) -> Result<Todo, ServerFnError> {
     let mut todos = GLOBAL_TODOS.write().unwrap();
 
     let new_id = todos.last().map(|t| t.id + 1).unwrap_or(0);
 
-    todos.push(Todo {
+    let new_todo = Todo {
         id: new_id as u32,
         content,
-    });
+    };
 
+    todos.push(new_todo.clone());
+
+    Ok(new_todo)
+}
+
+#[server(DeleteTodo, "/api")]
+async fn delete_todo(id: u32) -> Result<(), ServerFnError> {
+    let mut todos = GLOBAL_TODOS.write().unwrap();
+    todos.retain(|t| t.id != id);
     Ok(())
 }
