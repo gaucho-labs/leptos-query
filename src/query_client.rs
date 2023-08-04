@@ -268,11 +268,12 @@ impl QueryClient {
     pub fn size(&self) -> Signal<usize> {
         let notify = self.notify;
         let cache = self.cache.clone();
-        Signal::derive(self.cx, move || {
+        create_memo(self.cx, move |_| {
             notify.get();
             let cache = cache.borrow();
             cache.values().map(|b| b.size()).sum()
         })
+        .into()
     }
 
     /// A synchronous function that can be used to immediately set a query's data.
@@ -290,28 +291,22 @@ impl QueryClient {
     /// use leptos::*;
     /// use leptos_query::*;
     ///
-    /// #[component]
-    /// fn SomeComponent(cx: Scope) -> impl IntoView {
-    ///    let client = use_query_client(cx);
-    ///    client.set_query_data::<u32, Monkey>(1, |maybe_data| {
-    ///         if let Some(data) = maybe_data {
-    ///             None
-    ///         } else {
-    ///            Some(QueryData::now(Monkey::new()))
-    ///         }
-    ///    })
-    ///     
-    ///     view!{cx,
-    ///         <div>
-    ///         </div>
-    ///    }
-    /// }
+    /// let cx: Scope = todo!();
+    /// let client = use_query_client(cx);
+    /// let new_monkey: Monkey = todo!();
+    /// // Overwrites existing cache data.
+    /// client.set_query_data::<u32, Monkey>(1, |_| Some(new_monkey));
     ///
+    /// // Only updates if query data exists.
+    /// client.set_query_data::<u32, Monkey>(1, |maybe_monkey| {
+    ///     let prev_monkey = maybe_monkey?;
+    ///     new_monkey
+    /// });
     /// ```
     pub fn set_query_data<K, V>(
         &self,
         key: K,
-        updater: impl FnOnce(Option<&QueryData<V>>) -> Option<QueryData<V>> + 'static,
+        updater: impl FnOnce(Option<&V>) -> Option<V> + 'static,
     ) -> &Self
     where
         K: Clone + Eq + Hash + 'static,
@@ -328,9 +323,13 @@ impl QueryClient {
             {
                 Entry::Occupied(entry) => {
                     let query = entry.get();
+                    let result = query.state.with_untracked(|s| {
+                        let data = s.query_data().map(|d| &d.data);
+                        updater(data)
+                    });
                     // Only update query data if updater returns Some.
-                    if let Some(result) = updater(query.state.get_untracked().query_data()) {
-                        query.state.set(QueryState::Loaded(result));
+                    if let Some(result) = result {
+                        query.state.set(QueryState::Loaded(QueryData::now(result)));
                         SetResult::Updated
                     } else {
                         SetResult::Nothing
@@ -340,7 +339,7 @@ impl QueryClient {
                     // Only insert query if updater returns Some.
                     if let Some(result) = updater(None) {
                         let query = Query::new(root_scope, key);
-                        query.state.set(QueryState::Loaded(result));
+                        query.state.set(QueryState::Loaded(QueryData::now(result)));
                         entry.insert(query);
                         SetResult::Inserted
                     } else {
@@ -354,32 +353,6 @@ impl QueryClient {
             self.notify.set(());
         }
 
-        self
-    }
-
-    /// A synchronous function that can be used to immediately set a query's data. Will use [`Instant::now`](Instant::now) for [`updated_at`](QueryData::updated_at) if set is successful.
-    ///
-    /// If the query does not exist, it will be created.
-    ///
-    /// If you need to fetch the data asynchronously, use [`fetch_query`](Self::fetch_query) or [`prefetch_query`](Self::prefetch_query).
-    ///
-    /// If the updater function returns [`None`](Option::None), the query data will not be updated.
-    ///
-    /// If the updater function receives [`None`](Option::None) as input, you can return [`None`](Option::None) to bail out of the update and thus not create a new cache entry.
-    pub fn set_query_data_now<K, V>(
-        &self,
-        key: K,
-        updater: impl FnOnce(Option<&V>) -> Option<V> + 'static,
-    ) -> &Self
-    where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
-    {
-        self.set_query_data(key, move |maybe_data| {
-            let input = maybe_data.map(|data| &data.data);
-            let result = updater(input);
-            result.map(|data| QueryData::now(data))
-        });
         self
     }
 
