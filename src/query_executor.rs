@@ -8,7 +8,6 @@ use std::{
 };
 
 use crate::{
-    evict_and_notify,
     query::Query,
     use_query_client,
     util::{maybe_time_until_stale, time_until_stale, use_timeout},
@@ -255,7 +254,7 @@ where
                                     let query = query.clone();
                                     move || {
                                         let removed =
-                                            evict_and_notify::<K, V>(root_scope, query.key);
+                                            use_query_client(root_scope).evict_and_notify::<K, V>(&query.key);
                                         if let Some(query) = removed {
                                             if query.observers.get() == 0 {
                                                 query.dispose();

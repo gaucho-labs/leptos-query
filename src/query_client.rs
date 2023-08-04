@@ -98,7 +98,7 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = get_query_signal(cx, key);
+        let state = self.get_query_signal(cx, key);
 
         let state = Signal::derive(cx, move || state.get().0);
 
@@ -142,7 +142,7 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = get_query_signal(cx, key);
+        let state = self.get_query_signal(cx, key);
 
         let state = Signal::derive(cx, move || state.get().0);
 
@@ -172,18 +172,12 @@ impl QueryClient {
         K: Hash + Eq + Clone + 'static,
         V: Clone,
     {
-        let key = create_memo(cx, move |_| key());
         let client = self.clone();
-
-        let key = Signal::derive(cx, move || {
-            // Cache size change.
-            client.notify.get();
-            key.get()
-        });
 
         // Memoize state to avoid unnecessary hashmap lookups.
         let maybe_query = create_memo(cx, move |_| {
-            let key = key.get();
+            let key = key();
+            client.notify.get();
             client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
         });
 
@@ -201,10 +195,10 @@ impl QueryClient {
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
     {
-        let result = self
-            .use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(key).map(|q| q.state));
-
-        result.map(|state| try_mark_invalid(state)).unwrap_or(false)
+        self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+            cache.get(key).map(|state| state.mark_invalid())
+        })
+        .unwrap_or(false)
     }
 
     /// Attempts to invalidate multiple entries in the Query Cache.
@@ -222,36 +216,50 @@ impl QueryClient {
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
         let cache = cache_borrowed.get(&type_key)?;
         let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
-        let states = keys
+        let result = keys
             .into_iter()
-            .filter_map(|key| cache.0.get(key).map(move |q| (key, q.state)))
+            .filter(|key| {
+                cache
+                    .0
+                    .get(key)
+                    .map(|query| query.mark_invalid())
+                    .unwrap_or(false)
+            })
             .collect::<Vec<_>>();
 
-        drop(cache_borrowed);
-
-        Some(
-            states
-                .into_iter()
-                .filter(|(_, state)| try_mark_invalid(*state))
-                .map(|(key, _)| key)
-                .collect::<Vec<_>>(),
-        )
+        Some(result)
     }
 
+    /// Invalidate all queries with a common <K, V> type.
+    ///
+    /// Example:
+    /// ```
+    /// use leptos::*;
+    /// use leptos_query::*;
+    ///
+    /// #[component]
+    /// fn SomeComponent(cx: Scope) -> impl IntoView {
+    ///     let client = use_query_client(cx);
+    ///     client.invalidate_all_queries::<String, Monkey>()
+    ///
+    ///     view!{cx,
+    ///         <div>
+    ///         </div>
+    ///     }
+    /// }
+    ///
+    /// ```
     pub fn invalidate_all_queries<K, V>(&self) -> &Self
     where
         K: Clone + 'static,
         V: Clone + 'static,
     {
-        let result = self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
-            Some(cache.values().map(|q| q.state).collect::<Vec<_>>())
+        self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+            for q in cache.values() {
+                q.mark_invalid();
+            }
+            Some(())
         });
-
-        if let Some(queries) = result {
-            queries.into_iter().for_each(|q| {
-                try_mark_invalid(q);
-            })
-        }
 
         self
     }
@@ -276,6 +284,30 @@ impl QueryClient {
     /// If the updater function returns [`None`](Option::None), the query data will not be updated.
     ///
     /// If the updater function receives [`None`](Option::None) as input, you can return [`None`](Option::None) to bail out of the update and thus not create a new cache entry.
+    ///
+    /// Example:
+    /// ```
+    /// use leptos::*;
+    /// use leptos_query::*;
+    ///
+    /// #[component]
+    /// fn SomeComponent(cx: Scope) -> impl IntoView {
+    ///    let client = use_query_client(cx);
+    ///    client.set_query_data::<u32, Monkey>(1, |maybe_data| {
+    ///         if let Some(data) = maybe_data {
+    ///             None
+    ///         } else {
+    ///            Some(QueryData::now(Monkey::new()))
+    ///         }
+    ///    })
+    ///     
+    ///     view!{cx,
+    ///         <div>
+    ///         </div>
+    ///    }
+    /// }
+    ///
+    /// ```
     pub fn set_query_data<K, V>(
         &self,
         key: K,
@@ -285,19 +317,41 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        let result = {
-            let key = key.clone();
-            self.use_cache_option::<K, V, _, _>(move |cache| cache.get(&key).map(|q| q.state))
-        };
+        enum SetResult {
+            Inserted,
+            Updated,
+            Nothing,
+        }
+        let result = self.use_cache(
+            move |(root_scope, cache): (Scope, &mut HashMap<K, Query<K, V>>)| match cache
+                .entry(key.clone())
+            {
+                Entry::Occupied(entry) => {
+                    let query = entry.get();
+                    // Only update query data if updater returns Some.
+                    if let Some(result) = updater(query.state.get_untracked().query_data()) {
+                        query.state.set(QueryState::Loaded(result));
+                        SetResult::Updated
+                    } else {
+                        SetResult::Nothing
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    // Only insert query if updater returns Some.
+                    if let Some(result) = updater(None) {
+                        let query = Query::new(root_scope, key);
+                        query.state.set(QueryState::Loaded(result));
+                        entry.insert(query);
+                        SetResult::Inserted
+                    } else {
+                        SetResult::Nothing
+                    }
+                }
+            },
+        );
 
-        if let Some(state) = result {
-            // Only update query data if updater returns Some.
-            if let Some(result) = updater(state.get_untracked().query_data()) {
-                state.set(QueryState::Loaded(result));
-            }
-        } else if let Some(new_data) = updater(None) {
-            let (q, _) = self.get_or_create_query(key);
-            q.state.set(QueryState::Loaded(new_data));
+        if let SetResult::Inserted = result {
+            self.notify.set(());
         }
 
         self
@@ -324,18 +378,15 @@ impl QueryClient {
         self.set_query_data(key, move |maybe_data| {
             let input = maybe_data.map(|data| &data.data);
             let result = updater(input);
-            result.map(|data| QueryData {
-                data,
-                updated_at: Instant::now(),
-            })
+            result.map(|data| QueryData::now(data))
         });
         self
     }
 
     fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
     where
-        K: Clone + 'static,
-        V: Clone + 'static,
+        K: 'static,
+        V: 'static,
         F: FnOnce(&HashMap<K, Query<K, V>>) -> Option<R>,
         R: 'static,
     {
@@ -346,6 +397,20 @@ impl QueryClient {
         func(&cache.0)
     }
 
+    fn use_cache_option_mut<K, V, F, R>(&self, func: F) -> Option<R>
+    where
+        K: 'static,
+        V: 'static,
+        F: FnOnce(&mut HashMap<K, Query<K, V>>) -> Option<R>,
+        R: 'static,
+    {
+        let mut cache = self.cache.borrow_mut();
+        let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
+        let cache = cache.get_mut(&type_key)?;
+        let cache = cache.as_any_mut().downcast_mut::<CacheEntry<K, V>>()?;
+        func(&mut cache.0)
+    }
+
     fn use_cache<K, V, R>(
         &self,
         func: impl FnOnce((Scope, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
@@ -354,8 +419,6 @@ impl QueryClient {
         K: 'static,
         V: 'static,
     {
-        log!("Borrowing!");
-        // the AnyMap!
         let mut cache = self.cache.borrow_mut();
 
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
@@ -406,55 +469,37 @@ impl QueryClient {
 
         result
     }
-}
 
-pub(crate) fn use_cache<K, V, R>(
-    cx: Scope,
-    func: impl FnOnce((Scope, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
-) -> R
-where
-    K: 'static,
-    V: 'static,
-{
-    let client = use_query_client(cx);
-    client.use_cache(func)
-}
+    pub(crate) fn get_query_signal<K, V>(
+        &self,
+        cx: Scope,
+        key: impl Fn() -> K + 'static,
+    ) -> Signal<(Query<K, V>, bool)>
+    where
+        K: Hash + Eq + Clone + 'static,
+        V: Clone + 'static,
+    {
+        let client = self.clone();
 
-pub(crate) fn evict_and_notify<K, V: 'static>(cx: Scope, key: K) -> Option<Query<K, V>>
-where
-    K: Hash + Eq + 'static,
-{
-    let result = use_cache::<K, V, Option<Query<K, V>>>(cx, move |(_, cache)| cache.remove(&key));
-
-    if result.is_some() {
-        let client = use_query_client(cx);
-        client.notify.set(());
+        // This memo is crucial to avoid crazy amounts of lookups.
+        create_memo(cx, move |_| {
+            let key = key();
+            client.get_or_create_query(key)
+        })
+        .into()
     }
-    result
-}
 
-// bool is if the state was created!
-pub(crate) fn get_query_signal<K, V>(
-    cx: Scope,
-    key: impl Fn() -> K + 'static,
-) -> Signal<(Query<K, V>, bool)>
-where
-    K: Hash + Eq + Clone + 'static,
-    V: Clone + 'static,
-{
-    create_memo(cx, move |_| {
-        let key = key();
-        use_query_client(cx).get_or_create_query(key)
-    })
-    .into()
-}
+    pub(crate) fn evict_and_notify<K, V: 'static>(&self, key: &K) -> Option<Query<K, V>>
+    where
+        K: Hash + Eq + 'static,
+        V: 'static,
+    {
+        let result = self.use_cache_option_mut(move |cache| cache.remove(key));
 
-pub(crate) fn try_mark_invalid<V: Clone>(query_state: RwSignal<QueryState<V>>) -> bool {
-    if let QueryState::Loaded(data) = query_state.get_untracked() {
-        query_state.set(QueryState::Invalid(data));
-        true
-    } else {
-        false
+        if result.is_some() {
+            self.notify.set(());
+        }
+        result
     }
 }
 
@@ -578,7 +623,7 @@ mod tests {
 
             client.set_query_data_now::<u32, u32>(0_u32, |_| Some(1234));
 
-            client.invalidate_query::<u32, u32>(&0);
+            assert!(client.invalidate_query::<u32, u32>(&0));
         });
     }
 }
