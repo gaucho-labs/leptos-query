@@ -209,7 +209,7 @@ impl QueryClient {
     where
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
-        Keys: IntoIterator<Item = &'k K> + 'static,
+        Keys: IntoIterator<Item = &'k K>,
     {
         // Find all states, drop borrow, then mark invalid.
         let cache_borrowed = self.cache.borrow();
@@ -535,12 +535,9 @@ mod tests {
             assert_eq!(None, state.get_untracked());
             assert_eq!(0, client.size().get_untracked());
 
-            client.clone().set_query_data::<u32, String>(0, |_| {
-                Some(QueryData {
-                    data: "0".to_string(),
-                    updated_at: Instant::now(),
-                })
-            });
+            client
+                .clone()
+                .set_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
             assert_eq!(1, client.clone().size().get_untracked());
 
@@ -554,12 +551,7 @@ mod tests {
                 Some(QueryState::Loaded { .. })
             ));
 
-            client.clone().set_query_data::<u32, String>(0, |_| {
-                Some(QueryData {
-                    data: "1".to_string(),
-                    updated_at: Instant::now(),
-                })
-            });
+            client.set_query_data::<u32, String>(0, |_| Some("1".to_string()));
 
             assert_eq!(
                 Some("1".to_string()),
@@ -574,9 +566,9 @@ mod tests {
             provide_query_client(cx);
             let client = use_query_client(cx);
 
-            client.set_query_data_now::<u32, String>(0, |_| Some("0".to_string()));
+            client.set_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
-            client.set_query_data_now::<u32, u32>(0, |_| Some(1234));
+            client.set_query_data::<u32, u32>(0, |_| Some(1234));
 
             assert_eq!(2, client.size().get_untracked());
         });
@@ -594,9 +586,57 @@ mod tests {
                 subscription.get();
             });
 
-            client.set_query_data_now::<u32, u32>(0_u32, |_| Some(1234));
+            client.set_query_data::<u32, u32>(0_u32, |_| Some(1234));
 
             assert!(client.invalidate_query::<u32, u32>(&0));
+            let state = subscription.get_untracked();
+
+            assert!(
+                matches!(state, Some(QueryState::Invalid { .. })),
+                "Query should be invalid"
+            );
+        });
+    }
+
+    #[test]
+    fn can_invalidate_multiple() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+            let client = use_query_client(cx);
+
+            client.set_query_data::<u32, u32>(0, |_| Some(1234));
+            client.set_query_data::<u32, u32>(1, |_| Some(1234));
+            let keys: Vec<u32> = vec![0, 1];
+            let invalidated = client
+                .invalidate_queries::<u32, u32, _>(keys.iter())
+                .unwrap_or_default();
+
+            assert_eq!(keys, invalidated.into_iter().cloned().collect::<Vec<_>>())
+        });
+    }
+
+    #[test]
+    fn can_invalidate_subset() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+            let client = use_query_client(cx);
+
+            client.set_query_data::<u32, u32>(0, |_| Some(1234));
+            client.set_query_data::<u32, u32>(1, |_| Some(1234));
+
+            let state0 = client.clone().get_query_state::<u32, u32>(cx, || 0);
+            let state1 = client.clone().get_query_state::<u32, u32>(cx, || 1);
+
+            client.invalidate_all_queries::<u32, u32>();
+
+            assert!(matches!(
+                state0.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
+            assert!(matches!(
+                state1.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
         });
     }
 }
