@@ -5,6 +5,7 @@ use crate::{
 use leptos::*;
 use std::{
     any::{Any, TypeId},
+    borrow::Borrow,
     cell::RefCell,
     collections::hash_map::Entry,
     collections::HashMap,
@@ -47,12 +48,16 @@ pub struct QueryClient {
 pub(crate) struct CacheEntry<K: 'static, V: 'static>(HashMap<K, Query<K, V>>);
 
 // Trait to enable cache introspection among distinct cache entry maps.
-pub(crate) trait CacheEntryTrait: CacheSize {
+pub(crate) trait CacheEntryTrait: CacheSize + CacheInvalidate {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-impl<K, V> CacheEntryTrait for CacheEntry<K, V> {
+impl<K, V> CacheEntryTrait for CacheEntry<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -69,6 +74,22 @@ pub(crate) trait CacheSize {
 impl<K, V> CacheSize for CacheEntry<K, V> {
     fn size(&self) -> usize {
         self.0.len()
+    }
+}
+
+pub(crate) trait CacheInvalidate {
+    fn invalidate(&self);
+}
+
+impl<K, V> CacheInvalidate for CacheEntry<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
+    fn invalidate(&self) {
+        for (_, query) in self.0.iter() {
+            query.mark_invalid();
+        }
     }
 }
 
@@ -190,29 +211,45 @@ impl QueryClient {
     /// Matching query is marked as invalid, and will be refetched in background once it's active.
     ///
     /// Returns true if the entry was successfully invalidated.
-    pub fn invalidate_query<K, V>(&self, key: &K) -> bool
+    ///
+    /// Example:
+    /// ```
+    /// let client = use_query_client(cx);
+    /// let invalidated = client.invalidate_query::<u32, u32>(0);
+    /// ```
+    pub fn invalidate_query<K, V>(&self, key: impl Borrow<K>) -> bool
     where
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
     {
         self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
-            cache.get(key).map(|state| state.mark_invalid())
+            cache
+                .get(Borrow::borrow(&key))
+                .map(|state| state.mark_invalid())
         })
         .unwrap_or(false)
     }
 
-    /// Attempts to invalidate multiple entries in the Query Cache.
+    /// Attempts to invalidate multiple entries in the Query Cache with a common <K, V> type.
     /// All matching queries are immediately marked as invalid and active queries are refetched in the background.
     ///
     /// Returns the keys that were successfully invalidated.
-    pub fn invalidate_queries<'s, 'k, K, V, Keys>(&'s self, keys: Keys) -> Option<Vec<&'k K>>
+    ///
+    /// Example:
+    /// ```
+    /// let client = use_query_client(cx);
+    /// let keys: Vec<u32> = vec![0, 1];
+    /// let invalidated = client.invalidate_queries::<u32, u32, _>(keys)
+    ///
+    /// ```
+    pub fn invalidate_queries<K, V, Q>(&self, keys: impl IntoIterator<Item = Q>) -> Option<Vec<Q>>
     where
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
-        Keys: IntoIterator<Item = &'k K>,
+        Q: Borrow<K>,
     {
         // Find all states, drop borrow, then mark invalid.
-        let cache_borrowed = self.cache.borrow();
+        let cache_borrowed = RefCell::borrow(&self.cache);
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
         let cache = cache_borrowed.get(&type_key)?;
         let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
@@ -221,7 +258,7 @@ impl QueryClient {
             .filter(|key| {
                 cache
                     .0
-                    .get(key)
+                    .get(Borrow::borrow(key))
                     .map(|query| query.mark_invalid())
                     .unwrap_or(false)
             })
@@ -237,19 +274,11 @@ impl QueryClient {
     /// use leptos::*;
     /// use leptos_query::*;
     ///
-    /// #[component]
-    /// fn SomeComponent(cx: Scope) -> impl IntoView {
-    ///     let client = use_query_client(cx);
-    ///     client.invalidate_all_queries::<String, Monkey>()
-    ///
-    ///     view!{cx,
-    ///         <div>
-    ///         </div>
-    ///     }
-    /// }
+    /// let client = use_query_client(cx);
+    /// client.invalidate_query_type::<String, Monkey>();
     ///
     /// ```
-    pub fn invalidate_all_queries<K, V>(&self) -> &Self
+    pub fn invalidate_query_type<K, V>(&self) -> &Self
     where
         K: Clone + 'static,
         V: Clone + 'static,
@@ -264,13 +293,43 @@ impl QueryClient {
         self
     }
 
+    /// Invalidates all queries in the cache.
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// use leptos::*;
+    /// use leptos_query::*;
+    ///
+    /// let client = use_query_client(cx);
+    /// client.invalidate_all_queries();
+    ///
+    /// ```
+    ///
+    pub fn invalidate_all_queries(&self) -> &Self {
+        for cache in RefCell::borrow(&self.cache).values() {
+            cache.invalidate();
+        }
+        self
+    }
+
     /// Returns the current size of the cache.
+    ///
+    /// Example:
+    /// ```
+    /// use leptos::*;
+    /// use leptos_query::*;
+    ///
+    /// let client = use_query_client(cx);
+    /// let cache_size = client.size();
+    ///
+    /// ```
     pub fn size(&self) -> Signal<usize> {
         let notify = self.notify;
         let cache = self.cache.clone();
         create_memo(self.cx, move |_| {
             notify.get();
-            let cache = cache.borrow();
+            let cache = RefCell::borrow(&cache);
             cache.values().map(|b| b.size()).sum()
         })
         .into()
@@ -294,6 +353,7 @@ impl QueryClient {
     /// let cx: Scope = todo!();
     /// let client = use_query_client(cx);
     /// let new_monkey: Monkey = todo!();
+    ///
     /// // Overwrites existing cache data.
     /// client.set_query_data::<u32, Monkey>(1, |_| Some(new_monkey));
     ///
@@ -363,7 +423,7 @@ impl QueryClient {
         F: FnOnce(&HashMap<K, Query<K, V>>) -> Option<R>,
         R: 'static,
     {
-        let cache = self.cache.borrow();
+        let cache = RefCell::borrow(&self.cache);
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
         let cache = cache.get(&type_key)?;
         let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
@@ -389,8 +449,8 @@ impl QueryClient {
         func: impl FnOnce((Scope, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
     ) -> R
     where
-        K: 'static,
-        V: 'static,
+        K: Clone + 'static,
+        V: Clone + 'static,
     {
         let mut cache = self.cache.borrow_mut();
 
@@ -511,7 +571,7 @@ mod tests {
 
             assert_eq!(1, client.clone().size().get_untracked());
 
-            client.clone().invalidate_query::<u32, String>(&0);
+            client.clone().invalidate_query::<u32, String>(0);
 
             assert!(matches!(
                 state.get_untracked(),
@@ -588,7 +648,7 @@ mod tests {
 
             client.set_query_data::<u32, u32>(0_u32, |_| Some(1234));
 
-            assert!(client.invalidate_query::<u32, u32>(&0));
+            assert!(client.invalidate_query::<u32, u32>(0));
             let state = subscription.get_untracked();
 
             assert!(
@@ -608,10 +668,77 @@ mod tests {
             client.set_query_data::<u32, u32>(1, |_| Some(1234));
             let keys: Vec<u32> = vec![0, 1];
             let invalidated = client
-                .invalidate_queries::<u32, u32, _>(keys.iter())
+                .invalidate_queries::<u32, u32, _>(keys.clone())
                 .unwrap_or_default();
 
-            assert_eq!(keys, invalidated.into_iter().cloned().collect::<Vec<_>>())
+            assert_eq!(keys, invalidated)
+        });
+    }
+
+    #[test]
+    fn can_invalidate_multiple_strings() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+            let client = use_query_client(cx);
+
+            let zero = "0".to_string();
+            let one = "1".to_string();
+
+            client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
+            client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
+
+            let keys = vec![zero, one];
+            let invalidated = client
+                .invalidate_queries::<String, String, _>(keys.clone())
+                .unwrap_or_default();
+
+            assert_eq!(keys, invalidated)
+        });
+    }
+
+    #[test]
+    fn invalidate_all() {
+        run_scope(create_runtime(), |cx| {
+            provide_query_client(cx);
+            let client = use_query_client(cx);
+
+            let zero = "0".to_string();
+            let one = "1".to_string();
+
+            client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
+            client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
+            client.set_query_data::<u32, u32>(0, |_| Some(1234));
+            client.set_query_data::<u32, u32>(1, |_| Some(5678));
+
+            let state0_string = client
+                .clone()
+                .get_query_state::<String, String>(cx, move || zero.clone());
+
+            let state1_string = client
+                .clone()
+                .get_query_state::<String, String>(cx, move || one.clone());
+
+            let state0 = client.clone().get_query_state::<u32, u32>(cx, || 0);
+            let state1 = client.clone().get_query_state::<u32, u32>(cx, || 1);
+
+            client.invalidate_all_queries();
+
+            assert!(matches!(
+                state0.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
+            assert!(matches!(
+                state1.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
+            assert!(matches!(
+                state0_string.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
+            assert!(matches!(
+                state1_string.get_untracked(),
+                Some(QueryState::Invalid { .. })
+            ));
         });
     }
 
@@ -627,7 +754,7 @@ mod tests {
             let state0 = client.clone().get_query_state::<u32, u32>(cx, || 0);
             let state1 = client.clone().get_query_state::<u32, u32>(cx, || 1);
 
-            client.invalidate_all_queries::<u32, u32>();
+            client.invalidate_query_type::<u32, u32>();
 
             assert!(matches!(
                 state0.get_untracked(),

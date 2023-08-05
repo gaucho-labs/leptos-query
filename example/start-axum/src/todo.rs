@@ -151,7 +151,7 @@ fn AllTodos(cx: Scope) -> impl IntoView {
         let id = *id;
         let refetch = refetch.clone();
         async move {
-            let _ = delete_todo(id.clone()).await;
+            let _ = delete_todo(id).await;
             refetch();
             use_query_client(cx).invalidate_query::<u32, TodoResponse>(&id);
         }
@@ -203,10 +203,10 @@ fn AddTodoComponent(cx: Scope) -> impl IntoView {
         if let Some(Ok(todo)) = response.get() {
             let id = todo.id;
             // Invalidate individual TodoResponse.
-            client.clone().invalidate_query::<u32, TodoResponse>(&id);
+            client.clone().invalidate_query::<u32, TodoResponse>(id);
 
             // Invalidate AllTodos.
-            client.clone().invalidate_all_queries::<(), Vec<Todo>>();
+            client.clone().invalidate_query::<(), Vec<Todo>>(());
 
             // Optimistic update.
             let as_response = Ok(Some(todo));
