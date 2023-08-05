@@ -2,7 +2,12 @@
 
 [![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
 [![docs.rs](https://docs.rs/leptos_query/badge.svg)](https://docs.rs/leptos_query)
-[![Logo](/logo.svg)](https://docs.rs/leptos_query)
+
+<p align="center">
+    <a href="https://docs.rs/leptos_query">
+        <img src="https://raw.githubusercontent.com/nicoburniske/leptos_query/main/logo.svg" alt="Leptos Query" width="150"/>
+    </a>
+</p>
 
 ## About
 
