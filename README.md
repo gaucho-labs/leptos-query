@@ -2,6 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
 [![docs.rs](https://docs.rs/leptos_query/badge.svg)](https://docs.rs/leptos_query)
+[![Logo](/logo.svg)](https://docs.rs/leptos_query)
 
 ## About
 
@@ -32,7 +33,7 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 ## Installation
 
 ```bash
-cargo add leptos_query --optional
+cargo add leptos_query
 ```
 
 Then add the relevant feature(s) to your `Cargo.toml`
