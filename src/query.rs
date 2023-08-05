@@ -56,9 +56,12 @@ where
     V: Clone + 'static,
 {
     /// Marks the resource as invalid, which will cause it to be refetched on next read.
-    pub(crate) fn mark_invalid(&self) {
+    pub(crate) fn mark_invalid(&self) -> bool {
         if let QueryState::Loaded(data) = self.state.get_untracked() {
-            self.state.set(QueryState::Invalid(data))
+            self.state.set(QueryState::Invalid(data));
+            true
+        } else {
+            false
         }
     }
 

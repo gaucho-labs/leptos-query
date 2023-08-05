@@ -83,6 +83,16 @@ pub struct QueryData<V> {
     pub updated_at: Instant,
 }
 
+impl<V> QueryData<V> {
+    /// Creates a new QueryData with the given data and the current time as the updated_at timestamp.
+    pub fn now(data: V) -> Self {
+        Self {
+            data,
+            updated_at: Instant::now(),
+        }
+    }
+}
+
 impl<V> std::fmt::Debug for QueryData<V>
 where
     V: std::fmt::Debug,

@@ -1,4 +1,7 @@
-use crate::error_template::{AppError, ErrorTemplate};
+use crate::{
+    error_template::{AppError, ErrorTemplate},
+    todo::InteractiveTodo,
+};
 use leptos::*;
 use leptos_meta::*;
 use leptos_query::*;
@@ -63,6 +66,12 @@ pub fn App(cx: Scope) -> impl IntoView {
                                 view! { cx, <UniqueKey/> }
                             }
                         />
+                        <Route
+                            path="todos"
+                            view=|cx| {
+                                view! { cx, <InteractiveTodo/> }
+                            }
+                        />
                     </Route>
                 </Routes>
             </main>
@@ -99,6 +108,9 @@ fn HomePage(cx: Scope) -> impl IntoView {
                 <li>
                     <a href="/unique">"Non-Dynamic Key"</a>
                 </li>
+                <li>
+                    <a href="/todos">"Todos"</a>
+                </li>
             </ul>
             <br/>
             <div
@@ -124,7 +136,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
 fn use_post_query(
     cx: Scope,
     key: impl Fn() -> u32 + 'static,
-) -> QueryResult<String, impl RefetchFn> {
+) -> QueryResult<Option<String>, impl RefetchFn> {
     use_query(
         cx,
         key,
@@ -139,8 +151,8 @@ fn use_post_query(
     )
 }
 
-async fn get_post_unwrapped(id: u32) -> String {
-    get_post(id).await.expect("Post to exist")
+async fn get_post_unwrapped(id: u32) -> Option<String> {
+    get_post(id).await.ok()
 }
 
 // Server function that fetches a post.
@@ -180,7 +192,7 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
         is_stale,
         is_invalid,
         refetch,
-    } = use_post_query(cx, post_id.clone());
+    } = use_post_query(cx, post_id);
 
     create_effect(cx, move |_| log!("State: {:#?}", state.get()));
 
@@ -209,12 +221,18 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
                 <Transition fallback=move || {
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
-                    {move || {
-                        data.get()
+                    <h2>
+                        {
+                           data
+                            .get()
                             .map(|post| {
-                                view! { cx, <h2>{post}</h2> }
+                                match post {
+                                    Some(post) => post,
+                                    None => "Not Found".into(),
+                                }
                             })
-                    }}
+                        }
+                    </h2>
                 </Transition>
             </div>
             <div>

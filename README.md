@@ -3,6 +3,12 @@
 [![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
 [![docs.rs](https://docs.rs/leptos_query/badge.svg)](https://docs.rs/leptos_query)
 
+<p align="center">
+    <a href="https://docs.rs/leptos_query">
+        <img src="https://raw.githubusercontent.com/nicoburniske/leptos_query/main/logo.svg" alt="Leptos Query" width="150"/>
+    </a>
+</p>
+
 ## About
 
 Leptos Query is a robust asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos), providing simplified data fetching, integrated reactivity, server-side rendering support, and intelligent cache management.
@@ -32,7 +38,7 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 ## Installation
 
 ```bash
-cargo add leptos_query --optional
+cargo add leptos_query
 ```
 
 Then add the relevant feature(s) to your `Cargo.toml`
