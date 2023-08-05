@@ -1,11 +1,16 @@
 # Leptos Query
 
-[![Crates.io](https://img.shields.io/crates/v/leptos_query.svg)](https://crates.io/crates/leptos_query)
-[![docs.rs](https://docs.rs/leptos_query/badge.svg)](https://docs.rs/leptos_query)
-
 <p align="center">
-    <a href="https://docs.rs/leptos_query">
+    <a href="https://github.com/nicoburniske/leptos_query">
         <img src="https://raw.githubusercontent.com/nicoburniske/leptos_query/main/logo.svg" alt="Leptos Query" width="150"/>
+    </a>
+</p>
+<p align="center">
+    <a href="https://crates.io/crates/leptos_query">
+        <img src="https://img.shields.io/crates/v/leptos_query.svg" alt="Crates.io"/>
+    </a>
+    <a href="https://crates.io/crates/leptos_query">
+        <img src="https://docs.rs/leptos_query/badge.svg" alt="Crates.io"/>
     </a>
 </p>
 
@@ -14,6 +19,8 @@
 Leptos Query is a robust asynchronous state management library for [Leptos](https://github.com/leptos-rs/leptos), providing simplified data fetching, integrated reactivity, server-side rendering support, and intelligent cache management.
 
 Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
+
+Read the introduction article here: [The Forging of Leptos Query](https://nicoburniske.com/thoughts/forging_leptos_query)
 
 ## Why Choose Leptos Query?
 
@@ -218,4 +225,4 @@ When a query is invalidated, the following happens:
 
 `is_fetching` is true when the query is in the process of fetching data.
 
-`is_loading` is true when the query is in the process of fetching data FOR THE FIRST TIME.
+`is_loading` is true when the query is in the process of fetching data for the first time.
