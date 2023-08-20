@@ -64,6 +64,8 @@ ssr = [
 
 ```
 
+## [See the FAQ](/FAQ.md)
+
 ## Quick Start
 
 In the root of your App, provide a query client:
@@ -175,8 +177,3 @@ fn MonkeyView(cx: Scope, id: String) -> impl IntoView {
 ```
 
 For a complete working example see [the example directory](/example)
-
-## Documentation
-
-1. [API Reference](https://docs.rs/leptos_query/latest/leptos_query/)
-2. [FAQ](/FAQ.md)
