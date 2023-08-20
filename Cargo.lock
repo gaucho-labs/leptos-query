@@ -834,6 +834,7 @@ dependencies = [
  "js-sys",
  "leptos",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

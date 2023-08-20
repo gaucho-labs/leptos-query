@@ -1,7 +1,9 @@
 use leptos::*;
+use tracing::{field::debug, Instrument, debug_span};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
+    fmt::Debug,
     future::Future,
     hash::Hash,
     rc::Rc,
@@ -29,40 +31,81 @@ pub(crate) fn create_executor<K, V, Fu>(
     fetcher: impl Fn(K) -> Fu + 'static,
 ) -> impl Fn() + Clone
 where
-    K: Clone + Hash + Eq + 'static,
-    V: Clone + 'static,
+    K: Debug + Clone + Hash + Eq + 'static,
+    V: Debug + Clone + 'static,
     Fu: Future<Output = V> + 'static,
 {
     let fetcher = Rc::new(fetcher);
     move || {
         let fetcher = fetcher.clone();
+
         SUPPRESS_QUERY_LOAD.with(|supressed| {
             if !supressed.get() {
-                spawn_local(async move {
-                    let query = query.get_untracked();
-                    let data_state = query.state.get_untracked();
-                    match data_state {
-                        QueryState::Fetching(_) | QueryState::Loading => (),
-                        // First load.
-                        QueryState::Created => {
-                            query.state.set(QueryState::Loading);
-                            let data = fetcher(query.key.clone()).await;
-                            let updated_at = crate::Instant::now();
-                            let data = QueryData { data, updated_at };
-                            query.state.set(QueryState::Loaded(data));
-                        }
-                        // Subsequent loads.
-                        QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                            query.state.set(QueryState::Fetching(data));
-                            let data = fetcher(query.key.clone()).await;
-                            let updated_at = crate::Instant::now();
-                            let data = QueryData { data, updated_at };
-                            query.state.set(QueryState::Loaded(data));
-                        }
-                    }
-                })
+                let query = query.get_untracked();
+                spawn_local(query_executor(query, fetcher))
             }
         })
+    }
+}
+
+#[tracing::instrument(
+    level = "info", 
+    skip(query, fetcher),
+    fields(
+        key_type = std::any::type_name::<K>(), 
+        value_type = std::any::type_name::<V>(),
+        key = ?query.key,
+    )
+)]
+async fn query_executor<K, V, F, Fu>(
+    query: Query<K, V>,
+    fetcher: Rc<F>,
+) where
+    K: Debug + Clone + Hash + Eq + 'static,
+    V: Debug + Clone + 'static,
+    F: Fn(K) -> Fu + 'static,
+    Fu: Future<Output = V> + 'static,
+{
+    let state = query.state.get_untracked();
+
+    let span = tracing::Span::current();
+
+    match state {
+        QueryState::Loading  => {
+            tracing::info!("Query load in progress");
+        }
+        QueryState::Fetching(_) => {
+            tracing::info!("Query fetch in progress");
+        }
+        // First load.
+        QueryState::Created => {
+            tracing::info!("Query loading");
+
+            query.state.set(QueryState::Loading);
+            let data = fetcher(query.key.clone()).instrument(span).await;
+
+            let updated_at = crate::Instant::now();
+            let data = QueryData { data, updated_at };
+            let state = QueryState::Loaded(data);
+
+            tracing::info!("Query load complete");
+            query.state.set(state);
+        }
+        // Subsequent loads.
+        QueryState::Loaded(data) | QueryState::Invalid(data) => {
+            let state = QueryState::Fetching(data);
+            tracing::info!("Query fetching");
+
+            query.state.set(state);
+            let data = fetcher(query.key.clone()).instrument(span).await;
+
+            let updated_at = crate::Instant::now();
+            let data = QueryData { data, updated_at };
+            let state = QueryState::Loaded(data);
+
+            tracing::info!("Query fetch complete");
+            query.state.set(state);
+        }
     }
 }
 
@@ -253,8 +296,8 @@ where
                                 let dispose = {
                                     let query = query.clone();
                                     move || {
-                                        let removed =
-                                            use_query_client(root_scope).evict_and_notify::<K, V>(&query.key);
+                                        let removed = use_query_client(root_scope)
+                                            .evict_and_notify::<K, V>(&query.key);
                                         if let Some(query) = removed {
                                             if query.observers.get() == 0 {
                                                 query.dispose();

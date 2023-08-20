@@ -9,6 +9,7 @@ use std::{
     cell::RefCell,
     collections::hash_map::Entry,
     collections::HashMap,
+    fmt::Debug,
     future::Future,
     hash::Hash,
     rc::Rc,
@@ -115,8 +116,8 @@ impl QueryClient {
         isomorphic: bool,
     ) -> QueryResult<V, impl RefetchFn>
     where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
+        K: Debug + Hash + Eq + Clone + 'static,
+        V: Debug + Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
         let state = self.get_query_signal(cx, key);
@@ -159,8 +160,8 @@ impl QueryClient {
         query: impl Fn(K) -> Fu + 'static,
         isomorphic: bool,
     ) where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
+        K: Debug + Hash + Eq + Clone + 'static,
+        V: Debug + Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
         let state = self.get_query_signal(cx, key);

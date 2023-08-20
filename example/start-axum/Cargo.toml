@@ -26,9 +26,18 @@ tracing = { version = "0.1.37", optional = true }
 http = "0.2.8"
 serde = "1.0.171"
 leptos_query = { path = "../../"}
+tracing-subscriber = { version = "0.3.17", optional = true } 
+tracing-subscriber-wasm = { version = "0.1.0", optional = true }
 
 [features]
-hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate", "leptos_query/hydrate"]
+hydrate = [
+    "leptos/hydrate", 
+    "leptos_meta/hydrate", 
+    "leptos_router/hydrate", 
+    "leptos_query/hydrate", 
+    "tracing-subscriber",
+    "tracing-subscriber-wasm"
+]
 ssr = [
     "dep:axum",
     "dep:tokio",

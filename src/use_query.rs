@@ -5,9 +5,7 @@ use crate::{
     ResourceOption,
 };
 use leptos::*;
-use std::future::Future;
-use std::hash::Hash;
-use std::time::Duration;
+use std::{fmt::Debug, future::Future, hash::Hash, time::Duration};
 
 /// Creates a query. Useful for data fetching, caching, and synchronization with server state.
 ///
@@ -63,8 +61,8 @@ pub fn use_query<K, V, Fu>(
     options: QueryOptions<V>,
 ) -> QueryResult<V, impl RefetchFn>
 where
-    K: Hash + Eq + Clone + 'static,
-    V: Clone + Serializable + 'static,
+    K: Debug + Hash + Eq + Clone + 'static,
+    V: Debug + Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
     // Find relevant state.

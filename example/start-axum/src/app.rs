@@ -194,7 +194,8 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
         refetch,
     } = use_post_query(cx, post_id);
 
-    create_effect(cx, move |_| log!("State: {:#?}", state.get()));
+    // Log the state of the query.
+    // create_effect(cx, move |_| log!("State: {:#?}", state.get()));
 
     view! { cx,
         <div class="container">
@@ -222,16 +223,15 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     <h2>
-                        {
-                           data
-                            .get()
-                            .map(|post| {
-                                match post {
-                                    Some(post) => post,
-                                    None => "Not Found".into(),
-                                }
-                            })
-                        }
+                        {move || {
+                            data.get()
+                                .map(|post| {
+                                    match post {
+                                        Some(post) => post,
+                                        None => "Not Found".into(),
+                                    }
+                                })
+                        }}
                     </h2>
                 </Transition>
             </div>

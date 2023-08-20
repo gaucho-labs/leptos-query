@@ -3,7 +3,7 @@ use leptos_query::*;
 use leptos_router::ActionForm;
 
 use serde::*;
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Todo {
     id: u32,
     content: String,

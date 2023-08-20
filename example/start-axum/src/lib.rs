@@ -11,12 +11,23 @@ cfg_if! { if #[cfg(feature = "hydrate")] {
 
     #[wasm_bindgen]
     pub fn hydrate() {
-        // initializes logging using the `log` crate
-        _ = console_log::init_with_level(log::Level::Debug);
-        console_error_panic_hook::set_once();
-
+        setup_logging();
         leptos::mount_to_body(move |cx| {
             view! { cx, <App/> }
         });
+    }
+
+    /// Setup browser console logging using [tracing_subscriber_wasm]
+    fn setup_logging() {
+        tracing_subscriber::fmt()
+          .with_writer(
+            // To avoide trace events in the browser from showing their
+            // JS backtrace, which is very annoying, in my opinion
+            tracing_subscriber_wasm::MakeConsoleWriter::default().map_trace_level_to(tracing::Level::DEBUG),
+          )
+          // For some reason, if we don't do this in the browser, we get
+          // a runtime error.
+          .without_time()
+          .init();
     }
 }}
