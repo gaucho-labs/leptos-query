@@ -18,7 +18,20 @@ thread_local! {
     static SUPPRESS_QUERY_LOAD: Cell<bool> = Cell::new(false);
 }
 
-#[doc(hidden)]
+/// Disable or enable query loading.
+///
+/// Useful for disabling query loads during App introspection, such as SSR Router integrations for Actix/Axum.
+///
+/// Example for `generate_route_list`
+/// ```
+/// // Disable query loading.
+/// leptos_query::suppress_query_load(true);
+/// // Introspect App Routes.
+/// leptos_axum::generate_route_list(|cx| view! { cx, <App/> }).await;
+/// // Enable query loading.
+/// leptos_query::suppress_query_load(false);
+/// ```
+
 pub fn suppress_query_load(suppress: bool) {
     SUPPRESS_QUERY_LOAD.with(|w| w.set(suppress));
 }
@@ -253,8 +266,8 @@ where
                                 let dispose = {
                                     let query = query.clone();
                                     move || {
-                                        let removed =
-                                            use_query_client(root_scope).evict_and_notify::<K, V>(&query.key);
+                                        let removed = use_query_client(root_scope)
+                                            .evict_and_notify::<K, V>(&query.key);
                                         if let Some(query) = removed {
                                             if query.observers.get() == 0 {
                                                 query.dispose();
