@@ -68,6 +68,8 @@ ssr = [
 
 ## Quick Start
 
+> If you are using SSR you may have to use `supress_query_load` in your server's main function. See the [FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md#why-am-i-getting-a-panic-on-my-leptos-main-function) for more information.
+
 In the root of your App, provide a query client:
 
 ```rust
