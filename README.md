@@ -9,10 +9,12 @@
     <a href="https://crates.io/crates/leptos_query">
         <img src="https://img.shields.io/crates/v/leptos_query.svg" alt="Crates.io"/>
     </a>
-    <a href="https://crates.io/crates/leptos_query">
+    <a href="https://docs.rs/leptos_query/latest/leptos_query/">
         <img src="https://docs.rs/leptos_query/badge.svg" alt="Crates.io"/>
     </a>
 </p>
+
+[FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md) | [Docs.rs](https://docs.rs/leptos/latest/leptos/) | [Examples](https://github.com/nicoburniske/leptos_query/tree/main/example/)
 
 ## About
 
@@ -63,8 +65,6 @@ ssr = [
  ]
 
 ```
-
-## [See the FAQ](/FAQ.md)
 
 ## Quick Start
 
