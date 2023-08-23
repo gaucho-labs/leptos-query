@@ -142,4 +142,5 @@ pub use crate::query_executor::*;
 pub use crate::query_options::*;
 pub use crate::query_result::*;
 pub use crate::query_state::*;
+pub use crate::schedule::*;
 pub use crate::use_query::*;

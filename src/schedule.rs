@@ -1,6 +1,7 @@
-use std::{marker::PhantomData, time::Duration};
+use dyn_clone::DynClone;
+use std::{marker::PhantomData, rc::Rc, time::Duration};
 
-pub trait Schedule {
+pub trait Schedule: DynClone {
     type Error;
 
     fn next(&mut self, error: &Self::Error) -> Option<Duration>;
@@ -29,14 +30,14 @@ pub trait Schedule {
         Sequence { a: self, b: other }
     }
 
-    fn map<F>(self, func: F) -> Mapped<Self, F>
+    fn map<F>(self, func: F) -> Mapped<Self, Rc<F>>
     where
         Self: Sized,
         F: Fn((&Self::Error, Option<Duration>)) -> Option<Duration>,
     {
         Mapped {
             schedule: self,
-            func,
+            func: Rc::new(func),
         }
     }
 
@@ -47,14 +48,14 @@ pub trait Schedule {
         Take { n, schedule: self }
     }
 
-    fn take_while<F: 'static>(self, func: F) -> TakeWhile<Self, F>
+    fn take_while<F: 'static>(self, func: F) -> TakeWhile<Self, Rc<F>>
     where
         Self: Sized,
         F: Fn((&Self::Error, Duration)) -> bool,
     {
         TakeWhile {
             schedule: self,
-            func,
+            func: Rc::new(func),
         }
     }
 
@@ -95,16 +96,27 @@ pub trait Schedule {
     where
         Self: Sized + 'static,
     {
-        ScheduleBuilt(std::rc::Rc::new(self))
+        ScheduleBuilt(Box::new(self))
     }
 }
 
+dyn_clone::clone_trait_object!(<E> Schedule<Error = E>);
+
 #[derive(Clone)]
-pub struct ScheduleBuilt<E>(std::rc::Rc<dyn Schedule<Error = E>>);
+pub struct ScheduleBuilt<E>(pub(crate) Box<dyn Schedule<Error = E>>);
 
 pub struct Recur<E> {
     n: u32,
     error_type: PhantomData<E>,
+}
+
+impl<E> Clone for Recur<E> {
+    fn clone(&self) -> Self {
+        Recur {
+            n: self.n,
+            error_type: self.error_type,
+        }
+    }
 }
 
 impl<E> Schedule for Recur<E> {
@@ -124,6 +136,15 @@ pub struct Spaced<E> {
     error_type: PhantomData<E>,
 }
 
+impl<E> Clone for Spaced<E> {
+    fn clone(&self) -> Self {
+        Spaced {
+            duration: self.duration,
+            error_type: self.error_type,
+        }
+    }
+}
+
 impl<E> Schedule for Spaced<E> {
     type Error = E;
     fn next(&mut self, _: &Self::Error) -> Option<Duration> {
@@ -134,6 +155,19 @@ impl<E> Schedule for Spaced<E> {
 pub struct Sequence<A, B> {
     a: A,
     b: B,
+}
+
+impl<A, B, E> Clone for Sequence<A, B>
+where
+    A: Schedule<Error = E>,
+    B: Schedule<Error = E>,
+{
+    fn clone(&self) -> Self {
+        Sequence {
+            a: dyn_clone::clone(&self.a),
+            b: dyn_clone::clone(&self.b),
+        }
+    }
 }
 
 impl<A, B, E> Schedule for Sequence<A, B>
@@ -156,6 +190,19 @@ where
 pub struct Union<A, B> {
     a: A,
     b: B,
+}
+
+impl<A, B, E> Clone for Union<A, B>
+where
+    A: Schedule<Error = E>,
+    B: Schedule<Error = E>,
+{
+    fn clone(&self) -> Self {
+        Union {
+            a: dyn_clone::clone(&self.a),
+            b: dyn_clone::clone(&self.b),
+        }
+    }
 }
 
 impl<A, B, E> Schedule for Union<A, B>
@@ -183,6 +230,19 @@ pub struct Intersect<A, B> {
     b: B,
 }
 
+impl<A, B, E> Clone for Intersect<A, B>
+where
+    A: Schedule<Error = E>,
+    B: Schedule<Error = E>,
+{
+    fn clone(&self) -> Self {
+        Intersect {
+            a: dyn_clone::clone(&self.a),
+            b: dyn_clone::clone(&self.b),
+        }
+    }
+}
+
 impl<A, B, E> Schedule for Intersect<A, B>
 where
     A: Schedule<Error = E>,
@@ -208,6 +268,17 @@ pub struct Exponential<E> {
     error_type: PhantomData<E>,
 }
 
+impl<E> Clone for Exponential<E> {
+    fn clone(&self) -> Self {
+        Exponential {
+            base: self.base,
+            n: self.n,
+            factor: self.factor,
+            error_type: self.error_type,
+        }
+    }
+}
+
 impl<E> Schedule for Exponential<E> {
     type Error = E;
     fn next(&mut self, _: &Self::Error) -> Option<Duration> {
@@ -228,7 +299,19 @@ pub struct Mapped<A, F> {
     func: F,
 }
 
-impl<A, F, E> Schedule for Mapped<A, F>
+impl<A, F, E> Clone for Mapped<A, Rc<F>>
+where
+    A: Schedule<Error = E>,
+    F: Fn((&E, Option<Duration>)) -> Option<Duration>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            schedule: dyn_clone::clone(&self.schedule),
+            func: self.func.clone(),
+        }
+    }
+}
+impl<A, F, E> Schedule for Mapped<A, Rc<F>>
 where
     A: Schedule<Error = E>,
     F: Fn((&E, Option<Duration>)) -> Option<Duration>,
@@ -262,12 +345,37 @@ where
     }
 }
 
+impl<A, E> Clone for Take<A>
+where
+    A: Schedule<Error = E>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            schedule: dyn_clone::clone(&self.schedule),
+            n: self.n.clone(),
+        }
+    }
+}
+
 pub struct TakeWhile<A, F> {
     schedule: A,
     func: F,
 }
 
-impl<A, F, E> Schedule for TakeWhile<A, F>
+impl<A, F, E> Clone for TakeWhile<A, Rc<F>>
+where
+    A: Schedule<Error = E>,
+    F: Fn((&E, Duration)) -> bool,
+{
+    fn clone(&self) -> Self {
+        Self {
+            schedule: dyn_clone::clone(&self.schedule),
+            func: self.func.clone(),
+        }
+    }
+}
+
+impl<A, F, E> Schedule for TakeWhile<A, Rc<F>>
 where
     A: Schedule<Error = E>,
     F: Fn((&E, Duration)) -> bool,
@@ -285,6 +393,19 @@ pub struct Clamp<A> {
     schedule: A,
     min: Option<Duration>,
     max: Option<Duration>,
+}
+
+impl<A, E> Clone for Clamp<A>
+where
+    A: Schedule<Error = E>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            schedule: dyn_clone::clone(&self.schedule),
+            min: self.min.clone(),
+            max: self.max.clone(),
+        }
+    }
 }
 
 impl<A, E> Schedule for Clamp<A>
@@ -311,26 +432,30 @@ where
     }
 }
 
-pub fn recurs<E>(n: u32) -> impl Schedule<Error = E> {
-    Recur {
-        n,
-        error_type: PhantomData,
-    }
-}
+pub struct Schedules();
 
-pub fn spaced<E>(d: Duration) -> impl Schedule<Error = E> {
-    Spaced {
-        duration: d,
-        error_type: PhantomData,
+impl Schedules {
+    pub fn recur<E>(n: u32) -> impl Schedule<Error = E> {
+        Recur {
+            n,
+            error_type: PhantomData,
+        }
     }
-}
 
-pub fn exponential<E>(base: Duration, factor: f32) -> impl Schedule<Error = E> {
-    Exponential {
-        n: 0,
-        base,
-        factor,
-        error_type: PhantomData,
+    pub fn spaced<E>(d: Duration) -> impl Schedule<Error = E> {
+        Spaced {
+            duration: d,
+            error_type: PhantomData,
+        }
+    }
+
+    pub fn exponential<E>(base: Duration, factor: f32) -> impl Schedule<Error = E> {
+        Exponential {
+            n: 0,
+            base,
+            factor,
+            error_type: PhantomData,
+        }
     }
 }
 
@@ -339,7 +464,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_recurs() {
-        let mut r = recurs(2);
+        let mut r = Schedules::recur(2);
         assert_eq!(Some(Duration::ZERO), r.next(&()));
         assert_eq!(Some(Duration::ZERO), r.next(&()));
         assert_eq!(None, r.next(&()));
@@ -348,7 +473,7 @@ mod tests {
     #[test]
     fn test_spaced() {
         let d = Duration::from_millis(500);
-        let mut schedule = recurs(2).intersect(spaced(d));
+        let mut schedule = Schedules::recur(2).intersect(Schedules::spaced(d));
         assert_eq!(Some(d), schedule.next(&()));
         assert_eq!(Some(d), schedule.next(&()));
         assert_eq!(None, schedule.next(&()));
@@ -357,8 +482,8 @@ mod tests {
     #[test]
     fn test_sequence() {
         let d = Duration::from_millis(500);
-        let left = recurs(2).intersect(spaced(d));
-        let right = recurs(2);
+        let left = Schedules::recur(2).intersect(Schedules::spaced(d));
+        let right = Schedules::recur(2);
         let mut schedule = left.concat(right);
 
         assert_eq!(Some(d), schedule.next(&()));
@@ -370,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_exponential() {
-        let mut schedule = exponential(Duration::from_millis(500), 2.0).take(6);
+        let mut schedule = Schedules::exponential(Duration::from_millis(500), 2.0).take(6);
 
         assert_eq!(Some(Duration::from_millis(500)), schedule.next(&()));
         assert_eq!(Some(Duration::from_millis(1000)), schedule.next(&()));
@@ -383,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_exponential_while() {
-        let mut schedule = exponential(Duration::from_millis(500), 2.0)
+        let mut schedule = Schedules::exponential(Duration::from_millis(500), 2.0)
             .take_while(|(_, d)| d < Duration::from_millis(2001));
 
         assert_eq!(Some(Duration::from_millis(500)), schedule.next(&()));
@@ -394,7 +519,7 @@ mod tests {
 
     #[test]
     fn test_exponential_clamp() {
-        let mut schedule = exponential(Duration::from_millis(100), 2.0)
+        let mut schedule = Schedules::exponential(Duration::from_millis(100), 2.0)
             .clamp_min(Duration::from_secs(1))
             .clamp_max(Duration::from_secs(4));
 

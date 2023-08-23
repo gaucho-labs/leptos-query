@@ -82,11 +82,11 @@ pub fn App(cx: Scope) -> impl IntoView {
 #[component]
 fn HomePage(cx: Scope) -> impl IntoView {
     let invalidate_one = move |_| {
-        use_query_client(cx).invalidate_query::<u32, String>(&1);
+        // use_query_client(cx).invalidate_query::<u32, String>(&1);
     };
 
     let prefetch_two = move |_| {
-        use_query_client(cx).prefetch_query(cx, || 2, get_post_unwrapped, true);
+        // use_query_client(cx).prefetch_query(cx, || 2, get_post_unwrapped, true);
     };
 
     view! { cx,
@@ -136,17 +136,18 @@ fn HomePage(cx: Scope) -> impl IntoView {
 fn use_post_query(
     cx: Scope,
     key: impl Fn() -> u32 + 'static,
-) -> QueryResult<Option<String>, impl RefetchFn> {
-    use_query(
+) -> QueryResult<String, ServerFnError, impl RefetchFn> {
+    use_query_with_retry(
         cx,
         key,
-        get_post_unwrapped,
+        get_post,
         QueryOptions {
             default_value: None,
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
             stale_time: Some(Duration::from_secs(5)),
             cache_time: Some(Duration::from_secs(60)),
+            retry: Schedules::recur(3).build(),
         },
     )
 }
@@ -159,11 +160,15 @@ async fn get_post_unwrapped(id: u32) -> Option<String> {
 #[server(GetPost, "/api")]
 pub async fn get_post(id: u32) -> Result<String, ServerFnError> {
     use leptos_query::Instant;
-
-    log!("Fetching post: {}", id);
     tokio::time::sleep(Duration::from_millis(2000)).await;
-    let instant = Instant::now();
-    Ok(format!("Post {}: Timestamp {}", id, instant))
+    // random number, if it's 0, we'll return an error.
+    // if random == 0 {
+    return Err(ServerFnError::ServerError("Random error".into()));
+    // } else {
+    //     log!("Fetching post: {}", id);
+    //     let instant = Instant::now();
+    //     Ok(format!("Post {}: Timestamp {}", id, instant))
+    // }
 }
 
 #[component]
@@ -222,16 +227,11 @@ fn Post(cx: Scope, #[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
                     view! { cx, <h2>"Loading..."</h2> }
                 }>
                     <h2>
-                        {
+                        {move || {
                            data
                             .get()
-                            .map(|post| {
-                                match post {
-                                    Some(post) => post,
-                                    None => "Not Found".into(),
-                                }
-                            })
                         }
+                    }
                     </h2>
                 </Transition>
             </div>

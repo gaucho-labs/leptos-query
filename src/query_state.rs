@@ -1,4 +1,5 @@
 use crate::Instant;
+use std::fmt::Debug;
 
 /// The lifecycle of a query.
 ///
@@ -36,28 +37,42 @@ pub enum QueryState<V, E> {
     /// The associated `QueryData<V>` object holds the invalidated data.
     Invalid(QueryData<V>),
 
+    /// Error has occured during fetching.
     Error(QueryError<V, E>),
-    Retrying(Option<QueryData<V>>),
-}
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct QueryError<V, E> {
-    pub(crate) error: E,
-    pub(crate) error_count: usize,
-    pub(crate) updated_at: Instant,
-    pub(crate) prev_data: Option<QueryData<V>>,
+    /// Retrying after error.
+    Retrying(QueryError<V, E>),
+
+    /// Query has errored the maximum number of times.
+    Fatal(QueryError<V, E>),
 }
 
 impl<V, E> QueryState<V, E> {
     /// Returns the QueryData for the current QueryState, if present.
     pub fn query_data(&self) -> Option<&QueryData<V>> {
         match self {
-            QueryState::Loading | QueryState::Created | QueryState::Retrying(None) => None,
-            QueryState::Fetching(data)
-            | QueryState::Loaded(data)
-            | QueryState::Invalid(data)
-            | QueryState::Retrying(Some(data)) => Some(data),
-            QueryState::Error(QueryError { prev_data, .. }) => prev_data.as_ref(),
+            QueryState::Loading | QueryState::Created => None,
+            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                Some(data)
+            }
+            QueryState::Error(QueryError { prev_data, .. })
+            | QueryState::Retrying(QueryError { prev_data, .. })
+            | QueryState::Fatal(QueryError { prev_data, .. }) => prev_data.as_ref(),
+        }
+    }
+
+    pub fn result(self) -> Option<Result<V, E>> {
+        match self {
+            QueryState::Fatal(QueryError { error, .. }) => Some(Err(error)),
+            QueryState::Loading | QueryState::Created => None,
+
+            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                Some(Ok(data.data))
+            }
+            QueryState::Error(QueryError { prev_data, .. })
+            | QueryState::Retrying(QueryError { prev_data, .. }) => {
+                prev_data.map(|d| d.data).map(Ok)
+            }
         }
     }
 
@@ -72,20 +87,47 @@ impl<V, E> QueryState<V, E> {
     }
 }
 
-// impl<V> std::fmt::Debug for QueryState<V>
-// where
-//     V: std::fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             Self::Created => write!(f, "Created"),
-//             Self::Loading => write!(f, "Loading"),
-//             Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
-//             Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
-//             Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
-//         }
-//     }
-// }
+impl<V, E> Debug for QueryState<V, E>
+where
+    V: Debug,
+    E: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Created => write!(f, "Created"),
+            Self::Loading => write!(f, "Loading"),
+            Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
+            Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
+            Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
+            QueryState::Error(arg0) => f.debug_tuple("Error").field(arg0).finish(),
+            QueryState::Retrying(arg0) => f.debug_tuple("Retrying").field(arg0).finish(),
+            QueryState::Fatal(arg0) => f.debug_tuple("Panic").field(arg0).finish(),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct QueryError<V, E> {
+    pub(crate) error: E,
+    pub(crate) error_count: usize,
+    pub(crate) updated_at: Instant,
+    pub(crate) prev_data: Option<QueryData<V>>,
+}
+
+impl<V, E> Debug for QueryError<V, E>
+where
+    V: Debug,
+    E: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryError")
+            .field("error", &self.error)
+            .field("error_count", &self.error_count)
+            .field("updated_at", &self.updated_at)
+            .field("prev_data", &self.prev_data)
+            .finish()
+    }
+}
 
 /// The latest data for a Query.
 #[derive(Clone, PartialEq, Eq)]
@@ -106,9 +148,9 @@ impl<V> QueryData<V> {
     }
 }
 
-impl<V> std::fmt::Debug for QueryData<V>
+impl<V> Debug for QueryData<V>
 where
-    V: std::fmt::Debug,
+    V: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QueryData")

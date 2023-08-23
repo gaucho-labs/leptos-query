@@ -16,6 +16,7 @@ cfg-if = "1"
 js-sys = {version = "0.3.64", optional = true}
 gloo-timers = { version = "0.2.6", optional = true, features = ["futures"] }
 tokio = { version = "1.29.1", optional = true, features = ["time"]}
+dyn-clone = "1.0.13"
 
 [features]
 hydrate = ["dep:js-sys", "dep:gloo-timers"] 

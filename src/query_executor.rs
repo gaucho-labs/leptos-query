@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::{leptos_dom::helpers::TimeoutHandle, *};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -9,6 +9,7 @@ use std::{
 
 use crate::{
     query::Query,
+    schedule::ScheduleBuilt,
     use_query_client,
     util::{maybe_time_until_stale, time_until_stale, use_timeout},
     QueryData, QueryError, QueryState,
@@ -35,6 +36,7 @@ where
     Fu: Future<Output = Result<V, E>> + 'static,
 {
     let fetcher = Rc::new(fetcher);
+
     move || {
         let fetcher = fetcher.clone();
         SUPPRESS_QUERY_LOAD.with(|supressed| {
@@ -46,8 +48,8 @@ where
                         QueryState::Fetching(_) | QueryState::Loading | QueryState::Retrying(_) => {
                             ()
                         }
-                        // First load.
-                        QueryState::Created => {
+                        // First load or recovering from Panic.
+                        QueryState::Created | QueryState::Fatal(_) => {
                             query.state.set(QueryState::Loading);
                             let result = fetcher(query.key.clone()).await;
                             let updated_at = crate::Instant::now();
@@ -58,7 +60,7 @@ where
                                 }
                                 Err(error) => query.state.set(QueryState::Error(QueryError {
                                     error,
-                                    error_count: 0,
+                                    error_count: 1,
                                     updated_at,
                                     prev_data: None,
                                 })),
@@ -76,16 +78,15 @@ where
                                 }
                                 Err(error) => query.state.set(QueryState::Error(QueryError {
                                     error,
-                                    error_count: 0,
+                                    error_count: 1,
                                     updated_at,
                                     prev_data: Some(data),
                                 })),
                             }
                         }
+                        // Retrying an error.
                         QueryState::Error(prev_error) => {
-                            query
-                                .state
-                                .set(QueryState::Retrying(prev_error.prev_data.clone()));
+                            query.state.set(QueryState::Retrying(prev_error.clone()));
                             let result = fetcher(query.key.clone()).await;
                             let updated_at = crate::Instant::now();
                             match result {
@@ -95,7 +96,7 @@ where
                                 }
                                 Err(error) => query.state.set(QueryState::Error(QueryError {
                                     error,
-                                    error_count: prev_error.error_count,
+                                    error_count: prev_error.error_count + 1,
                                     updated_at,
                                     prev_data: prev_error.prev_data,
                                 })),
@@ -113,6 +114,7 @@ pub(crate) fn synchronize_state<K, V, E>(
     cx: Scope,
     query: Signal<Query<K, V, E>>,
     executor: impl Fn() + Clone + 'static,
+    schedule: ScheduleBuilt<E>,
 ) where
     K: Hash + Eq + Clone + 'static,
     V: Clone,
@@ -121,9 +123,84 @@ pub(crate) fn synchronize_state<K, V, E>(
     ensure_not_stale(cx, query, executor.clone());
     ensure_not_invalid(cx, query, executor.clone());
     sync_refetch(cx, query, executor.clone());
+    error_handler(cx, query, executor, schedule);
 
     let query = Signal::derive(cx, move || Some(query.get()));
     synchronize_observer(cx, query);
+}
+
+pub(crate) fn error_handler<K, V, E>(
+    cx: Scope,
+    query: Signal<Query<K, V, E>>,
+    executor: impl Fn() + Clone + 'static,
+    schedule: ScheduleBuilt<E>,
+) where
+    K: Hash + Eq + Clone + 'static,
+    V: Clone,
+    E: Clone,
+{
+    create_effect(cx, {
+        move |last: Option<Option<(Query<K, V, E>, ScheduleBuilt<E>, Option<TimeoutHandle>)>>| {
+            let query = query.get();
+            let state = query.state.get();
+
+            // Reset on success.
+            if let QueryState::Loaded(_) = state {
+                if let Some(timeout) = last.flatten().and_then(|t| t.2) {
+                    timeout.clear();
+                }
+                return None;
+            } else {
+                // If different query, create fresh schedule.
+                let get_retry = {
+                    let query = query.clone();
+                    let schedule = schedule.clone();
+                    move || {
+                        if let Some((last_query, last_schedule, timeout)) = last.flatten() {
+                            if let Some(timeout) = timeout {
+                                timeout.clear()
+                            }
+                            if last_query == query {
+                                last_schedule
+                            } else {
+                                schedule.clone()
+                            }
+                        } else {
+                            schedule.clone()
+                        }
+                    }
+                };
+                if let QueryState::Error(error) = state {
+                    let mut schedule: ScheduleBuilt<E> = get_retry();
+
+                    log!("Failure detected. Retrying.");
+                    if let Some(timeout) = schedule.0.next(&error.error) {
+                        let timeout = set_timeout_with_handle(
+                            {
+                                let executor = executor.clone();
+                                move || {
+                                    executor();
+                                }
+                            },
+                            timeout,
+                        )
+                        .ok();
+
+                        Some((query, schedule, timeout))
+                    } else {
+                        // Fatality.
+                        query.state.set(QueryState::Fatal(error));
+                        None
+                    }
+                } else if let QueryState::Retrying(_) = state {
+                    let schedule = get_retry();
+                    Some((query, schedule, None))
+                } else {
+                    None
+                }
+            }
+        }
+    })
 }
 
 pub(crate) fn synchronize_observer<K, V, E>(cx: Scope, query: Signal<Option<Query<K, V, E>>>)
@@ -146,7 +223,14 @@ fn ensure_not_stale<K: Clone, V: Clone, E: Clone>(
         let query = query.get();
         let stale_time = query.stale_time;
 
-        if let (Some(updated_at), Some(stale_time)) = (
+        // If has previously failed fataly.
+        if query
+            .state
+            .with_untracked(|s| matches!(s, QueryState::Fatal(_)))
+        {
+            executor();
+        // If is currently stale.
+        } else if let (Some(updated_at), Some(stale_time)) = (
             query.state.get_untracked().updated_at(),
             stale_time.get_untracked(),
         ) {

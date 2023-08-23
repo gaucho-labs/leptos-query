@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     query::Query,
     util::{maybe_time_until_stale, use_timeout},
-    QueryState,
+    QueryError, QueryState,
 };
 use leptos::*;
 
@@ -17,7 +17,7 @@ where
 {
     /// The current value of the query. None if it has not been fetched yet.
     /// Should be called inside of a [`Transition`](leptos::Transition) or [`Suspense`](leptos::Suspense) component.
-    pub data: Signal<Option<V>>,
+    pub data: Signal<Option<Result<V, E>>>,
     /// The current state of the data.
     pub state: Signal<QueryState<V, E>>,
 
@@ -41,14 +41,35 @@ impl<R: Fn() + Clone> RefetchFn for R {}
 pub(crate) fn create_query_result<K: Clone, E: Clone, V: Clone>(
     cx: Scope,
     query: Signal<Query<K, V, E>>,
-    data: Signal<Option<V>>,
+    data: Signal<Option<Result<V, E>>>,
     executor: impl Fn() + Clone,
 ) -> QueryResult<V, E, impl RefetchFn> {
     let state = Signal::derive(cx, move || query.get().state.get());
 
-    let is_loading = Signal::derive(cx, move || matches!(state.get(), QueryState::Loading));
+    let is_loading = Signal::derive(cx, move || {
+        matches!(
+            state.get(),
+            QueryState::Loading
+                | QueryState::Error(QueryError {
+                    prev_data: None,
+                    ..
+                })
+                | QueryState::Retrying(QueryError {
+                    prev_data: None,
+                    ..
+                })
+        )
+    });
     let is_fetching = Signal::derive(cx, move || {
-        matches!(state.get(), QueryState::Loading | QueryState::Fetching(_))
+        matches!(
+            state.get(),
+            QueryState::Loading
+                | QueryState::Fetching(_)
+                | QueryState::Retrying(QueryError {
+                    prev_data: None,
+                    ..
+                })
+        )
     });
     let is_invalid = Signal::derive(cx, move || matches!(state.get(), QueryState::Invalid(_)));
 

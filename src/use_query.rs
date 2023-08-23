@@ -108,22 +108,12 @@ where
 
     let resource_fetcher = move |query: Query<K, V, E>| {
         async move {
-            match query.state.get_untracked() {
+            match query.state.get_untracked().result() {
                 // Immediately provide cached value.
-                QueryState::Loaded(data)
-                | QueryState::Invalid(data)
-                | QueryState::Fetching(data)
-                | QueryState::Retrying(Some(data))
-                | QueryState::Error(QueryError {
-                    prev_data: Some(data),
-                    ..
-                }) => ResourceData(Some(data.data)),
+                Some(data) => ResourceData(Some(data)),
 
                 // Suspend indefinitely and wait for interruption.
-                QueryState::Created
-                | QueryState::Loading
-                | QueryState::Error(_)
-                | QueryState::Retrying(None) => {
+                None => {
                     sleep(LONG_TIME).await;
                     ResourceData(None)
                 }
@@ -131,14 +121,19 @@ where
         }
     };
 
-    let resource: Resource<Query<K, V, E>, ResourceData<V>> = {
-        let default = options.default_value;
+    let QueryOptions {
+        default_value,
+        retry,
+        ..
+    } = options;
+
+    let resource: Resource<Query<K, V, E>, ResourceData<V, E>> = {
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource_with_initial_value(
                 cx,
                 move || query.get(),
                 resource_fetcher,
-                default.map(|default| ResourceData(Some(default))),
+                default_value.map(|default| ResourceData(Some(Ok(default)))),
             ),
             ResourceOption::Blocking => {
                 create_blocking_resource(cx, move || query.get(), resource_fetcher)
@@ -152,7 +147,7 @@ where
         if let QueryState::Loaded(data) = state {
             // Interrupt Suspense.
             if resource.loading().get_untracked() {
-                resource.set(ResourceData(Some(data.data)));
+                resource.set(ResourceData(Some(Ok(data.data))));
             } else {
                 resource.refetch();
             }
@@ -161,7 +156,7 @@ where
 
     let executor = create_executor(query, fetcher);
 
-    synchronize_state(cx, query, executor.clone());
+    synchronize_state(cx, query, executor.clone(), retry);
 
     // Ensure key changes are considered.
     create_isomorphic_effect(cx, {
@@ -191,7 +186,7 @@ where
                 executor()
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
-            } else if let Some(ref data) = read {
+            } else if let Some(Ok(ref data)) = read {
                 if let QueryState::Created = query.state.get_untracked() {
                     let updated_at = crate::Instant::now();
                     let data = QueryData {
@@ -226,24 +221,31 @@ async fn sleep(duration: Duration) {
 
 /// Wrapper type to enable using `Serializable`
 #[derive(Clone, Debug)]
-struct ResourceData<V>(Option<V>);
+struct ResourceData<V, E>(Option<Result<V, E>>);
 
-impl<V> Serializable for ResourceData<V>
+impl<V, E> Serializable for ResourceData<V, E>
 where
     V: Serializable,
+    E: Serializable,
 {
     fn ser(&self) -> Result<String, SerializationError> {
-        if let Some(ref value) = self.0 {
-            value.ser()
-        } else {
-            Ok("null".to_string())
+        match self.0 {
+            Some(Ok(ref value)) => value.ser(),
+            Some(Err(ref error)) => error.ser(),
+            None => Ok("null".to_string()),
         }
     }
 
     fn de(bytes: &str) -> Result<Self, SerializationError> {
         match bytes {
             "" | "null" => Ok(ResourceData(None)),
-            v => <V>::de(v).map(Some).map(ResourceData),
+            bytes => match <V>::de(bytes) {
+                Ok(value) => Ok(ResourceData(Some(Ok(value)))),
+                Err(_) => match <E>::de(bytes) {
+                    Ok(error) => Ok(ResourceData(Some(Err(error)))),
+                    Err(error) => Err(error),
+                },
+            },
         }
     }
 }
@@ -251,6 +253,24 @@ where
 /// A Type that cannot be instantiated. Useful to have a Result that cannot fail.
 #[derive(Clone)]
 pub enum Never {}
+
+impl Serializable for Never {
+    fn ser(&self) -> Result<String, SerializationError> {
+        match *self {}
+    }
+
+    fn de(_: &str) -> Result<Self, SerializationError> {
+        Err(SerializationError::Deserialize(std::rc::Rc::new(
+            NeverSerde(),
+        )))
+    }
+}
+
+impl std::fmt::Debug for Never {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
+    }
+}
 
 struct NeverSerde();
 
@@ -272,19 +292,5 @@ impl std::fmt::Display for NeverSerde {
 impl std::fmt::Debug for NeverSerde {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("NeverSerde").finish()
-    }
-}
-
-impl Serializable for Never {
-    fn ser(&self) -> Result<String, SerializationError> {
-        Err(SerializationError::Serialize(
-            std::rc::Rc::new(NeverSerde()),
-        ))
-    }
-
-    fn de(bytes: &str) -> Result<Self, SerializationError> {
-        Err(SerializationError::Deserialize(std::rc::Rc::new(
-            NeverSerde(),
-        )))
     }
 }
