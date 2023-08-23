@@ -1,12 +1,16 @@
 use std::time::Duration;
 
+use crate::schedule::{Schedule, ScheduleBuilt};
+
 /**
  * Options for a query [`crate::use_query::use_query`]
  */
 #[derive(Clone)]
-pub struct QueryOptions<V> {
+pub struct QueryOptions<V, E> {
     /// Placeholder value to use while the query is loading for the first time.
     pub default_value: Option<V>,
+    // Retry Schedule for a query.
+    pub retry: ScheduleBuilt<E>,
     /// The duration that should pass before a query is considered stale.
     /// If the query is stale, it will be refetched.
     /// If no stale time, the query will never be considered stale.
@@ -36,7 +40,7 @@ pub enum ResourceOption {
     Blocking,
 }
 
-impl<V> QueryOptions<V> {
+impl<V, E: 'static> QueryOptions<V, E> {
     /// Empty options.
     pub fn empty() -> Self {
         Self {
@@ -45,6 +49,7 @@ impl<V> QueryOptions<V> {
             cache_time: None,
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
+            retry: crate::schedule::spaced(Duration::ZERO).take(3).build(),
         }
     }
     /// QueryOption with custom stale_time.
@@ -55,6 +60,7 @@ impl<V> QueryOptions<V> {
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
+            retry: crate::schedule::spaced(Duration::ZERO).take(3).build(),
         }
     }
 
@@ -66,6 +72,7 @@ impl<V> QueryOptions<V> {
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: Some(refetch_interval),
             resource_option: ResourceOption::NonBlocking,
+            retry: crate::schedule::spaced(Duration::ZERO).take(3).build(),
         }
     }
 }
@@ -89,7 +96,7 @@ pub(crate) fn ensure_valid_stale_time(
 const DEFAULT_STALE_TIME: Duration = Duration::from_secs(0);
 const DEFAULT_CACHE_TIME: Duration = Duration::from_secs(60 * 5);
 
-impl<V> Default for QueryOptions<V> {
+impl<V, E: 'static> Default for QueryOptions<V, E> {
     fn default() -> Self {
         Self {
             default_value: None,
@@ -97,6 +104,7 @@ impl<V> Default for QueryOptions<V> {
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
+            retry: crate::schedule::spaced(Duration::ZERO).take(3).build(),
         }
     }
 }

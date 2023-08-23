@@ -4,33 +4,35 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 use crate::{ensure_valid_stale_time, QueryOptions, QueryState};
 
 #[derive(Clone)]
-pub(crate) struct Query<K, V>
+pub(crate) struct Query<K, V, E>
 where
     K: 'static,
     V: 'static,
+    E: 'static,
 {
     pub(crate) key: K,
     // State.
     pub(crate) observers: Rc<Cell<usize>>,
-    pub(crate) state: RwSignal<QueryState<V>>,
+    pub(crate) state: RwSignal<QueryState<V, E>>,
     // Config.
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) cache_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
 }
 
-impl<K: PartialEq, V> PartialEq for Query<K, V> {
+impl<K: PartialEq, V, E> PartialEq for Query<K, V, E> {
     fn eq(&self, other: &Self) -> bool {
         self.key == other.key
     }
 }
 
-impl<K: PartialEq, V> Eq for Query<K, V> {}
+impl<K: PartialEq, V, E> Eq for Query<K, V, E> {}
 
-impl<K, V> Query<K, V>
+impl<K, V, E> Query<K, V, E>
 where
     K: Clone + 'static,
     V: Clone + 'static,
+    E: Clone + 'static,
 {
     pub(crate) fn new(cx: Scope, key: K) -> Self {
         let stale_time = create_rw_signal(cx, None);
@@ -50,10 +52,11 @@ where
     }
 }
 
-impl<K, V> Query<K, V>
+impl<K, V, E> Query<K, V, E>
 where
     K: Clone + 'static,
     V: Clone + 'static,
+    E: Clone + 'static,
 {
     /// Marks the resource as invalid, which will cause it to be refetched on next read.
     pub(crate) fn mark_invalid(&self) -> bool {
@@ -65,7 +68,7 @@ where
         }
     }
 
-    pub(crate) fn overwrite_options(&self, options: QueryOptions<V>) {
+    pub(crate) fn overwrite_options(&self, options: QueryOptions<V, E>) {
         let stale_time = ensure_valid_stale_time(&options.stale_time, &options.cache_time);
 
         self.stale_time.set(stale_time);
@@ -77,7 +80,7 @@ where
     // The lowest stale time & refetch interval will be used.
     // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
     // Cache time behaves differently. It will only use the minimum cache time found.
-    pub(crate) fn update_options(&self, cx: Scope, options: QueryOptions<V>) {
+    pub(crate) fn update_options(&self, cx: Scope, options: QueryOptions<V, E>) {
         // Use the minimum cache time.
         match (self.cache_time.get_untracked(), options.cache_time) {
             (Some(current), Some(new)) if new < current => self.cache_time.set(Some(new)),
@@ -123,7 +126,7 @@ where
     }
 }
 
-impl<K, V> Query<K, V> {
+impl<K, V, E> Query<K, V, E> {
     pub(crate) fn dispose(&self) {
         self.state.dispose();
         self.stale_time.dispose();

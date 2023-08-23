@@ -1,8 +1,8 @@
 use crate::query_executor::{create_executor, synchronize_state};
 use crate::query_result::QueryResult;
 use crate::{
-    create_query_result, use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn,
-    ResourceOption,
+    create_query_result, use_query_client, Query, QueryData, QueryError, QueryOptions, QueryState,
+    RefetchFn, ResourceOption,
 };
 use leptos::*;
 use std::future::Future;
@@ -60,15 +60,36 @@ pub fn use_query<K, V, Fu>(
     cx: Scope,
     key: impl Fn() -> K + 'static,
     fetcher: impl Fn(K) -> Fu + 'static,
-    options: QueryOptions<V>,
-) -> QueryResult<V, impl RefetchFn>
+    options: QueryOptions<V, Never>,
+) -> QueryResult<V, Never, impl RefetchFn>
 where
     K: Hash + Eq + Clone + 'static,
     V: Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
+    let fetcher = std::rc::Rc::new(fetcher);
+    let fetcher = move |key: K| {
+        let fetcher = fetcher.clone();
+        async move { Ok(fetcher(key).await) as Result<V, Never> }
+    };
+
+    use_query_with_retry(cx, key, fetcher, options)
+}
+
+pub fn use_query_with_retry<K, V, E, Fu>(
+    cx: Scope,
+    key: impl Fn() -> K + 'static,
+    fetcher: impl Fn(K) -> Fu + 'static,
+    options: QueryOptions<V, E>,
+) -> QueryResult<V, E, impl Fn() + Clone>
+where
+    K: Hash + Eq + Clone + 'static,
+    V: Clone + Serializable + 'static,
+    E: Clone + Serializable + 'static,
+    Fu: Future<Output = Result<V, E>> + 'static,
+{
     // Find relevant state.
-    let query = use_query_client(cx).get_query_signal(cx, key);
+    let query = use_query_client(cx).get_query_signal::<K, V, E>(cx, key);
 
     // Update options.
     create_isomorphic_effect(cx, {
@@ -85,16 +106,24 @@ where
 
     let query = Signal::derive(cx, move || query.get().0);
 
-    let resource_fetcher = move |query: Query<K, V>| {
+    let resource_fetcher = move |query: Query<K, V, E>| {
         async move {
             match query.state.get_untracked() {
                 // Immediately provide cached value.
                 QueryState::Loaded(data)
                 | QueryState::Invalid(data)
-                | QueryState::Fetching(data) => ResourceData(Some(data.data)),
+                | QueryState::Fetching(data)
+                | QueryState::Retrying(Some(data))
+                | QueryState::Error(QueryError {
+                    prev_data: Some(data),
+                    ..
+                }) => ResourceData(Some(data.data)),
 
                 // Suspend indefinitely and wait for interruption.
-                QueryState::Created | QueryState::Loading => {
+                QueryState::Created
+                | QueryState::Loading
+                | QueryState::Error(_)
+                | QueryState::Retrying(None) => {
                     sleep(LONG_TIME).await;
                     ResourceData(None)
                 }
@@ -102,7 +131,7 @@ where
         }
     };
 
-    let resource: Resource<Query<K, V>, ResourceData<V>> = {
+    let resource: Resource<Query<K, V, E>, ResourceData<V>> = {
         let default = options.default_value;
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource_with_initial_value(
@@ -137,7 +166,7 @@ where
     // Ensure key changes are considered.
     create_isomorphic_effect(cx, {
         let executor = executor.clone();
-        move |prev_query: Option<Query<K, V>>| {
+        move |prev_query: Option<Query<K, V, E>>| {
             let query = query.get();
             if let Some(prev_query) = prev_query {
                 if prev_query != query {
@@ -216,5 +245,46 @@ where
             "" | "null" => Ok(ResourceData(None)),
             v => <V>::de(v).map(Some).map(ResourceData),
         }
+    }
+}
+
+/// A Type that cannot be instantiated. Useful to have a Result that cannot fail.
+#[derive(Clone)]
+pub enum Never {}
+
+struct NeverSerde();
+
+impl std::error::Error for NeverSerde {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        "description() is deprecated; use Display"
+    }
+}
+
+impl std::fmt::Display for NeverSerde {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("NeverSerde")
+    }
+}
+impl std::fmt::Debug for NeverSerde {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("NeverSerde").finish()
+    }
+}
+
+impl Serializable for Never {
+    fn ser(&self) -> Result<String, SerializationError> {
+        Err(SerializationError::Serialize(
+            std::rc::Rc::new(NeverSerde()),
+        ))
+    }
+
+    fn de(bytes: &str) -> Result<Self, SerializationError> {
+        Err(SerializationError::Deserialize(std::rc::Rc::new(
+            NeverSerde(),
+        )))
     }
 }

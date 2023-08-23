@@ -11,7 +11,7 @@ use crate::{
     query::Query,
     use_query_client,
     util::{maybe_time_until_stale, time_until_stale, use_timeout},
-    QueryData, QueryState,
+    QueryData, QueryError, QueryState,
 };
 
 thread_local! {
@@ -24,14 +24,15 @@ pub fn suppress_query_load(suppress: bool) {
 }
 
 // Create Executor function which will execute task in `spawn_local` and update state.
-pub(crate) fn create_executor<K, V, Fu>(
-    query: Signal<Query<K, V>>,
+pub(crate) fn create_executor<K, V, E, Fu>(
+    query: Signal<Query<K, V, E>>,
     fetcher: impl Fn(K) -> Fu + 'static,
 ) -> impl Fn() + Clone
 where
     K: Clone + Hash + Eq + 'static,
     V: Clone + 'static,
-    Fu: Future<Output = V> + 'static,
+    E: Clone + 'static,
+    Fu: Future<Output = Result<V, E>> + 'static,
 {
     let fetcher = Rc::new(fetcher);
     move || {
@@ -42,22 +43,63 @@ where
                     let query = query.get_untracked();
                     let data_state = query.state.get_untracked();
                     match data_state {
-                        QueryState::Fetching(_) | QueryState::Loading => (),
+                        QueryState::Fetching(_) | QueryState::Loading | QueryState::Retrying(_) => {
+                            ()
+                        }
                         // First load.
                         QueryState::Created => {
                             query.state.set(QueryState::Loading);
-                            let data = fetcher(query.key.clone()).await;
+                            let result = fetcher(query.key.clone()).await;
                             let updated_at = crate::Instant::now();
-                            let data = QueryData { data, updated_at };
-                            query.state.set(QueryState::Loaded(data));
+                            match result {
+                                Ok(data) => {
+                                    let data = QueryData { data, updated_at };
+                                    query.state.set(QueryState::Loaded(data));
+                                }
+                                Err(error) => query.state.set(QueryState::Error(QueryError {
+                                    error,
+                                    error_count: 0,
+                                    updated_at,
+                                    prev_data: None,
+                                })),
+                            }
                         }
                         // Subsequent loads.
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                            query.state.set(QueryState::Fetching(data));
-                            let data = fetcher(query.key.clone()).await;
+                            query.state.set(QueryState::Fetching(data.clone()));
+                            let result = fetcher(query.key.clone()).await;
                             let updated_at = crate::Instant::now();
-                            let data = QueryData { data, updated_at };
-                            query.state.set(QueryState::Loaded(data));
+                            match result {
+                                Ok(data) => {
+                                    let data = QueryData { data, updated_at };
+                                    query.state.set(QueryState::Loaded(data));
+                                }
+                                Err(error) => query.state.set(QueryState::Error(QueryError {
+                                    error,
+                                    error_count: 0,
+                                    updated_at,
+                                    prev_data: Some(data),
+                                })),
+                            }
+                        }
+                        QueryState::Error(prev_error) => {
+                            query
+                                .state
+                                .set(QueryState::Retrying(prev_error.prev_data.clone()));
+                            let result = fetcher(query.key.clone()).await;
+                            let updated_at = crate::Instant::now();
+                            match result {
+                                Ok(data) => {
+                                    let data = QueryData { data, updated_at };
+                                    query.state.set(QueryState::Loaded(data));
+                                }
+                                Err(error) => query.state.set(QueryState::Error(QueryError {
+                                    error,
+                                    error_count: prev_error.error_count,
+                                    updated_at,
+                                    prev_data: prev_error.prev_data,
+                                })),
+                            }
                         }
                     }
                 })
@@ -67,13 +109,14 @@ where
 }
 
 // Start synchronization effects.
-pub(crate) fn synchronize_state<K, V>(
+pub(crate) fn synchronize_state<K, V, E>(
     cx: Scope,
-    query: Signal<Query<K, V>>,
+    query: Signal<Query<K, V, E>>,
     executor: impl Fn() + Clone + 'static,
 ) where
     K: Hash + Eq + Clone + 'static,
     V: Clone,
+    E: Clone,
 {
     ensure_not_stale(cx, query, executor.clone());
     ensure_not_invalid(cx, query, executor.clone());
@@ -83,19 +126,20 @@ pub(crate) fn synchronize_state<K, V>(
     synchronize_observer(cx, query);
 }
 
-pub(crate) fn synchronize_observer<K, V>(cx: Scope, query: Signal<Option<Query<K, V>>>)
+pub(crate) fn synchronize_observer<K, V, E>(cx: Scope, query: Signal<Option<Query<K, V, E>>>)
 where
     K: Hash + Eq + Clone + 'static,
     V: Clone,
+    E: Clone,
 {
     sync_observers(cx, query);
     ensure_cache_cleanup(cx, query);
 }
 
 /// On mount, ensure that the resource is not stale
-fn ensure_not_stale<K: Clone, V: Clone>(
+fn ensure_not_stale<K: Clone, V: Clone, E: Clone>(
     cx: Scope,
-    query: Signal<Query<K, V>>,
+    query: Signal<Query<K, V, E>>,
     executor: impl Fn() + Clone + 'static,
 ) {
     create_isomorphic_effect(cx, move |_| {
@@ -114,9 +158,9 @@ fn ensure_not_stale<K: Clone, V: Clone>(
 }
 
 /// Refetch data once marked as invalid.
-fn ensure_not_invalid<K: Clone, V: Clone>(
+fn ensure_not_invalid<K: Clone, V: Clone, E: Clone>(
     cx: Scope,
-    state: Signal<Query<K, V>>,
+    state: Signal<Query<K, V, E>>,
     executor: impl Fn() + 'static,
 ) {
     create_isomorphic_effect(cx, move |_| {
@@ -129,10 +173,14 @@ fn ensure_not_invalid<K: Clone, V: Clone>(
 }
 
 /// Effect for refetching query on interval, if present.
-fn sync_refetch<K, V>(cx: Scope, query: Signal<Query<K, V>>, executor: impl Fn() + Clone + 'static)
-where
+fn sync_refetch<K, V, E>(
+    cx: Scope,
+    query: Signal<Query<K, V, E>>,
+    executor: impl Fn() + Clone + 'static,
+) where
     K: Clone + 'static,
     V: Clone + 'static,
+    E: Clone + 'static,
 {
     let _ = use_timeout(cx, move || {
         let query = query.get();
@@ -156,7 +204,7 @@ where
 }
 
 // Ensure that observers are kept track of.
-fn sync_observers<K: Clone, V: Clone>(cx: Scope, query: Signal<Option<Query<K, V>>>) {
+fn sync_observers<K: Clone, V: Clone, E: Clone>(cx: Scope, query: Signal<Option<Query<K, V, E>>>) {
     type Observer = Rc<Cell<usize>>;
     let last_observer: Rc<Cell<Option<Observer>>> = Rc::new(Cell::new(None));
 
@@ -189,10 +237,11 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, query: Signal<Option<Query<K, V
 }
 
 /// This is a very finicky function. Be cautious with edits.
-pub(crate) fn ensure_cache_cleanup<K, V>(cx: Scope, query: Signal<Option<Query<K, V>>>)
+pub(crate) fn ensure_cache_cleanup<K, V, E>(cx: Scope, query: Signal<Option<Query<K, V, E>>>)
 where
     K: Clone + Hash + Eq + 'static,
     V: Clone + 'static,
+    E: Clone + 'static,
 {
     let root_scope = use_query_client(cx).cx;
 
@@ -253,8 +302,8 @@ where
                                 let dispose = {
                                     let query = query.clone();
                                     move || {
-                                        let removed =
-                                            use_query_client(root_scope).evict_and_notify::<K, V>(&query.key);
+                                        let removed = use_query_client(root_scope)
+                                            .evict_and_notify::<K, V, E>(&query.key);
                                         if let Some(query) = removed {
                                             if query.observers.get() == 0 {
                                                 query.dispose();

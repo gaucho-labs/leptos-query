@@ -9,16 +9,17 @@ use leptos::*;
 
 /// Reactive query result.
 #[derive(Clone)]
-pub struct QueryResult<V, R>
+pub struct QueryResult<V, E, R>
 where
     V: 'static,
+    E: 'static,
     R: RefetchFn,
 {
     /// The current value of the query. None if it has not been fetched yet.
     /// Should be called inside of a [`Transition`](leptos::Transition) or [`Suspense`](leptos::Suspense) component.
     pub data: Signal<Option<V>>,
     /// The current state of the data.
-    pub state: Signal<QueryState<V>>,
+    pub state: Signal<QueryState<V, E>>,
 
     /// If the query is fetching for the first time.
     pub is_loading: Signal<bool>,
@@ -37,12 +38,12 @@ where
 pub trait RefetchFn: Fn() + Clone {}
 impl<R: Fn() + Clone> RefetchFn for R {}
 
-pub(crate) fn create_query_result<K: Clone, V: Clone>(
+pub(crate) fn create_query_result<K: Clone, E: Clone, V: Clone>(
     cx: Scope,
-    query: Signal<Query<K, V>>,
+    query: Signal<Query<K, V, E>>,
     data: Signal<Option<V>>,
     executor: impl Fn() + Clone,
-) -> QueryResult<V, impl RefetchFn> {
+) -> QueryResult<V, E, impl RefetchFn> {
     let state = Signal::derive(cx, move || query.get().state.get());
 
     let is_loading = Signal::derive(cx, move || matches!(state.get(), QueryState::Loading));
@@ -66,9 +67,9 @@ pub(crate) fn create_query_result<K: Clone, V: Clone>(
     }
 }
 
-fn make_is_stale<V: Clone>(
+fn make_is_stale<V: Clone, E: Clone>(
     cx: Scope,
-    state: Signal<QueryState<V>>,
+    state: Signal<QueryState<V, E>>,
     stale_time: Signal<Option<Duration>>,
 ) -> Signal<bool> {
     let (stale, set_stale) = create_signal(cx, false);

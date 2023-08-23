@@ -5,7 +5,7 @@ use crate::Instant;
 /// Each variant in the enum corresponds to a particular state of a query in its lifecycle,
 /// starting from creation and covering all possible transitions up to invalidation.
 #[derive(Clone, PartialEq, Eq)]
-pub enum QueryState<V> {
+pub enum QueryState<V, E> {
     /// The initial state of a Query upon its creation.
     ///
     /// In this state, a query is instantiated but no fetching operation has been initiated yet.
@@ -35,16 +35,29 @@ pub enum QueryState<V> {
     ///
     /// The associated `QueryData<V>` object holds the invalidated data.
     Invalid(QueryData<V>),
+
+    Error(QueryError<V, E>),
+    Retrying(Option<QueryData<V>>),
 }
 
-impl<V> QueryState<V> {
+#[derive(Clone, PartialEq, Eq)]
+pub struct QueryError<V, E> {
+    pub(crate) error: E,
+    pub(crate) error_count: usize,
+    pub(crate) updated_at: Instant,
+    pub(crate) prev_data: Option<QueryData<V>>,
+}
+
+impl<V, E> QueryState<V, E> {
     /// Returns the QueryData for the current QueryState, if present.
     pub fn query_data(&self) -> Option<&QueryData<V>> {
         match self {
-            QueryState::Loading | QueryState::Created => None,
-            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                Some(data)
-            }
+            QueryState::Loading | QueryState::Created | QueryState::Retrying(None) => None,
+            QueryState::Fetching(data)
+            | QueryState::Loaded(data)
+            | QueryState::Invalid(data)
+            | QueryState::Retrying(Some(data)) => Some(data),
+            QueryState::Error(QueryError { prev_data, .. }) => prev_data.as_ref(),
         }
     }
 
@@ -59,20 +72,20 @@ impl<V> QueryState<V> {
     }
 }
 
-impl<V> std::fmt::Debug for QueryState<V>
-where
-    V: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Created => write!(f, "Created"),
-            Self::Loading => write!(f, "Loading"),
-            Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
-            Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
-            Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
-        }
-    }
-}
+// impl<V> std::fmt::Debug for QueryState<V>
+// where
+//     V: std::fmt::Debug,
+// {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Self::Created => write!(f, "Created"),
+//             Self::Loading => write!(f, "Loading"),
+//             Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
+//             Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
+//             Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
+//         }
+//     }
+// }
 
 /// The latest data for a Query.
 #[derive(Clone, PartialEq, Eq)]
