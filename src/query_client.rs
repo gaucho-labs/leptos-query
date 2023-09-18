@@ -15,13 +15,15 @@ use std::{
 };
 
 /// Provides a Query Client to the current scope.
-pub fn provide_query_client(cx: Scope) {
-    provide_context(cx, QueryClient::new(cx));
+pub fn provide_query_client() {
+    provide_context(QueryClient::new(
+        Owner::current().expect("Owner to be present"),
+    ));
 }
 
 /// Retrieves a Query Client from the current scope.
-pub fn use_query_client(cx: Scope) -> QueryClient {
-    use_context::<QueryClient>(cx).expect("Query Client Missing.")
+pub fn use_query_client() -> QueryClient {
+    use_context::<QueryClient>().expect("Query Client Missing.")
 }
 
 /// The Cache Client to store query data.
@@ -39,7 +41,7 @@ pub fn use_query_client(cx: Scope) -> QueryClient {
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct QueryClient {
-    pub(crate) cx: Scope,
+    pub(crate) owner: Owner,
     // Signal to indicate a cache entry has been added or removed.
     pub(crate) notify: RwSignal<()>,
     pub(crate) cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
@@ -95,10 +97,10 @@ where
 
 impl QueryClient {
     /// Creates a new Query Client.
-    pub fn new(cx: Scope) -> Self {
+    pub fn new(owner: Owner) -> Self {
         Self {
-            cx,
-            notify: create_rw_signal(cx, ()),
+            notify: create_rw_signal(()),
+            owner,
             cache: Rc::new(RefCell::new(HashMap::new())),
         }
     }
@@ -109,7 +111,6 @@ impl QueryClient {
     /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
     pub fn fetch_query<K, V, Fu>(
         &self,
-        cx: Scope,
         key: impl Fn() -> K + 'static,
         fetcher: impl Fn(K) -> Fu + 'static,
         isomorphic: bool,
@@ -119,9 +120,9 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = self.get_query_signal(cx, key);
+        let state = self.get_query_signal(key);
 
-        let state = Signal::derive(cx, move || state.get().0);
+        let state = Signal::derive(move || state.get().0);
 
         let executor = create_executor(state, fetcher);
 
@@ -133,17 +134,16 @@ impl QueryClient {
             }
         };
         if isomorphic {
-            create_isomorphic_effect(cx, sync);
+            create_isomorphic_effect(sync);
         } else {
-            create_effect(cx, sync);
+            create_effect(sync);
         }
 
-        synchronize_state(cx, state, executor.clone());
+        synchronize_state(state, executor.clone());
 
         create_query_result(
-            cx,
             state,
-            Signal::derive(self.cx, move || state.get().state.get().data().cloned()),
+            Signal::derive(move || state.get().state.get().data().cloned()),
             executor,
         )
     }
@@ -154,7 +154,6 @@ impl QueryClient {
     /// If you need the result opt for [`fetch_query()`](Self::fetch_query)
     pub fn prefetch_query<K, V, Fu>(
         &self,
-        cx: Scope,
         key: impl Fn() -> K + 'static,
         query: impl Fn(K) -> Fu + 'static,
         isomorphic: bool,
@@ -163,9 +162,9 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = self.get_query_signal(cx, key);
+        let state = self.get_query_signal(key);
 
-        let state = Signal::derive(cx, move || state.get().0);
+        let state = Signal::derive(move || state.get().0);
 
         let executor = create_executor(state, query);
 
@@ -176,9 +175,9 @@ impl QueryClient {
             }
         };
         if isomorphic {
-            create_isomorphic_effect(cx, sync);
+            create_isomorphic_effect(sync);
         } else {
-            create_effect(cx, sync);
+            create_effect(sync);
         }
     }
 
@@ -186,7 +185,6 @@ impl QueryClient {
     /// If the query does not exist, [`None`](Option::None) will be returned.
     pub fn get_query_state<K, V>(
         self,
-        cx: Scope,
         key: impl Fn() -> K + 'static,
     ) -> Signal<Option<QueryState<V>>>
     where
@@ -196,15 +194,15 @@ impl QueryClient {
         let client = self.clone();
 
         // Memoize state to avoid unnecessary hashmap lookups.
-        let maybe_query = create_memo(cx, move |_| {
+        let maybe_query = create_memo(move |_| {
             let key = key();
             client.notify.get();
             client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
         });
 
-        synchronize_observer(cx, maybe_query.into());
+        synchronize_observer(maybe_query.into());
 
-        Signal::derive(cx, move || maybe_query.get().map(|s| s.state.get()))
+        Signal::derive(move || maybe_query.get().map(|s| s.state.get()))
     }
 
     /// Attempts to invalidate an entry in the Query Cache.
@@ -214,7 +212,7 @@ impl QueryClient {
     ///
     /// Example:
     /// ```
-    /// let client = use_query_client(cx);
+    /// let client = use_query_client();
     /// let invalidated = client.invalidate_query::<u32, u32>(0);
     /// ```
     pub fn invalidate_query<K, V>(&self, key: impl Borrow<K>) -> bool
@@ -237,7 +235,7 @@ impl QueryClient {
     ///
     /// Example:
     /// ```
-    /// let client = use_query_client(cx);
+    /// let client = use_query_client();
     /// let keys: Vec<u32> = vec![0, 1];
     /// let invalidated = client.invalidate_queries::<u32, u32, _>(keys)
     ///
@@ -274,7 +272,7 @@ impl QueryClient {
     /// use leptos::*;
     /// use leptos_query::*;
     ///
-    /// let client = use_query_client(cx);
+    /// let client = use_query_client();
     /// client.invalidate_query_type::<String, Monkey>();
     ///
     /// ```
@@ -301,7 +299,7 @@ impl QueryClient {
     /// use leptos::*;
     /// use leptos_query::*;
     ///
-    /// let client = use_query_client(cx);
+    /// let client = use_query_client();
     /// client.invalidate_all_queries();
     ///
     /// ```
@@ -320,14 +318,14 @@ impl QueryClient {
     /// use leptos::*;
     /// use leptos_query::*;
     ///
-    /// let client = use_query_client(cx);
+    /// let client = use_query_client();
     /// let cache_size = client.size();
     ///
     /// ```
     pub fn size(&self) -> Signal<usize> {
         let notify = self.notify;
         let cache = self.cache.clone();
-        create_memo(self.cx, move |_| {
+        create_memo(move |_| {
             notify.get();
             let cache = RefCell::borrow(&cache);
             cache.values().map(|b| b.size()).sum()
@@ -350,8 +348,7 @@ impl QueryClient {
     /// use leptos::*;
     /// use leptos_query::*;
     ///
-    /// let cx: Scope = todo!();
-    /// let client = use_query_client(cx);
+    /// let client = use_query_client();
     /// let new_monkey: Monkey = todo!();
     ///
     /// // Overwrites existing cache data.
@@ -378,35 +375,35 @@ impl QueryClient {
             Nothing,
         }
         let result = self.use_cache(
-            move |(root_scope, cache): (Scope, &mut HashMap<K, Query<K, V>>)| match cache
-                .entry(key.clone())
-            {
-                Entry::Occupied(entry) => {
-                    let query = entry.get();
-                    let result = query.state.with_untracked(|s| {
-                        let data = s.query_data().map(|d| &d.data);
-                        updater(data)
-                    });
-                    // Only update query data if updater returns Some.
-                    if let Some(result) = result {
-                        query.state.set(QueryState::Loaded(QueryData::now(result)));
-                        SetResult::Updated
-                    } else {
-                        SetResult::Nothing
+            move |(owner, cache)| {
+                match cache.entry(key.clone()) {
+                    Entry::Occupied(entry) => {
+                        let query = entry.get();
+                        let result = query.state.with_untracked(|s| {
+                            let data = s.query_data().map(|d| &d.data);
+                            updater(data)
+                        });
+                        // Only update query data if updater returns Some.
+                        if let Some(result) = result {
+                            query.state.set(QueryState::Loaded(QueryData::now(result)));
+                            SetResult::Updated
+                        } else {
+                            SetResult::Nothing
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        // Only insert query if updater returns Some.
+                        if let Some(result) = updater(None) {
+                            let query = with_owner(owner, || Query::new(key));
+                            query.state.set(QueryState::Loaded(QueryData::now(result)));
+                            entry.insert(query);
+                            SetResult::Inserted
+                        } else {
+                            SetResult::Nothing
+                        }
                     }
                 }
-                Entry::Vacant(entry) => {
-                    // Only insert query if updater returns Some.
-                    if let Some(result) = updater(None) {
-                        let query = Query::new(root_scope, key);
-                        query.state.set(QueryState::Loaded(QueryData::now(result)));
-                        entry.insert(query);
-                        SetResult::Inserted
-                    } else {
-                        SetResult::Nothing
-                    }
-                }
-            },
+            }
         );
 
         if let SetResult::Inserted = result {
@@ -446,7 +443,7 @@ impl QueryClient {
 
     fn use_cache<K, V, R>(
         &self,
-        func: impl FnOnce((Scope, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
+        func: impl FnOnce((Owner, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
     ) -> R
     where
         K: Clone + 'static,
@@ -471,7 +468,7 @@ impl QueryClient {
             "Error: Query Cache Type Mismatch. This should not happen. Please file a bug report.",
         );
 
-        func((self.cx, &mut cache.0))
+        func((self.owner, &mut cache.0))
     }
 
     fn get_or_create_query<K, V>(&self, key: K) -> (Query<K, V>, bool)
@@ -479,7 +476,7 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        let result = self.use_cache(move |(root_scope, cache)| {
+        let result = self.use_cache(move |(owner, cache)| {
             let entry = cache.entry(key.clone());
 
             let (query, new) = match entry {
@@ -488,7 +485,7 @@ impl QueryClient {
                     (entry, false)
                 }
                 Entry::Vacant(entry) => {
-                    let query = Query::new(root_scope, key);
+                    let query = with_owner(owner, || Query::new(key));
                     (entry.insert(query.clone()), true)
                 }
             };
@@ -505,7 +502,6 @@ impl QueryClient {
 
     pub(crate) fn get_query_signal<K, V>(
         &self,
-        cx: Scope,
         key: impl Fn() -> K + 'static,
     ) -> Signal<(Query<K, V>, bool)>
     where
@@ -515,7 +511,7 @@ impl QueryClient {
         let client = self.clone();
 
         // This memo is crucial to avoid crazy amounts of lookups.
-        create_memo(cx, move |_| {
+        create_memo(move |_| {
             let key = key();
             client.get_or_create_query(key)
         })
@@ -539,231 +535,230 @@ impl QueryClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     #[test]
     fn prefetch_loads_data() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
 
-            assert_eq!(0, client.clone().size().get_untracked());
+        provide_query_client();
+        let client = use_query_client();
 
-            let state = client.clone().get_query_state::<u32, String>(cx, || 0);
+        assert_eq!(0, client.clone().size().get_untracked());
 
-            assert_eq!(None, state.get_untracked());
+        let state = client.clone().get_query_state::<u32, String>(|| 0);
 
-            client.clone().prefetch_query(
-                cx,
-                || 0,
-                |num: u32| async move { num.to_string() },
-                true,
-            );
+        assert_eq!(None, state.get_untracked());
 
-            assert_eq!(
-                Some("0".to_string()),
-                state.get_untracked().and_then(|q| q.data().cloned())
-            );
+        client.clone().prefetch_query(
+            || 0,
+            |num: u32| async move { num.to_string() },
+            true,
+        );
 
-            assert!(matches!(
-                state.get_untracked(),
-                Some(QueryState::Loaded { .. })
-            ));
+        assert_eq!(
+            Some("0".to_string()),
+            state.get_untracked().and_then(|q| q.data().cloned())
+        );
 
-            assert_eq!(1, client.clone().size().get_untracked());
+        assert!(matches!(
+            state.get_untracked(),
+            Some(QueryState::Loaded { .. })
+        ));
 
-            client.clone().invalidate_query::<u32, String>(0);
+        assert_eq!(1, client.clone().size().get_untracked());
 
-            assert!(matches!(
-                state.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-        });
+        client.clone().invalidate_query::<u32, String>(0);
+
+        assert!(matches!(
+            state.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
     }
 
     #[test]
     fn set_query_data() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
 
-            let state = client.clone().get_query_state::<u32, String>(cx, || 0);
-            assert_eq!(None, state.get_untracked());
-            assert_eq!(0, client.clone().size().get_untracked());
+        provide_query_client();
+        let client = use_query_client();
 
-            client.clone().set_query_data::<u32, String>(0, |_| None);
+        let state = client.clone().get_query_state::<u32, String>(|| 0);
+        assert_eq!(None, state.get_untracked());
+        assert_eq!(0, client.clone().size().get_untracked());
 
-            assert_eq!(None, state.get_untracked());
-            assert_eq!(0, client.size().get_untracked());
+        client.clone().set_query_data::<u32, String>(0, |_| None);
 
-            client
-                .clone()
-                .set_query_data::<u32, String>(0, |_| Some("0".to_string()));
+        assert_eq!(None, state.get_untracked());
+        assert_eq!(0, client.size().get_untracked());
 
-            assert_eq!(1, client.clone().size().get_untracked());
+        client
+            .clone()
+            .set_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
-            assert_eq!(
-                Some("0".to_string()),
-                state.get_untracked().and_then(|q| q.data().cloned())
-            );
+        assert_eq!(1, client.clone().size().get_untracked());
 
-            assert!(matches!(
-                state.get_untracked(),
-                Some(QueryState::Loaded { .. })
-            ));
+        assert_eq!(
+            Some("0".to_string()),
+            state.get_untracked().and_then(|q| q.data().cloned())
+        );
 
-            client.set_query_data::<u32, String>(0, |_| Some("1".to_string()));
+        assert!(matches!(
+            state.get_untracked(),
+            Some(QueryState::Loaded { .. })
+        ));
 
-            assert_eq!(
-                Some("1".to_string()),
-                state.get_untracked().and_then(|q| q.data().cloned())
-            );
-        });
+        client.set_query_data::<u32, String>(0, |_| Some("1".to_string()));
+
+        assert_eq!(
+            Some("1".to_string()),
+            state.get_untracked().and_then(|q| q.data().cloned())
+        );
     }
 
     #[test]
     fn can_use_same_key_with_different_value_types() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
+    
+        provide_query_client();
+        let client = use_query_client();
 
-            client.set_query_data::<u32, String>(0, |_| Some("0".to_string()));
+        client.set_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
-            client.set_query_data::<u32, u32>(0, |_| Some(1234));
+        client.set_query_data::<u32, u32>(0, |_| Some(1234));
 
-            assert_eq!(2, client.size().get_untracked());
-        });
+        assert_eq!(2, client.size().get_untracked());
     }
 
     #[test]
     fn can_invalidate_while_subscribed() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
+    
+        provide_query_client();
+        let client = use_query_client();
 
-            let subscription = client.clone().get_query_state::<u32, u32>(cx, || 0_u32);
+        let subscription = client.clone().get_query_state::<u32, u32>(|| 0_u32);
 
-            create_isomorphic_effect(cx, move |_| {
-                subscription.get();
-            });
-
-            client.set_query_data::<u32, u32>(0_u32, |_| Some(1234));
-
-            assert!(client.invalidate_query::<u32, u32>(0));
-            let state = subscription.get_untracked();
-
-            assert!(
-                matches!(state, Some(QueryState::Invalid { .. })),
-                "Query should be invalid"
-            );
+        create_isomorphic_effect(move |_| {
+            subscription.get();
         });
+
+        client.set_query_data::<u32, u32>(0_u32, |_| Some(1234));
+
+        assert!(client.invalidate_query::<u32, u32>(0));
+        let state = subscription.get_untracked();
+
+        assert!(
+            matches!(state, Some(QueryState::Invalid { .. })),
+            "Query should be invalid"
+        );
     }
 
     #[test]
     fn can_invalidate_multiple() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
 
-            client.set_query_data::<u32, u32>(0, |_| Some(1234));
-            client.set_query_data::<u32, u32>(1, |_| Some(1234));
-            let keys: Vec<u32> = vec![0, 1];
-            let invalidated = client
-                .invalidate_queries::<u32, u32, _>(keys.clone())
-                .unwrap_or_default();
+        provide_query_client();
+        let client = use_query_client();
 
-            assert_eq!(keys, invalidated)
-        });
+        client.set_query_data::<u32, u32>(0, |_| Some(1234));
+        client.set_query_data::<u32, u32>(1, |_| Some(1234));
+        let keys: Vec<u32> = vec![0, 1];
+        let invalidated = client
+            .invalidate_queries::<u32, u32, _>(keys.clone())
+            .unwrap_or_default();
+
+        assert_eq!(keys, invalidated)
     }
 
     #[test]
     fn can_invalidate_multiple_strings() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
 
-            let zero = "0".to_string();
-            let one = "1".to_string();
+        provide_query_client();
+        let client = use_query_client();
 
-            client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
-            client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
+        let zero = "0".to_string();
+        let one = "1".to_string();
 
-            let keys = vec![zero, one];
-            let invalidated = client
-                .invalidate_queries::<String, String, _>(keys.clone())
-                .unwrap_or_default();
+        client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
+        client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
 
-            assert_eq!(keys, invalidated)
-        });
+        let keys = vec![zero, one];
+        let invalidated = client
+            .invalidate_queries::<String, String, _>(keys.clone())
+            .unwrap_or_default();
+
+        assert_eq!(keys, invalidated)
     }
 
     #[test]
     fn invalidate_all() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
 
-            let zero = "0".to_string();
-            let one = "1".to_string();
+        provide_query_client();
+        let client = use_query_client();
 
-            client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
-            client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
-            client.set_query_data::<u32, u32>(0, |_| Some(1234));
-            client.set_query_data::<u32, u32>(1, |_| Some(5678));
+        let zero = "0".to_string();
+        let one = "1".to_string();
 
-            let state0_string = client
-                .clone()
-                .get_query_state::<String, String>(cx, move || zero.clone());
+        client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
+        client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
+        client.set_query_data::<u32, u32>(0, |_| Some(1234));
+        client.set_query_data::<u32, u32>(1, |_| Some(5678));
 
-            let state1_string = client
-                .clone()
-                .get_query_state::<String, String>(cx, move || one.clone());
+        let state0_string = client
+            .clone()
+            .get_query_state::<String, String>(move || zero.clone());
 
-            let state0 = client.clone().get_query_state::<u32, u32>(cx, || 0);
-            let state1 = client.clone().get_query_state::<u32, u32>(cx, || 1);
+        let state1_string = client
+            .clone()
+            .get_query_state::<String, String>(move || one.clone());
 
-            client.invalidate_all_queries();
+        let state0 = client.clone().get_query_state::<u32, u32>(|| 0);
+        let state1 = client.clone().get_query_state::<u32, u32>(|| 1);
 
-            assert!(matches!(
-                state0.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-            assert!(matches!(
-                state1.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-            assert!(matches!(
-                state0_string.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-            assert!(matches!(
-                state1_string.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-        });
+        client.invalidate_all_queries();
+
+        assert!(matches!(
+            state0.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
+        assert!(matches!(
+            state1.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
+        assert!(matches!(
+            state0_string.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
+        assert!(matches!(
+            state1_string.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
     }
 
     #[test]
     fn can_invalidate_subset() {
-        run_scope(create_runtime(), |cx| {
-            provide_query_client(cx);
-            let client = use_query_client(cx);
+        let _ = create_runtime();
 
-            client.set_query_data::<u32, u32>(0, |_| Some(1234));
-            client.set_query_data::<u32, u32>(1, |_| Some(1234));
+        provide_query_client();
+        let client = use_query_client();
 
-            let state0 = client.clone().get_query_state::<u32, u32>(cx, || 0);
-            let state1 = client.clone().get_query_state::<u32, u32>(cx, || 1);
+        client.set_query_data::<u32, u32>(0, |_| Some(1234));
+        client.set_query_data::<u32, u32>(1, |_| Some(1234));
 
-            client.invalidate_query_type::<u32, u32>();
+        let state0 = client.clone().get_query_state::<u32, u32>(|| 0);
+        let state1 = client.clone().get_query_state::<u32, u32>(|| 1);
 
-            assert!(matches!(
-                state0.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-            assert!(matches!(
-                state1.get_untracked(),
-                Some(QueryState::Invalid { .. })
-            ));
-        });
+        client.invalidate_query_type::<u32, u32>();
+
+        assert!(matches!(
+            state0.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
+        assert!(matches!(
+            state1.get_untracked(),
+            Some(QueryState::Invalid { .. })
+        ));
     }
 }

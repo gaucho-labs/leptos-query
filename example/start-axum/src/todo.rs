@@ -10,8 +10,8 @@ pub struct Todo {
 }
 
 #[component]
-pub fn InteractiveTodo(cx: Scope) -> impl IntoView {
-    view! { cx,
+pub fn InteractiveTodo() -> impl IntoView {
+    view! {
         <div>
             <div style:display="flex" style:gap="10rem">
                 <TodoWithResource/>
@@ -24,14 +24,14 @@ pub fn InteractiveTodo(cx: Scope) -> impl IntoView {
 }
 
 #[component]
-fn TodoWithResource(cx: Scope) -> impl IntoView {
-    let (todo_id, set_todo_id) = create_signal(cx, 0_u32);
+fn TodoWithResource() -> impl IntoView {
+    let (todo_id, set_todo_id) = create_signal(0_u32);
 
     // todo_id is a Signal<String>, and that is fed into the resource fetcher function.
     // any time todo_id changes, the resource will re-execute.
-    let todo_resource: Resource<u32, TodoResponse> = create_resource(cx, todo_id, get_todo);
+    let todo_resource: Resource<u32, TodoResponse> = create_resource(todo_id, get_todo);
 
-    view! { cx,
+    view! {
         <div
             style:display="flex"
             style:flex-direction="column"
@@ -51,12 +51,12 @@ fn TodoWithResource(cx: Scope) -> impl IntoView {
                 prop:value=todo_id
             />
             <Transition fallback=move || {
-                view! { cx, <p>"Loading..."</p> }
+                view! { <p>"Loading..."</p> }
             }>
                 <p>
                     {move || {
                         todo_resource
-                            .read(cx)
+                            .get()
                             .map(|a| {
                                 match a.ok().flatten() {
                                     Some(todo) => todo.content,
@@ -71,12 +71,12 @@ fn TodoWithResource(cx: Scope) -> impl IntoView {
 }
 
 #[component]
-fn TodoWithQuery(cx: Scope) -> impl IntoView {
-    let (todo_id, set_todo_id) = create_signal(cx, 0_u32);
+fn TodoWithQuery() -> impl IntoView {
+    let (todo_id, set_todo_id) = create_signal(0_u32);
 
-    let QueryResult { data, .. } = use_query(cx, todo_id, get_todo, QueryOptions::default());
+    let QueryResult { data, .. } = use_query(todo_id, get_todo, QueryOptions::default());
 
-    view! { cx,
+    view! {
         <div
             style:display="flex"
             style:flex-direction="column"
@@ -96,7 +96,7 @@ fn TodoWithQuery(cx: Scope) -> impl IntoView {
                 prop:value=todo_id
             />
             <Transition fallback=move || {
-                view! { cx, <p>"Loading..."</p> }
+                view! { <p>"Loading..."</p> }
             }>
                 <p>
                     {move || {
@@ -116,10 +116,10 @@ fn TodoWithQuery(cx: Scope) -> impl IntoView {
 
 // When using this, you get a ton of hydration errors.
 #[component]
-fn TodoBody(cx: Scope, todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
-    view! { cx,
+fn TodoBody(todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
+    view! {
         <Transition fallback=move || {
-            view! { cx, <p>"Loading..."</p> }
+            view! { <p>"Loading..."</p> }
         }>
             <p>
                 {move || {
@@ -137,43 +137,42 @@ fn TodoBody(cx: Scope, todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
 }
 
 #[component]
-fn AllTodos(cx: Scope) -> impl IntoView {
+fn AllTodos() -> impl IntoView {
     let QueryResult { data, refetch, .. } = use_query(
-        cx,
         || (),
         |_| async move { get_todos().await.unwrap_or_default() },
         QueryOptions::default(),
     );
 
-    let todos: Signal<Vec<Todo>> = Signal::derive(cx, move || data.get().unwrap_or_default());
+    let todos: Signal<Vec<Todo>> = Signal::derive(move || data.get().unwrap_or_default());
 
-    let delete_todo = create_action(cx, move |id: &u32| {
+    let delete_todo = create_action(move |id: &u32| {
         let id = *id;
         let refetch = refetch.clone();
         async move {
             let _ = delete_todo(id).await;
             refetch();
-            use_query_client(cx).invalidate_query::<u32, TodoResponse>(&id);
+            use_query_client().invalidate_query::<u32, TodoResponse>(&id);
         }
     });
 
-    view! { cx,
+    view! {
         <h2>"All Todos"</h2>
         <Transition fallback=move || {
-            view! { cx, <p>"Loading..."</p> }
+            view! { <p>"Loading..."</p> }
         }>
             <ul>
                 <Show
                     when=move || !todos.get().is_empty()
-                    fallback=|cx| {
-                        view! { cx, <p>"No todos"</p> }
+                    fallback=|| {
+                        view! { <p>"No todos"</p> }
                     }
                 >
                     <For
                         each=todos
                         key=|todo| todo.id
-                        view=move |cx, todo| {
-                            view! { cx,
+                        view=move |todo| {
+                            view! {
                                 <li>
                                     <span>{todo.id}</span>
                                     <span>": "</span>
@@ -191,14 +190,14 @@ fn AllTodos(cx: Scope) -> impl IntoView {
 }
 
 #[component]
-fn AddTodoComponent(cx: Scope) -> impl IntoView {
-    let add_todo = create_server_action::<AddTodo>(cx);
+fn AddTodoComponent() -> impl IntoView {
+    let add_todo = create_server_action::<AddTodo>();
 
     let response = add_todo.value();
 
-    let client = use_query_client(cx);
+    let client = use_query_client();
 
-    create_effect(cx, move |_| {
+    create_effect(move |_| {
         // If action is successful.
         if let Some(Ok(todo)) = response.get() {
             let id = todo.id;
@@ -214,7 +213,7 @@ fn AddTodoComponent(cx: Scope) -> impl IntoView {
         }
     });
 
-    view! { cx,
+    view! {
         <ActionForm action=add_todo>
             <label>"Add a Todo " <input type="text" name="content"/></label>
             <input type="submit" autocomplete="off" value="Add"/>
