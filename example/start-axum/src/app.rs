@@ -133,9 +133,7 @@ fn HomePage() -> impl IntoView {
     }
 }
 
-fn use_post_query(
-    key: impl Fn() -> u32 + 'static,
-) -> QueryResult<Option<String>, impl RefetchFn> {
+fn use_post_query(key: impl Fn() -> u32 + 'static) -> QueryResult<Option<String>, impl RefetchFn> {
     use_query(
         key,
         get_post_unwrapped,
@@ -221,7 +219,8 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
                 }>
                     <h2>
                         {
-                           data
+                           move || {
+                            data
                             .get()
                             .map(|post| {
                                 match post {
@@ -229,6 +228,7 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
                                     None => "Not Found".into(),
                                 }
                             })
+                        }
                         }
                     </h2>
                 </Transition>
@@ -273,7 +273,7 @@ pub async fn get_unique() -> Result<String, ServerFnError> {
 
 #[component]
 fn UniqueKey() -> impl IntoView {
-    let QueryResult { data , .. } = use_query(
+    let QueryResult { data, .. } = use_query(
         || (),
         |_| async { get_unique().await.expect("Failed to retrieve unique") },
         QueryOptions::empty(),

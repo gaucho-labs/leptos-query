@@ -374,37 +374,35 @@ impl QueryClient {
             Updated,
             Nothing,
         }
-        let result = self.use_cache(
-            move |(owner, cache)| {
-                match cache.entry(key.clone()) {
-                    Entry::Occupied(entry) => {
-                        let query = entry.get();
-                        let result = query.state.with_untracked(|s| {
-                            let data = s.query_data().map(|d| &d.data);
-                            updater(data)
-                        });
-                        // Only update query data if updater returns Some.
-                        if let Some(result) = result {
-                            query.state.set(QueryState::Loaded(QueryData::now(result)));
-                            SetResult::Updated
-                        } else {
-                            SetResult::Nothing
-                        }
+        let result = self.use_cache(move |(owner, cache)| {
+            match cache.entry(key.clone()) {
+                Entry::Occupied(entry) => {
+                    let query = entry.get();
+                    let result = query.state.with_untracked(|s| {
+                        let data = s.query_data().map(|d| &d.data);
+                        updater(data)
+                    });
+                    // Only update query data if updater returns Some.
+                    if let Some(result) = result {
+                        query.state.set(QueryState::Loaded(QueryData::now(result)));
+                        SetResult::Updated
+                    } else {
+                        SetResult::Nothing
                     }
-                    Entry::Vacant(entry) => {
-                        // Only insert query if updater returns Some.
-                        if let Some(result) = updater(None) {
-                            let query = with_owner(owner, || Query::new(key));
-                            query.state.set(QueryState::Loaded(QueryData::now(result)));
-                            entry.insert(query);
-                            SetResult::Inserted
-                        } else {
-                            SetResult::Nothing
-                        }
+                }
+                Entry::Vacant(entry) => {
+                    // Only insert query if updater returns Some.
+                    if let Some(result) = updater(None) {
+                        let query = with_owner(owner, || Query::new(key));
+                        query.state.set(QueryState::Loaded(QueryData::now(result)));
+                        entry.insert(query);
+                        SetResult::Inserted
+                    } else {
+                        SetResult::Nothing
                     }
                 }
             }
-        );
+        });
 
         if let SetResult::Inserted = result {
             self.notify.set(());
@@ -535,7 +533,7 @@ impl QueryClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn prefetch_loads_data() {
         let _ = create_runtime();
@@ -549,11 +547,9 @@ mod tests {
 
         assert_eq!(None, state.get_untracked());
 
-        client.clone().prefetch_query(
-            || 0,
-            |num: u32| async move { num.to_string() },
-            true,
-        );
+        client
+            .clone()
+            .prefetch_query(|| 0, |num: u32| async move { num.to_string() }, true);
 
         assert_eq!(
             Some("0".to_string()),
@@ -618,7 +614,7 @@ mod tests {
     #[test]
     fn can_use_same_key_with_different_value_types() {
         let _ = create_runtime();
-    
+
         provide_query_client();
         let client = use_query_client();
 
@@ -632,7 +628,7 @@ mod tests {
     #[test]
     fn can_invalidate_while_subscribed() {
         let _ = create_runtime();
-    
+
         provide_query_client();
         let client = use_query_client();
 
