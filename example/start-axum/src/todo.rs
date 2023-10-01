@@ -171,7 +171,7 @@ fn AllTodos() -> impl IntoView {
                     <For
                         each=todos
                         key=|todo| todo.id
-                        view=move |todo| {
+                        children=move |todo| {
                             view! {
                                 <li>
                                     <span>{todo.id}</span>
