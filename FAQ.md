@@ -82,7 +82,7 @@ Here's an example for the Axum integration:
 // Disable query loading.
 leptos_query::suppress_query_load(true);
 // Introspect App Routes.
-leptos_axum::generate_route_list(|cx| view! { cx, <App/> }).await;
+leptos_axum::generate_route_list(|| view! { <App/> }).await;
 // Enable query loading.
 leptos_query::suppress_query_load(false);
 ```

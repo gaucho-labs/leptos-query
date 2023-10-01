@@ -39,9 +39,8 @@ use std::time::Duration;
 /// }
 ///
 /// // Query for a Monkey.
-/// fn use_monkey_query(cx: Scope, id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+/// fn use_monkey_query(id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
 ///     leptos_query::use_query(
-///         cx,
 ///         id,
 ///         get_monkey,
 ///         QueryOptions {
@@ -57,7 +56,6 @@ use std::time::Duration;
 /// ```
 ///
 pub fn use_query<K, V, Fu>(
-    cx: Scope,
     key: impl Fn() -> K + 'static,
     fetcher: impl Fn(K) -> Fu + 'static,
     options: QueryOptions<V>,
@@ -68,22 +66,22 @@ where
     Fu: Future<Output = V> + 'static,
 {
     // Find relevant state.
-    let query = use_query_client(cx).get_query_signal(cx, key);
+    let query = use_query_client().get_query_signal(key);
 
     // Update options.
-    create_isomorphic_effect(cx, {
+    create_isomorphic_effect({
         let options = options.clone();
         move |_| {
             let (query, new) = query.get();
             if new {
                 query.overwrite_options(options.clone())
             } else {
-                query.update_options(cx, options.clone())
+                query.update_options(options.clone())
             }
         }
     });
 
-    let query = Signal::derive(cx, move || query.get().0);
+    let query = Signal::derive(move || query.get().0);
 
     let resource_fetcher = move |query: Query<K, V>| {
         async move {
@@ -106,19 +104,18 @@ where
         let default = options.default_value;
         match options.resource_option {
             ResourceOption::NonBlocking => create_resource_with_initial_value(
-                cx,
                 move || query.get(),
                 resource_fetcher,
                 default.map(|default| ResourceData(Some(default))),
             ),
             ResourceOption::Blocking => {
-                create_blocking_resource(cx, move || query.get(), resource_fetcher)
+                create_blocking_resource(move || query.get(), resource_fetcher)
             }
         }
     };
 
     // Ensure always latest value.
-    create_isomorphic_effect(cx, move |_| {
+    create_isomorphic_effect(move |_| {
         let state = query.get().state.get();
         if let QueryState::Loaded(data) = state {
             // Interrupt Suspense.
@@ -132,10 +129,10 @@ where
 
     let executor = create_executor(query, fetcher);
 
-    synchronize_state(cx, query, executor.clone());
+    synchronize_state(query, executor.clone());
 
     // Ensure key changes are considered.
-    create_isomorphic_effect(cx, {
+    create_isomorphic_effect({
         let executor = executor.clone();
         move |prev_query: Option<Query<K, V>>| {
             let query = query.get();
@@ -150,10 +147,10 @@ where
         }
     });
 
-    let data = Signal::derive(cx, {
+    let data = Signal::derive({
         let executor = executor.clone();
         move || {
-            let read = resource.read(cx).and_then(|r| r.0);
+            let read = resource.get().and_then(|r| r.0);
             let query = query.get_untracked();
 
             // First Read.
@@ -176,7 +173,7 @@ where
         }
     });
 
-    create_query_result(cx, query, data, executor)
+    create_query_result(query, data, executor)
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
@@ -190,7 +187,7 @@ async fn sleep(duration: Duration) {
             tokio::time::sleep(duration).await;
         } else {
             let _ = duration;
-            debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
+            logging::debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
         }
     }
 }

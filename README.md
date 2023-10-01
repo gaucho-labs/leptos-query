@@ -77,9 +77,9 @@ use leptos_query::*;
 use leptos::*;
 
 #[component]
-pub fn App(cx: Scope) -> impl IntoView {
+pub fn App() -> impl IntoView {
     // Provides Query Client for entire app.
-    provide_query_client(cx);
+    provide_query_client();
 
     // Rest of App...
 }
@@ -107,9 +107,8 @@ Then make a query function.
  }
 
  // Query for a Monkey.
- fn use_monkey_query(cx: Scope, id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+ fn use_monkey_query(id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
      leptos_query::use_query(
-         cx,
          id,
          get_monkey,
          QueryOptions {
@@ -131,16 +130,16 @@ Now you can use the query in any component in your app.
 ```rust
 
 #[component]
-fn MonkeyView(cx: Scope, id: String) -> impl IntoView {
+fn MonkeyView(id: String) -> impl IntoView {
     let QueryResult {
         data,
         is_loading,
         is_fetching,
         is_stale
         ..
-    } = use_monkey_query(cx, move || id.clone());
+    } = use_monkey_query(move || id.clone());
 
-    view! { cx,
+    view! {
       // You can use the query result data here.
       // Everything is reactive.
        <div>
@@ -163,12 +162,12 @@ fn MonkeyView(cx: Scope, id: String) -> impl IntoView {
            // Query data should be read inside a Transition/Suspense component.
            <Transition
                fallback=move || {
-                   view! { cx, <h2>"Loading..."</h2> }
+                   view! { <h2>"Loading..."</h2> }
                }>
                {move || {
                    data.get()
                        .map(|monkey| {
-                           view! { cx, <h2>{monkey.name}</h2> }
+                           view! { <h2>{monkey.name}</h2> }
                        })
                }}
            </Transition>

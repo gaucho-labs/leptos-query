@@ -27,7 +27,7 @@ thread_local! {
 /// // Disable query loading.
 /// leptos_query::suppress_query_load(true);
 /// // Introspect App Routes.
-/// leptos_axum::generate_route_list(|cx| view! { cx, <App/> }).await;
+/// leptos_axum::generate_route_list(|| view! { <App/> }).await;
 /// // Enable query loading.
 /// leptos_query::suppress_query_load(false);
 /// ```
@@ -81,37 +81,34 @@ where
 
 // Start synchronization effects.
 pub(crate) fn synchronize_state<K, V>(
-    cx: Scope,
     query: Signal<Query<K, V>>,
     executor: impl Fn() + Clone + 'static,
 ) where
     K: Hash + Eq + Clone + 'static,
     V: Clone,
 {
-    ensure_not_stale(cx, query, executor.clone());
-    ensure_not_invalid(cx, query, executor.clone());
-    sync_refetch(cx, query, executor.clone());
-
-    let query = Signal::derive(cx, move || Some(query.get()));
-    synchronize_observer(cx, query);
+    ensure_not_stale(query, executor.clone());
+    ensure_not_invalid(query, executor.clone());
+    sync_refetch(query, executor.clone());
+    let query = Signal::derive(move || Some(query.get()));
+    synchronize_observer(query);
 }
 
-pub(crate) fn synchronize_observer<K, V>(cx: Scope, query: Signal<Option<Query<K, V>>>)
+pub(crate) fn synchronize_observer<K, V>(query: Signal<Option<Query<K, V>>>)
 where
     K: Hash + Eq + Clone + 'static,
     V: Clone,
 {
-    sync_observers(cx, query);
-    ensure_cache_cleanup(cx, query);
+    sync_observers(query);
+    ensure_cache_cleanup(query);
 }
 
 /// On mount, ensure that the resource is not stale
 fn ensure_not_stale<K: Clone, V: Clone>(
-    cx: Scope,
     query: Signal<Query<K, V>>,
     executor: impl Fn() + Clone + 'static,
 ) {
-    create_isomorphic_effect(cx, move |_| {
+    create_isomorphic_effect(move |_| {
         let query = query.get();
         let stale_time = query.stale_time;
 
@@ -123,16 +120,15 @@ fn ensure_not_stale<K: Clone, V: Clone>(
                 executor();
             }
         }
-    })
+    });
 }
 
 /// Refetch data once marked as invalid.
 fn ensure_not_invalid<K: Clone, V: Clone>(
-    cx: Scope,
     state: Signal<Query<K, V>>,
     executor: impl Fn() + 'static,
 ) {
-    create_isomorphic_effect(cx, move |_| {
+    create_isomorphic_effect(move |_| {
         let state = state.get();
         // Refetch query if Invalid.
         if let QueryState::Invalid(_) = state.state.get() {
@@ -142,12 +138,12 @@ fn ensure_not_invalid<K: Clone, V: Clone>(
 }
 
 /// Effect for refetching query on interval, if present.
-fn sync_refetch<K, V>(cx: Scope, query: Signal<Query<K, V>>, executor: impl Fn() + Clone + 'static)
+fn sync_refetch<K, V>(query: Signal<Query<K, V>>, executor: impl Fn() + Clone + 'static)
 where
     K: Clone + 'static,
     V: Clone + 'static,
 {
-    let _ = use_timeout(cx, move || {
+    let _ = use_timeout(move || {
         let query = query.get();
         let updated_at = query.state.get().updated_at();
         let refetch_interval = query.refetch_interval.get();
@@ -169,11 +165,11 @@ where
 }
 
 // Ensure that observers are kept track of.
-fn sync_observers<K: Clone, V: Clone>(cx: Scope, query: Signal<Option<Query<K, V>>>) {
+fn sync_observers<K: Clone, V: Clone>(query: Signal<Option<Query<K, V>>>) {
     type Observer = Rc<Cell<usize>>;
     let last_observer: Rc<Cell<Option<Observer>>> = Rc::new(Cell::new(None));
 
-    on_cleanup(cx, {
+    on_cleanup({
         let last_observer = last_observer.clone();
         move || {
             if let Some(observer) = last_observer.take() {
@@ -183,7 +179,7 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, query: Signal<Option<Query<K, V
     });
 
     // Ensure that observers are kept track of.
-    create_isomorphic_effect(cx, move |observers: Option<Option<Rc<Cell<usize>>>>| {
+    create_isomorphic_effect(move |observers: Option<Option<Rc<Cell<usize>>>>| {
         // Decrement previous observers.
         if let Some(observers) = observers.flatten() {
             last_observer.set(None);
@@ -202,15 +198,15 @@ fn sync_observers<K: Clone, V: Clone>(cx: Scope, query: Signal<Option<Query<K, V
 }
 
 /// This is a very finicky function. Be cautious with edits.
-pub(crate) fn ensure_cache_cleanup<K, V>(cx: Scope, query: Signal<Option<Query<K, V>>>)
+pub(crate) fn ensure_cache_cleanup<K, V>(query: Signal<Option<Query<K, V>>>)
 where
     K: Clone + Hash + Eq + 'static,
     V: Clone + 'static,
 {
-    let root_scope = use_query_client(cx).cx;
+    let owner = use_query_client().owner;
 
     let child_disposed = Rc::new(Cell::new(false));
-    on_cleanup(cx, {
+    on_cleanup({
         let child_disposed = child_disposed.clone();
         move || child_disposed.set(true)
     });
@@ -220,7 +216,7 @@ where
 
     // Functions that should be run on scope cleanup.
     let cleanup_map = Rc::new(RefCell::new(HashMap::<K, Box<dyn FnOnce()>>::new()));
-    on_cleanup(cx, {
+    on_cleanup({
         let key_to_on_cleanup = cleanup_map.clone();
         move || {
             let mut map = key_to_on_cleanup.borrow_mut();
@@ -229,7 +225,7 @@ where
     });
 
     // Create outer effect with child scope, and create timeout on root scope.
-    create_effect(cx, move |_| {
+    create_effect(move |_| {
         // These signals can't go inside use_timeout because they will be disposed of before the timeout executes.
         if let Some(query) = query.get() {
             let updated_at = query.state.get().updated_at();
@@ -252,47 +248,50 @@ where
             let cleanup_map = cleanup_map.clone();
 
             // use_timeout ensures no leaky timeouts. Old timeout is always cleared.
-            let clear_timeout = use_timeout(root_scope, {
+            let clear_timeout = with_owner(owner, {
                 let query = query.clone();
                 move || {
-                    if let Some(timeout) = maybe_time_until_stale(updated_at, cache_time) {
-                        let child_disposed = child_disposed.clone();
-                        let cleanup_map = cleanup_map.clone();
+                    use_timeout({
                         let query = query.clone();
+                        move || {
+                            if let Some(timeout) = maybe_time_until_stale(updated_at, cache_time) {
+                                let child_disposed = child_disposed.clone();
+                                let cleanup_map = cleanup_map.clone();
+                                let query = query.clone();
 
-                        set_timeout_with_handle(
-                            move || {
-                                // Remove from cache & dispose.
-                                let dispose = {
-                                    let query = query.clone();
+                                set_timeout_with_handle(
                                     move || {
-                                        let removed = use_query_client(root_scope)
-                                            .evict_and_notify::<K, V>(&query.key);
-                                        if let Some(query) = removed {
-                                            if query.observers.get() == 0 {
-                                                query.dispose();
-                                                drop(query)
+                                        // Remove from cache & dispose.
+                                        let dispose = {
+                                            let query = query.clone();
+                                            move || {
+                                                let removed = use_query_client()
+                                                    .evict_and_notify::<K, V>(&query.key);
+                                                if let Some(query) = removed {
+                                                    if query.observers.get() == 0 {
+                                                        query.dispose();
+                                                        drop(query)
+                                                    }
+                                                }
                                             }
-                                        }
-                                    }
-                                };
+                                        };
 
-                                // Check if scope has been disposed, or there are no observers.
-                                if child_disposed.get() || query.observers.get() == 0 {
-                                    // Dispose immediately.
-                                    dispose();
-                                } else {
-                                    // Add cleanup function.
-                                    let mut map = cleanup_map.borrow_mut();
-                                    map.insert(query.key.clone(), Box::new(dispose));
-                                }
-                            },
-                            timeout,
-                        )
-                        .ok()
-                    } else {
-                        None
-                    }
+                                        // Check if scope has been disposed. If it has, then dispose immediately. Otherwise add cleanup function.
+                                        if child_disposed.get() {
+                                            dispose();
+                                        } else {
+                                            let mut map = cleanup_map.borrow_mut();
+                                            map.insert(query.key.clone(), Box::new(dispose));
+                                        }
+                                    },
+                                    timeout,
+                                )
+                                .ok()
+                            } else {
+                                None
+                            }
+                        }
+                    })
                 }
             });
 
