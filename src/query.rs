@@ -18,7 +18,7 @@ where
     pub(crate) cache_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
     // Handlers.
-    pub(crate) on_settled: RwSignal<Option<Callback<V>>>,
+    pub(crate) on_settled: StoredValue<Option<Callback<V>>>,
 }
 
 impl<K: PartialEq, V> PartialEq for Query<K, V> {
@@ -39,7 +39,7 @@ where
         let cache_time = RwSignal::new(None);
         let refetch_interval = RwSignal::new(None);
         let state = RwSignal::new(QueryState::Created);
-        let on_settled = RwSignal::new(None);
+        let on_settled = StoredValue::new(None);
 
         Query {
             key,
@@ -83,7 +83,7 @@ where
         self.stale_time.set(stale_time);
         self.cache_time.set(cache_time);
         self.refetch_interval.set(refetch_interval);
-        self.on_settled.set(on_settled);
+        self.on_settled.set_value(on_settled);
     }
 
     // Enables having different stale times & refetch intervals for the same query.

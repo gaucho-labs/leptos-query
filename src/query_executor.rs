@@ -60,7 +60,7 @@ where
                         QueryState::Created => {
                             query.state.set(QueryState::Loading);
                             let data = fetcher(query.key.clone()).await;
-                            query.on_settled.with(|f| {
+                            query.on_settled.with_value(|f| {
                                 if let &Some(f) = f {
                                     f.call(data.clone());
                                 }
@@ -73,7 +73,7 @@ where
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
                             query.state.set(QueryState::Fetching(data));
                             let data = fetcher(query.key.clone()).await;
-                            query.on_settled.with(|f| {
+                            query.on_settled.with_value(|f| {
                                 if let &Some(f) = f {
                                     f.call(data.clone());
                                 }

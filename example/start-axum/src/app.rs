@@ -143,6 +143,9 @@ fn use_post_query(key: impl Fn() -> u32 + 'static) -> QueryResult<Option<String>
             resource_option: ResourceOption::NonBlocking,
             stale_time: Some(Duration::from_secs(5)),
             cache_time: Some(Duration::from_secs(60)),
+            on_settled: Some(Callback::new(|res| {
+                logging::log!("Got post: {res:?}");
+            }))
         },
     )
 }
