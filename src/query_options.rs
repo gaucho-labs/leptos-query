@@ -1,10 +1,15 @@
 use std::time::Duration;
 
+use leptos::Callback;
+
 /**
  * Options for a query [`crate::use_query::use_query`]
  */
 #[derive(Clone)]
-pub struct QueryOptions<V> {
+pub struct QueryOptions<V>
+where
+    V: 'static,
+{
     /// Placeholder value to use while the query is loading for the first time.
     pub default_value: Option<V>,
     /// The duration that should pass before a query is considered stale.
@@ -25,6 +30,7 @@ pub struct QueryOptions<V> {
     pub refetch_interval: Option<Duration>,
     /// Determines which type of resource to use.
     pub resource_option: ResourceOption,
+    pub on_settled: Option<Callback<V>>,
 }
 
 /// Determines which type of resource to use.
@@ -45,6 +51,7 @@ impl<V> QueryOptions<V> {
             cache_time: None,
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
+            on_settled: None,
         }
     }
     /// QueryOption with custom stale_time.
@@ -55,6 +62,7 @@ impl<V> QueryOptions<V> {
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
+            on_settled: None,
         }
     }
 
@@ -66,6 +74,7 @@ impl<V> QueryOptions<V> {
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: Some(refetch_interval),
             resource_option: ResourceOption::NonBlocking,
+            on_settled: None,
         }
     }
 }
@@ -97,6 +106,7 @@ impl<V> Default for QueryOptions<V> {
             cache_time: Some(DEFAULT_CACHE_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
+            on_settled: None,
         }
     }
 }

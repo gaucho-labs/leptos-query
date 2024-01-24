@@ -60,6 +60,11 @@ where
                         QueryState::Created => {
                             query.state.set(QueryState::Loading);
                             let data = fetcher(query.key.clone()).await;
+                            query.on_settled.with(|f| {
+                                if let &Some(f) = f {
+                                    f.call(data.clone());
+                                }
+                            });
                             let updated_at = crate::Instant::now();
                             let data = QueryData { data, updated_at };
                             query.state.set(QueryState::Loaded(data));
@@ -68,6 +73,11 @@ where
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
                             query.state.set(QueryState::Fetching(data));
                             let data = fetcher(query.key.clone()).await;
+                            query.on_settled.with(|f| {
+                                if let &Some(f) = f {
+                                    f.call(data.clone());
+                                }
+                            });
                             let updated_at = crate::Instant::now();
                             let data = QueryData { data, updated_at };
                             query.state.set(QueryState::Loaded(data));

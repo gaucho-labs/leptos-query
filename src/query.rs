@@ -17,6 +17,8 @@ where
     pub(crate) stale_time: RwSignal<Option<Duration>>,
     pub(crate) cache_time: RwSignal<Option<Duration>>,
     pub(crate) refetch_interval: RwSignal<Option<Duration>>,
+    // Handlers.
+    pub(crate) on_settled: RwSignal<Option<Callback<V>>>,
 }
 
 impl<K: PartialEq, V> PartialEq for Query<K, V> {
@@ -33,10 +35,11 @@ where
     V: Clone + 'static,
 {
     pub(crate) fn new(key: K) -> Self {
-        let stale_time = create_rw_signal(None);
-        let cache_time = create_rw_signal(None);
-        let refetch_interval = create_rw_signal(None);
-        let state = create_rw_signal(QueryState::Created);
+        let stale_time = RwSignal::new(None);
+        let cache_time = RwSignal::new(None);
+        let refetch_interval = RwSignal::new(None);
+        let state = RwSignal::new(QueryState::Created);
+        let on_settled = RwSignal::new(None);
 
         Query {
             key,
@@ -45,6 +48,7 @@ where
             stale_time,
             cache_time,
             refetch_interval,
+            on_settled,
         }
     }
 }
@@ -64,21 +68,39 @@ where
         }
     }
 
-    pub(crate) fn overwrite_options(&self, options: QueryOptions<V>) {
-        let stale_time = ensure_valid_stale_time(&options.stale_time, &options.cache_time);
+    pub(crate) fn overwrite_options(
+        &self,
+        QueryOptions {
+            stale_time,
+            cache_time,
+            refetch_interval,
+            on_settled,
+            ..
+        }: QueryOptions<V>,
+    ) {
+        let stale_time = ensure_valid_stale_time(&stale_time, &cache_time);
 
         self.stale_time.set(stale_time);
-        self.cache_time.set(options.cache_time);
-        self.refetch_interval.set(options.refetch_interval);
+        self.cache_time.set(cache_time);
+        self.refetch_interval.set(refetch_interval);
+        self.on_settled.set(on_settled);
     }
 
     // Enables having different stale times & refetch intervals for the same query.
     // The lowest stale time & refetch interval will be used.
     // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
     // Cache time behaves differently. It will only use the minimum cache time found.
-    pub(crate) fn update_options(&self, options: QueryOptions<V>) {
+    pub(crate) fn update_options(
+        &self,
+        QueryOptions {
+            stale_time,
+            cache_time,
+            refetch_interval,
+            ..
+        }: QueryOptions<V>,
+    ) {
         // Use the minimum cache time.
-        match (self.cache_time.get_untracked(), options.cache_time) {
+        match (self.cache_time.get_untracked(), cache_time) {
             (Some(current), Some(new)) if new < current => self.cache_time.set(Some(new)),
             (None, Some(new)) => self.cache_time.set(Some(new)),
             _ => (),
@@ -87,13 +109,13 @@ where
         let curr_stale = self.stale_time.get_untracked();
         let curr_refetch_interval = self.refetch_interval.get_untracked();
 
-        let (prev_stale, new_stale) = match (curr_stale, options.stale_time) {
+        let (prev_stale, new_stale) = match (curr_stale, stale_time) {
             (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
             (None, Some(new)) => (None, Some(new)),
             _ => (None, None),
         };
 
-        let (prev_refetch, new_refetch) = match (curr_refetch_interval, options.refetch_interval) {
+        let (prev_refetch, new_refetch) = match (curr_refetch_interval, refetch_interval) {
             (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
             (None, Some(new)) => (None, Some(new)),
             _ => (None, None),
