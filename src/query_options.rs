@@ -30,6 +30,8 @@ where
     pub refetch_interval: Option<Duration>,
     /// Determines which type of resource to use.
     pub resource_option: ResourceOption,
+    /// Gets called after the query fetcher with the value of the latest fetch.
+    /// Similar to `onSettled` function passed to [`QueryCache` in tanstack query](https://tanstack.com/query/latest/docs/react/reference/QueryCache#global-callbacks).
     pub on_settled: Option<Callback<V>>,
 }
 
