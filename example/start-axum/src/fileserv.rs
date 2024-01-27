@@ -28,12 +28,8 @@ cfg_if! { if #[cfg(feature = "ssr")] {
         let req = Request::builder().uri(uri.clone()).body(Body::empty()).unwrap();
         // `ServeDir` implements `tower::Service` so we can call it with `tower::ServiceExt::oneshot`
         // This path is relative to the cargo root
-        match ServeDir::new(root).oneshot(req).await {
-            Ok(res) => Ok(res),
-            Err(err) => Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Something went wrong: {err}"),
-            )),
-        }
+        ServeDir::new(root)
+            .oneshot(req).await
+            .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("Something went wrong: {err}")))
     }
 }}
