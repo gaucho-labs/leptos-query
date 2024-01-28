@@ -184,7 +184,7 @@ impl QueryClient {
     /// Retrieve the current state for an existing query.
     /// If the query does not exist, [`None`](Option::None) will be returned.
     pub fn get_query_state<K, V>(
-        self,
+        &self,
         key: impl Fn() -> K + 'static,
     ) -> Signal<Option<QueryState<V>>>
     where
@@ -247,10 +247,13 @@ impl QueryClient {
         Q: Borrow<K>,
     {
         // Find all states, drop borrow, then mark invalid.
-        let cache_borrowed = RefCell::borrow(&self.cache);
+        let cache_borrowed = RefCell::try_borrow(&self.cache).expect("invalidate_queries borrow");
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
         let cache = cache_borrowed.get(&type_key)?;
-        let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
+        let cache = cache
+            .as_any()
+            .downcast_ref::<CacheEntry<K, V>>()
+            .expect(EXPECT_CACHE_ERROR);
         let result = keys
             .into_iter()
             .filter(|key| {
@@ -305,7 +308,10 @@ impl QueryClient {
     /// ```
     ///
     pub fn invalidate_all_queries(&self) -> &Self {
-        for cache in RefCell::borrow(&self.cache).values() {
+        for cache in RefCell::try_borrow(&self.cache)
+            .expect("invalidate_all_queries borrow")
+            .values()
+        {
             cache.invalidate();
         }
         self
@@ -327,7 +333,7 @@ impl QueryClient {
         let cache = self.cache.clone();
         create_memo(move |_| {
             notify.get();
-            let cache = RefCell::borrow(&cache);
+            let cache = RefCell::try_borrow(&cache).expect("size borrow");
             cache.values().map(|b| b.size()).sum()
         })
         .into()
@@ -418,10 +424,13 @@ impl QueryClient {
         F: FnOnce(&HashMap<K, Query<K, V>>) -> Option<R>,
         R: 'static,
     {
-        let cache = RefCell::borrow(&self.cache);
+        let cache = RefCell::try_borrow(&self.cache).expect("use_cache_option borrow");
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
         let cache = cache.get(&type_key)?;
-        let cache = cache.as_any().downcast_ref::<CacheEntry<K, V>>()?;
+        let cache = cache
+            .as_any()
+            .downcast_ref::<CacheEntry<K, V>>()
+            .expect(EXPECT_CACHE_ERROR);
         func(&cache.0)
     }
 
@@ -432,10 +441,13 @@ impl QueryClient {
         F: FnOnce(&mut HashMap<K, Query<K, V>>) -> Option<R>,
         R: 'static,
     {
-        let mut cache = self.cache.borrow_mut();
+        let mut cache = RefCell::try_borrow_mut(&self.cache).expect("use_cache_option_mut borrow");
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
         let cache = cache.get_mut(&type_key)?;
-        let cache = cache.as_any_mut().downcast_mut::<CacheEntry<K, V>>()?;
+        let cache = cache
+            .as_any_mut()
+            .downcast_mut::<CacheEntry<K, V>>()
+            .expect(EXPECT_CACHE_ERROR);
         func(&mut cache.0)
     }
 
@@ -447,7 +459,7 @@ impl QueryClient {
         K: Clone + 'static,
         V: Clone + 'static,
     {
-        let mut cache = self.cache.borrow_mut();
+        let mut cache = RefCell::try_borrow_mut(&self.cache).expect("use_cache borrow");
 
         let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
 
@@ -530,6 +542,9 @@ impl QueryClient {
     }
 }
 
+const EXPECT_CACHE_ERROR: &str =
+    "Error: Query Cache Type Mismatch. This should not happen. Please file a bug report.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,15 +556,13 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        assert_eq!(0, client.clone().size().get_untracked());
+        assert_eq!(0, client.size().get_untracked());
 
-        let state = client.clone().get_query_state::<u32, String>(|| 0);
+        let state = client.get_query_state::<u32, String>(|| 0);
 
         assert_eq!(None, state.get_untracked());
 
-        client
-            .clone()
-            .prefetch_query(|| 0, |num: u32| async move { num.to_string() }, true);
+        client.prefetch_query(|| 0, |num: u32| async move { num.to_string() }, true);
 
         assert_eq!(
             Some("0".to_string()),
@@ -561,9 +574,9 @@ mod tests {
             Some(QueryState::Loaded { .. })
         ));
 
-        assert_eq!(1, client.clone().size().get_untracked());
+        assert_eq!(1, client.size().get_untracked());
 
-        client.clone().invalidate_query::<u32, String>(0);
+        client.invalidate_query::<u32, String>(0);
 
         assert!(matches!(
             state.get_untracked(),
@@ -578,20 +591,18 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        let state = client.clone().get_query_state::<u32, String>(|| 0);
+        let state = client.get_query_state::<u32, String>(|| 0);
         assert_eq!(None, state.get_untracked());
-        assert_eq!(0, client.clone().size().get_untracked());
+        assert_eq!(0, client.size().get_untracked());
 
-        client.clone().set_query_data::<u32, String>(0, |_| None);
+        client.set_query_data::<u32, String>(0, |_| None);
 
         assert_eq!(None, state.get_untracked());
         assert_eq!(0, client.size().get_untracked());
 
-        client
-            .clone()
-            .set_query_data::<u32, String>(0, |_| Some("0".to_string()));
+        client.set_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
-        assert_eq!(1, client.clone().size().get_untracked());
+        assert_eq!(1, client.size().get_untracked());
 
         assert_eq!(
             Some("0".to_string()),
@@ -632,7 +643,7 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        let subscription = client.clone().get_query_state::<u32, u32>(|| 0_u32);
+        let subscription = client.get_query_state::<u32, u32>(|| 0_u32);
 
         create_isomorphic_effect(move |_| {
             subscription.get();
@@ -702,16 +713,12 @@ mod tests {
         client.set_query_data::<u32, u32>(0, |_| Some(1234));
         client.set_query_data::<u32, u32>(1, |_| Some(5678));
 
-        let state0_string = client
-            .clone()
-            .get_query_state::<String, String>(move || zero.clone());
+        let state0_string = client.get_query_state::<String, String>(move || zero.clone());
 
-        let state1_string = client
-            .clone()
-            .get_query_state::<String, String>(move || one.clone());
+        let state1_string = client.get_query_state::<String, String>(move || one.clone());
 
-        let state0 = client.clone().get_query_state::<u32, u32>(|| 0);
-        let state1 = client.clone().get_query_state::<u32, u32>(|| 1);
+        let state0 = client.get_query_state::<u32, u32>(|| 0);
+        let state1 = client.get_query_state::<u32, u32>(|| 1);
 
         client.invalidate_all_queries();
 
@@ -743,8 +750,8 @@ mod tests {
         client.set_query_data::<u32, u32>(0, |_| Some(1234));
         client.set_query_data::<u32, u32>(1, |_| Some(1234));
 
-        let state0 = client.clone().get_query_state::<u32, u32>(|| 0);
-        let state1 = client.clone().get_query_state::<u32, u32>(|| 1);
+        let state0 = client.get_query_state::<u32, u32>(|| 0);
+        let state1 = client.get_query_state::<u32, u32>(|| 1);
 
         client.invalidate_query_type::<u32, u32>();
 
