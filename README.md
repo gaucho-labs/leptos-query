@@ -14,7 +14,7 @@
     </a>
 </p>
 
-[FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md) | [Docs.rs](https://docs.rs/leptos/latest/leptos/) | [Examples](https://github.com/nicoburniske/leptos_query/tree/main/example/)
+[FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md) | [Docs.rs](https://docs.rs/leptos_query/latest/leptos_query/) | [Examples](https://github.com/nicoburniske/leptos_query/tree/main/example/)
 
 ## About
 
@@ -49,6 +49,14 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 ```bash
 cargo add leptos_query
 ```
+
+### Leptos compatibilty
+
+| `leptos` version | `leptos_query` version |
+|------------------|------------------------|
+| 0.5.*            | 0.3                    |
+| 0.6.*            | 0.4.*                  |
+
 
 Then add the relevant feature(s) to your `Cargo.toml`
 
