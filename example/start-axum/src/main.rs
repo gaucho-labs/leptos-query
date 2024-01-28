@@ -6,6 +6,7 @@ async fn main() {
     use leptos_axum::{generate_route_list, LeptosRoutes};
     use start_axum::app::*;
     use start_axum::fileserv::file_and_error_handler;
+    use tokio::net::TcpListener;
 
     simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
 
@@ -28,9 +29,9 @@ async fn main() {
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
+    let listener = TcpListener::bind(&addr).await.unwrap();
     logging::log!("listening on http://{}", &addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
 }

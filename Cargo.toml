@@ -11,11 +11,11 @@ readme = "README.md"
 repository = "https://github.com/nicoburniske/leptos_query"
 
 [dependencies]
-leptos = "0.5"
+leptos = "0.6"
 cfg-if = "1"
-js-sys = {version = "0.3.64", optional = true}
-gloo-timers = { version = "0.2.6", optional = true, features = ["futures"] }
-tokio = { version = "1.29.1", optional = true, features = ["time"]}
+js-sys = {version = "0.3", optional = true}
+gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
+tokio = { version = "1.35", optional = true, features = ["time"]}
 
 [features]
 hydrate = ["dep:js-sys", "dep:gloo-timers"] 
