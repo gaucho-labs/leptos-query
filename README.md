@@ -44,19 +44,22 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 
 - **Manual Query Data Mutations**: Useful when you have updated a value and you want to manually set it in cache instead of waiting for query to refetch.
 
+
+## Version compatibility for Leptos and Leptos Query
+
+The table below shows the compatible versions of `leptos_query` for each `leptos` version. Ensure you are using compatible versions to avoid potential issues.
+
+| `leptos` version | `leptos_query` version |
+|------------------|------------------------|
+| 0.6.*            | 0.4.*                  |
+| 0.5.*            | 0.3.*                  |
+
+
 ## Installation
 
 ```bash
 cargo add leptos_query
 ```
-
-### Leptos compatibilty
-
-| `leptos` version | `leptos_query` version |
-|------------------|------------------------|
-| 0.5.*            | 0.3                    |
-| 0.6.*            | 0.4.*                  |
-
 
 Then add the relevant feature(s) to your `Cargo.toml`
 
