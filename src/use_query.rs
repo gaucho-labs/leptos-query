@@ -117,13 +117,8 @@ where
     // Ensure always latest value.
     create_isomorphic_effect(move |_| {
         let state = query.get().state.get();
-        if let QueryState::Loaded(data) = state {
-            // Interrupt Suspense.
-            if resource.loading().get_untracked() {
-                resource.set(ResourceData(Some(data.data)));
-            } else {
-                resource.refetch();
-            }
+        if let QueryState::Loaded(_) = state {
+            resource.refetch();
         }
     });
 
