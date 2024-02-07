@@ -1,8 +1,7 @@
-use crate::query_executor::{create_executor, synchronize_state};
+use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
 use crate::{
-    create_query_result, use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn,
-    ResourceOption,
+    use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn, ResourceOption,
 };
 use leptos::*;
 use std::future::Future;
@@ -61,31 +60,37 @@ pub fn use_query<K, V, Fu>(
     options: QueryOptions<V>,
 ) -> QueryResult<V, impl RefetchFn>
 where
-    K: Hash + Eq + Clone + 'static,
-    V: Clone + Serializable + 'static,
+    K: std::fmt::Debug + Hash + Eq + Clone + 'static,
+    V: std::fmt::Debug + Clone + Serializable + 'static,
     Fu: Future<Output = V> + 'static,
 {
     // Find relevant state.
     let query = use_query_client().get_query_signal(key);
 
     // Update options.
-    create_isomorphic_effect({
-        let options = options.clone();
-        move |_| {
-            let (query, new) = query.get();
-            if new {
-                query.overwrite_options(options.clone())
-            } else {
-                query.update_options(options.clone())
-            }
-        }
-    });
+    // create_isomorphic_effect({
+    //     let options = options.clone();
+    //     move |_| {
+    //         let (query, new) = query.get();
+    //         if new {
+    //             query.overwrite_options(options.clone())
+    //         } else {
+    //             query.update_options(options.clone())
+    //         }
+    //     }
+    // });
 
     let query = Signal::derive(move || query.get().0);
 
+    let query_observer = create_memo(move |_| {
+        logging::log!("Registering observer {:?}", query.get_untracked().key);
+        query.get().register_observer()
+    });
+    let query_state = Signal::derive(move || query_observer.get().state_signal().get());
+
     let resource_fetcher = move |query: Query<K, V>| {
         async move {
-            match query.state.get_untracked() {
+            match query.get_state() {
                 // Immediately provide cached value.
                 QueryState::Loaded(data)
                 | QueryState::Invalid(data)
@@ -114,17 +119,13 @@ where
         }
     };
 
-    // Ensure always latest value.
     create_isomorphic_effect(move |_| {
-        let state = query.get().state.get();
-        if let QueryState::Loaded(_) = state {
+        if query_state.with(|s| matches!(s, QueryState::Loaded(_))) {
             resource.refetch();
         }
     });
 
-    let executor = create_executor(query, fetcher);
-
-    synchronize_state(query, executor.clone());
+    let executor = create_executor(query.into(), fetcher);
 
     // Ensure key changes are considered.
     create_isomorphic_effect({
@@ -133,7 +134,7 @@ where
             let query = query.get();
             if let Some(prev_query) = prev_query {
                 if prev_query != query {
-                    if let QueryState::Created = query.state.get_untracked() {
+                    if query.with_state(|state| matches!(state, QueryState::Created)) {
                         executor()
                     }
                 }
@@ -150,7 +151,7 @@ where
 
             // First Read.
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
-            if read.is_none() && matches!(query.state.get_untracked(), QueryState::Created) {
+            if read.is_none() && query.with_state(|state| matches!(state, QueryState::Created)) {
                 executor()
             }
 
@@ -159,20 +160,24 @@ where
             // Need to force insert the resource data into the query state.
             #[cfg(feature = "hydrate")]
             if let Some(ref data) = read {
-                if let QueryState::Created = query.state.get_untracked() {
+                if query.with_state(|state| matches!(state, QueryState::Created)) {
                     let updated_at = crate::Instant::now();
                     let data = QueryData {
                         data: data.clone(),
                         updated_at,
                     };
-                    query.state.set(QueryState::Loaded(data));
+                    query.set_state(QueryState::Loaded(data));
                 }
             }
             read
         }
     });
 
-    create_query_result(query, data, executor)
+    QueryResult {
+        data,
+        state: query_state,
+        refetch: executor,
+    }
 }
 
 const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);

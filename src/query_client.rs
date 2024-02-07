@@ -1,7 +1,4 @@
-use crate::{
-    query_executor::{create_executor, synchronize_state},
-    *,
-};
+use crate::*;
 use leptos::*;
 use std::{
     any::{Any, TypeId},
@@ -109,44 +106,45 @@ impl QueryClient {
     /// If the entry already exists it will still be refetched.
     ///
     /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
-    pub fn fetch_query<K, V, Fu>(
-        &self,
-        key: impl Fn() -> K + 'static,
-        fetcher: impl Fn(K) -> Fu + 'static,
-        isomorphic: bool,
-    ) -> QueryResult<V, impl RefetchFn>
-    where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
-        Fu: Future<Output = V> + 'static,
-    {
-        let state = self.get_query_signal(key);
+    // pub fn fetch_query<K, V, Fu>(
+    //     &self,
+    //     key: impl Fn() -> K + 'static,
+    //     fetcher: impl Fn(K) -> Fu + 'static,
+    //     isomorphic: bool,
+    // ) -> QueryResult<V, impl RefetchFn>
+    // where
+    //     K: Hash + Eq + Clone + 'static,
+    //     V: Clone + 'static,
+    //     Fu: Future<Output = V> + 'static,
+    // {
+    //     todo!()
+    //     let state = self.get_query_signal(key);
 
-        let state = Signal::derive(move || state.get().0);
+    //     let state = Signal::derive(move || state.get().0);
 
-        let executor = create_executor(state, fetcher);
+    //     let executor = create_executor(state, fetcher);
 
-        let sync = {
-            let executor = executor.clone();
-            move |_| {
-                let _ = state.get();
-                executor()
-            }
-        };
-        if isomorphic {
-            create_isomorphic_effect(sync);
-        } else {
-            create_effect(sync);
-        }
+    //     let sync = {
+    //         let executor = executor.clone();
+    //         move |_| {
+    //             let _ = state.get();
+    //             executor()
+    //         }
+    //     };
+    //     if isomorphic {
+    //         create_isomorphic_effect(sync);
+    //     } else {
+    //         create_effect(sync);
+    //     }
 
-        synchronize_state(state, executor.clone());
+    //     synchronize_state(state, executor.clone());
 
-        create_query_result(
-            state,
-            Signal::derive(move || state.get().state.get().data().cloned()),
-            executor,
-        )
-    }
+    //     create_query_result(
+    //         state,
+    //         Signal::derive(move || state.get().state.get().data().cloned()),
+    //         executor,
+    //     )
+    // }
 
     /// Prefetch a query and store it in cache.
     /// If the entry already exists it will still be refetched.
@@ -162,23 +160,24 @@ impl QueryClient {
         V: Clone + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = self.get_query_signal(key);
+        // let state = self.get_query_signal(key);
 
-        let state = Signal::derive(move || state.get().0);
+        // let state = Signal::derive(move || state.get().0);
 
-        let executor = create_executor(state, query);
+        // let executor = create_executor(state, query);
 
-        let sync = {
-            move |_| {
-                let _ = state.get();
-                executor()
-            }
-        };
-        if isomorphic {
-            create_isomorphic_effect(sync);
-        } else {
-            create_effect(sync);
-        }
+        // let sync = {
+        //     move |_| {
+        //         let _ = state.get();
+        //         executor()
+        //     }
+        // };
+        // if isomorphic {
+        //     create_isomorphic_effect(sync);
+        // } else {
+        //     create_effect(sync);
+        // }
+        ()
     }
 
     /// Retrieve the current state for an existing query.
@@ -191,18 +190,19 @@ impl QueryClient {
         K: Hash + Eq + Clone + 'static,
         V: Clone,
     {
-        let client = self.clone();
+        // let client = self.clone();
 
-        // Memoize state to avoid unnecessary hashmap lookups.
-        let maybe_query = create_memo(move |_| {
-            let key = key();
-            client.notify.get();
-            client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
-        });
+        // // Memoize state to avoid unnecessary hashmap lookups.
+        // let maybe_query = create_memo(move |_| {
+        //     let key = key();
+        //     client.notify.get();
+        //     client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
+        // });
 
-        synchronize_observer(maybe_query.into());
+        // synchronize_observer(maybe_query.into());
 
-        Signal::derive(move || maybe_query.get().map(|s| s.state.get()))
+        // Signal::derive(move || maybe_query.get().map(|s| s.state.get()))
+        todo!();
     }
 
     /// Attempts to invalidate an entry in the Query Cache.
@@ -374,44 +374,45 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        enum SetResult {
-            Inserted,
-            Updated,
-            Nothing,
-        }
-        let result = self.use_cache(move |(owner, cache)| {
-            match cache.entry(key.clone()) {
-                Entry::Occupied(entry) => {
-                    let query = entry.get();
-                    let result = query.state.with_untracked(|s| {
-                        let data = s.query_data().map(|d| &d.data);
-                        updater(data)
-                    });
-                    // Only update query data if updater returns Some.
-                    if let Some(result) = result {
-                        query.state.set(QueryState::Loaded(QueryData::now(result)));
-                        SetResult::Updated
-                    } else {
-                        SetResult::Nothing
-                    }
-                }
-                Entry::Vacant(entry) => {
-                    // Only insert query if updater returns Some.
-                    if let Some(result) = updater(None) {
-                        let query = with_owner(owner, || Query::new(key));
-                        query.state.set(QueryState::Loaded(QueryData::now(result)));
-                        entry.insert(query);
-                        SetResult::Inserted
-                    } else {
-                        SetResult::Nothing
-                    }
-                }
-            }
-        });
+        todo!()
+        // enum SetResult {
+        //     Inserted,
+        //     Updated,
+        //     Nothing,
+        // }
+        // let result = self.use_cache(move |(owner, cache)| {
+        //     match cache.entry(key.clone()) {
+        //         Entry::Occupied(entry) => {
+        //             let query = entry.get();
+        //             let result = query.state.with_untracked(|s| {
+        //                 let data = s.query_data().map(|d| &d.data);
+        //                 updater(data)
+        //             });
+        //             // Only update query data if updater returns Some.
+        //             if let Some(result) = result {
+        //                 query.state.set(QueryState::Loaded(QueryData::now(result)));
+        //                 SetResult::Updated
+        //             } else {
+        //                 SetResult::Nothing
+        //             }
+        //         }
+        //         Entry::Vacant(entry) => {
+        //             // Only insert query if updater returns Some.
+        //             if let Some(result) = updater(None) {
+        //                 let query = with_owner(owner, || Query::new(key));
+        //                 query.state.set(QueryState::Loaded(QueryData::now(result)));
+        //                 entry.insert(query);
+        //                 SetResult::Inserted
+        //             } else {
+        //                 SetResult::Nothing
+        //             }
+        //         }
+        //     }
+        // });
 
-        if let SetResult::Inserted = result {
-            self.notify.set(());
-        }
+        // if let SetResult::Inserted = result {
+        //     self.notify.set(());
+        // }
     }
 
     /// Mutate the existing data if it exists.
@@ -424,18 +425,19 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        self.use_cache::<K, V, bool>(move |(_, cache)| {
-            let mut updated = false;
-            if let Some(query) = cache.get(key.borrow()) {
-                query.state.update(|state| {
-                    if let Some(data) = state.data_mut() {
-                        updater(data);
-                        updated = true;
-                    }
-                });
-            }
-            updated
-        })
+        todo!();
+        // self.use_cache::<K, V, bool>(move |(_, cache)| {
+        //     let mut updated = false;
+        //     if let Some(query) = cache.get(key.borrow()) {
+        //         query.state.update(|state| {
+        //             if let Some(data) = state.data_mut() {
+        //                 updater(data);
+        //                 updated = true;
+        //             }
+        //         });
+        //     }
+        //     updated
+        // })
     }
 
     /// Cancel any currently executing query.
@@ -445,19 +447,20 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        self.use_cache::<K, V, bool>(move |(_, cache)| {
-            if let Some(query) = cache.get(&key) {
-                match query.state.get_untracked() {
-                    QueryState::Fetching(data) => {
-                        query.state.set(QueryState::Loaded(data));
-                        true
-                    }
-                    _ => false,
-                }
-            } else {
-                false
-            }
-        })
+        todo!()
+        // self.use_cache::<K, V, bool>(move |(_, cache)| {
+        //     if let Some(query) = cache.get(&key) {
+        //         match query.state.get_untracked() {
+        //             QueryState::Fetching(data) => {
+        //                 query.state.set(QueryState::Loaded(data));
+        //                 true
+        //             }
+        //             _ => false,
+        //         }
+        //     } else {
+        //         false
+        //     }
+        // })
     }
 
     fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
@@ -553,7 +556,7 @@ impl QueryClient {
     pub(crate) fn get_query_signal<K, V>(
         &self,
         key: impl Fn() -> K + 'static,
-    ) -> Signal<(Query<K, V>, bool)>
+    ) -> Memo<(Query<K, V>, bool)>
     where
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,
@@ -562,10 +565,10 @@ impl QueryClient {
 
         // This memo is crucial to avoid crazy amounts of lookups.
         create_memo(move |_| {
+            logging::log!("GETTING QUERY");
             let key = key();
             client.get_or_create_query(key)
         })
-        .into()
     }
 
     pub(crate) fn evict_and_notify<K, V: 'static>(&self, key: &K) -> Option<Query<K, V>>

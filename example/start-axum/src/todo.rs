@@ -264,7 +264,7 @@ fn set_todo(id: TodoId, todo: Option<Todo>) {
  * All Todos Helpers.
  */
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 struct AllTodosTag;
 fn use_todos_query() -> QueryResult<Vec<Todo>, impl RefetchFn> {
     use_query(

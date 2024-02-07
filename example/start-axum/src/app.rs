@@ -183,11 +183,8 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
     let QueryResult {
         data,
         state,
-        is_loading,
-        is_fetching,
-        is_stale,
-        is_invalid,
         refetch,
+        ..
     } = use_post_query(post_id);
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
@@ -196,22 +193,6 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
         <div class="container">
             <a href="/">"Home"</a>
             <h2>"Post Key: " {move || post_id.get()}</h2>
-            <div>
-                <span>"Loading Status: "</span>
-                <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
-            </div>
-            <div>
-                <span>"Fetching Status: "</span>
-                <span>{move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}</span>
-            </div>
-            <div>
-                <span>"Stale Status: "</span>
-                <span>{move || { if is_stale.get() { "Stale" } else { "Fresh" } }}</span>
-            </div>
-            <div>
-                <span>"Invalidated: "</span>
-                <span>{move || { if is_invalid.get() { "Invalid" } else { "Valid" } }}</span>
-            </div>
             <div class="post-body">
                 <p>"Post Body"</p>
                 <Transition fallback=move || {
