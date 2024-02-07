@@ -4,7 +4,7 @@ use crate::QueryState;
 
 // TODO: On drop?
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct QueryObserver<V: 'static> {
     id: u32,
     state: RwSignal<QueryState<V>>,

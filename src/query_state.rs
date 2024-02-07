@@ -66,6 +66,15 @@ impl<V> QueryState<V> {
             }
         }
     }
+
+    pub(crate) fn into_data(self) -> Option<QueryData<V>> {
+        match self {
+            QueryState::Loading | QueryState::Created => None,
+            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                Some(data)
+            }
+        }
+    }
 }
 
 impl<V> std::fmt::Debug for QueryState<V>

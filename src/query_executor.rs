@@ -66,6 +66,7 @@ where
                         }
                         // Subsequent loads.
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                            logging::log!("Refetching");
                             query.set_state(QueryState::Fetching(data));
 
                             let new_data = fetcher(query.key.clone()).await;

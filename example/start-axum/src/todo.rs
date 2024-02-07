@@ -257,7 +257,7 @@ fn invalidate_todo(id: TodoId) -> bool {
 
 fn set_todo(id: TodoId, todo: Option<Todo>) {
     let client = use_query_client();
-    client.set_query_data::<TodoId, TodoResponse>(id, move |_| Some(Ok(todo)));
+    client.update_query_data::<TodoId, TodoResponse>(id, move |_| Some(Ok(todo)));
 }
 
 /**
@@ -279,14 +279,24 @@ fn invalidate_todos() -> bool {
     client.invalidate_query::<AllTodosTag, Vec<Todo>>(AllTodosTag)
 }
 
-fn cancel_todos() -> bool {
+fn cancel_todos() {
     let client = use_query_client();
-    client.cancel_query::<AllTodosTag, Vec<Todo>>(AllTodosTag)
+    let cancelled = client.cancel_query::<AllTodosTag, Vec<Todo>>(AllTodosTag);
+    if cancelled {
+        logging::log!("Cancelled all todos")
+    } else {
+        logging::log!("Didn't cancel all todos")
+    }
 }
 
 fn update_todos(func: impl FnOnce(&mut Vec<Todo>)) {
     let client = use_query_client();
-    client.update_query_data_mut::<AllTodosTag, Vec<Todo>>(AllTodosTag, func);
+    let updated = client.update_query_data_mut::<AllTodosTag, Vec<Todo>>(AllTodosTag, func);
+    if updated {
+        logging::log!("Updated todos")
+    } else {
+        logging::log!("Failed to update todos")
+    }
 }
 
 cfg_if::cfg_if! {

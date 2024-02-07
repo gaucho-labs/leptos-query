@@ -13,7 +13,7 @@ where
     V: 'static,
 {
     pub(crate) key: K,
-    observers: Rc<RefCell<Vec<QueryObserver<V>>>>,
+    observers: Rc<RefCell<Vec<Rc<QueryObserver<V>>>>>,
     state: Rc<Cell<QueryState<V>>>,
 }
 
@@ -48,42 +48,54 @@ where
     }
 
     pub(crate) fn set_state(&self, state: QueryState<V>) {
-        self.state.set(state.clone());
         let observers = self.observers.borrow();
         for observer in observers.iter() {
             observer.update(state.clone())
         }
+        self.state.set(state);
     }
 
-    pub(crate) fn with_state<T>(&self, predicate: impl FnOnce(&QueryState<V>) -> T) -> T {
+    pub(crate) fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
         let state = self.state.replace(QueryState::Created);
-        let result = predicate(&state);
+        let result = func(&state);
         self.state.set(state);
         result
     }
 
-    pub(crate) fn map_state(&self, update_fn: impl FnOnce(QueryState<V>) -> QueryState<V>) {
+    pub(crate) fn map_state(&self, func: impl FnOnce(QueryState<V>) -> QueryState<V>) {
         let state = self.state.replace(QueryState::Created);
-        let new_state = update_fn(state);
+        let new_state = func(state);
         self.set_state(new_state);
+    }
+
+    pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
+        let mut state = self.state.replace(QueryState::Created);
+        update_fn(&mut state);
+        self.set_state(state);
     }
 
     pub(crate) fn maybe_map_state(
         &self,
         update_fn: impl FnOnce(QueryState<V>) -> Result<QueryState<V>, QueryState<V>>,
-    ) {
+    ) -> bool {
         let current_state = self.state.replace(QueryState::Created);
 
         match update_fn(current_state) {
-            Ok(new_state) => self.set_state(new_state),
-            Err(old_state) => self.state.set(old_state),
+            Ok(new_state) => {
+                self.set_state(new_state);
+                true
+            }
+            Err(old_state) => {
+                self.state.set(old_state);
+                false
+            }
         }
     }
 
-    pub(crate) fn register_observer(&self) -> QueryObserver<V> {
+    pub(crate) fn register_observer(&self) -> Rc<QueryObserver<V>> {
         let mut observers = self.observers.try_borrow_mut().expect("register_observer");
         let observer_id = observers.last().map(|o| o.get_id()).unwrap_or_default();
-        let observer = QueryObserver::new(observer_id, self.get_state());
+        let observer = Rc::new(QueryObserver::new(observer_id, self.get_state()));
         logging::log!("Updating observers {}", observers.len() + 1);
         observers.push(observer.clone());
         // drop(observers);

@@ -366,7 +366,7 @@ impl QueryClient {
     ///     new_monkey
     /// });
     /// ```
-    pub fn set_query_data<K, V>(
+    pub fn update_query_data<K, V>(
         &self,
         key: K,
         updater: impl FnOnce(Option<&V>) -> Option<V> + 'static,
@@ -374,45 +374,70 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        todo!()
-        // enum SetResult {
-        //     Inserted,
-        //     Updated,
-        //     Nothing,
-        // }
-        // let result = self.use_cache(move |(owner, cache)| {
-        //     match cache.entry(key.clone()) {
-        //         Entry::Occupied(entry) => {
-        //             let query = entry.get();
-        //             let result = query.state.with_untracked(|s| {
-        //                 let data = s.query_data().map(|d| &d.data);
-        //                 updater(data)
-        //             });
-        //             // Only update query data if updater returns Some.
-        //             if let Some(result) = result {
-        //                 query.state.set(QueryState::Loaded(QueryData::now(result)));
-        //                 SetResult::Updated
-        //             } else {
-        //                 SetResult::Nothing
-        //             }
-        //         }
-        //         Entry::Vacant(entry) => {
-        //             // Only insert query if updater returns Some.
-        //             if let Some(result) = updater(None) {
-        //                 let query = with_owner(owner, || Query::new(key));
-        //                 query.state.set(QueryState::Loaded(QueryData::now(result)));
-        //                 entry.insert(query);
-        //                 SetResult::Inserted
-        //             } else {
-        //                 SetResult::Nothing
-        //             }
-        //         }
-        //     }
-        // });
+        enum SetResult {
+            Inserted,
+            Updated,
+            Nothing,
+        }
+        let result = self.use_cache(move |(owner, cache)| {
+            match cache.entry(key.clone()) {
+                Entry::Occupied(entry) => {
+                    let query = entry.get();
 
-        // if let SetResult::Inserted = result {
-        //     self.notify.set(());
-        // }
+                    let updated = query.maybe_map_state(|state| match state {
+                        QueryState::Created | QueryState::Loading => {
+                            if let Some(result) = updater(None) {
+                                Ok(QueryState::Loaded(QueryData::now(result)))
+                            } else {
+                                Err(state)
+                            }
+                        }
+                        QueryState::Fetching(ref data) => {
+                            if let Some(result) = updater(Some(&data.data)) {
+                                Ok(QueryState::Fetching(QueryData::now(result)))
+                            } else {
+                                Err(state)
+                            }
+                        }
+                        QueryState::Loaded(ref data) => {
+                            if let Some(result) = updater(Some(&data.data)) {
+                                Ok(QueryState::Loaded(QueryData::now(result)))
+                            } else {
+                                Err(state)
+                            }
+                        }
+                        QueryState::Invalid(ref data) => {
+                            if let Some(result) = updater(Some(&data.data)) {
+                                Ok(QueryState::Loaded(QueryData::now(result)))
+                            } else {
+                                Err(state)
+                            }
+                        }
+                    });
+
+                    if updated {
+                        SetResult::Updated
+                    } else {
+                        SetResult::Nothing
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    // Only insert query if updater returns Some.
+                    if let Some(result) = updater(None) {
+                        let query = with_owner(owner, || Query::new(key));
+                        query.set_state(QueryState::Loaded(QueryData::now(result)));
+                        entry.insert(query);
+                        SetResult::Inserted
+                    } else {
+                        SetResult::Nothing
+                    }
+                }
+            }
+        });
+
+        if let SetResult::Inserted = result {
+            self.notify.set(());
+        }
     }
 
     /// Mutate the existing data if it exists.
@@ -425,19 +450,18 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        todo!();
-        // self.use_cache::<K, V, bool>(move |(_, cache)| {
-        //     let mut updated = false;
-        //     if let Some(query) = cache.get(key.borrow()) {
-        //         query.state.update(|state| {
-        //             if let Some(data) = state.data_mut() {
-        //                 updater(data);
-        //                 updated = true;
-        //             }
-        //         });
-        //     }
-        //     updated
-        // })
+        self.use_cache::<K, V, bool>(move |(_, cache)| {
+            let mut updated = false;
+            if let Some(query) = cache.get(key.borrow()) {
+                query.update_state(|state| {
+                    if let Some(data) = state.data_mut() {
+                        updater(data);
+                        updated = true;
+                    }
+                });
+            }
+            updated
+        })
     }
 
     /// Cancel any currently executing query.
@@ -447,20 +471,16 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        todo!()
-        // self.use_cache::<K, V, bool>(move |(_, cache)| {
-        //     if let Some(query) = cache.get(&key) {
-        //         match query.state.get_untracked() {
-        //             QueryState::Fetching(data) => {
-        //                 query.state.set(QueryState::Loaded(data));
-        //                 true
-        //             }
-        //             _ => false,
-        //         }
-        //     } else {
-        //         false
-        //     }
-        // })
+        self.use_cache::<K, V, bool>(move |(_, cache)| {
+            if let Some(query) = cache.get(&key) {
+                query.maybe_map_state(|state| match state {
+                    QueryState::Fetching(data) => Ok(QueryState::Loaded(data)),
+                    state => Err(state),
+                })
+            } else {
+                false
+            }
+        })
     }
 
     fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
@@ -638,12 +658,12 @@ mod tests {
         assert_eq!(None, state.get_untracked());
         assert_eq!(0, client.size().get_untracked());
 
-        client.set_query_data::<u32, String>(0, |_| None);
+        client.update_query_data::<u32, String>(0, |_| None);
 
         assert_eq!(None, state.get_untracked());
         assert_eq!(0, client.size().get_untracked());
 
-        client.set_query_data::<u32, String>(0, |_| Some("0".to_string()));
+        client.update_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
         assert_eq!(1, client.size().get_untracked());
 
@@ -657,7 +677,7 @@ mod tests {
             Some(QueryState::Loaded { .. })
         ));
 
-        client.set_query_data::<u32, String>(0, |_| Some("1".to_string()));
+        client.update_query_data::<u32, String>(0, |_| Some("1".to_string()));
 
         assert_eq!(
             Some("1".to_string()),
@@ -672,9 +692,9 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        client.set_query_data::<u32, String>(0, |_| Some("0".to_string()));
+        client.update_query_data::<u32, String>(0, |_| Some("0".to_string()));
 
-        client.set_query_data::<u32, u32>(0, |_| Some(1234));
+        client.update_query_data::<u32, u32>(0, |_| Some(1234));
 
         assert_eq!(2, client.size().get_untracked());
     }
@@ -692,7 +712,7 @@ mod tests {
             subscription.get();
         });
 
-        client.set_query_data::<u32, u32>(0_u32, |_| Some(1234));
+        client.update_query_data::<u32, u32>(0_u32, |_| Some(1234));
 
         assert!(client.invalidate_query::<u32, u32>(0));
         let state = subscription.get_untracked();
@@ -710,8 +730,8 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        client.set_query_data::<u32, u32>(0, |_| Some(1234));
-        client.set_query_data::<u32, u32>(1, |_| Some(1234));
+        client.update_query_data::<u32, u32>(0, |_| Some(1234));
+        client.update_query_data::<u32, u32>(1, |_| Some(1234));
         let keys: Vec<u32> = vec![0, 1];
         let invalidated = client
             .invalidate_queries::<u32, u32, _>(keys.clone())
@@ -730,8 +750,8 @@ mod tests {
         let zero = "0".to_string();
         let one = "1".to_string();
 
-        client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
-        client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
+        client.update_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
+        client.update_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
 
         let keys = vec![zero, one];
         let invalidated = client
@@ -751,10 +771,10 @@ mod tests {
         let zero = "0".to_string();
         let one = "1".to_string();
 
-        client.set_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
-        client.set_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
-        client.set_query_data::<u32, u32>(0, |_| Some(1234));
-        client.set_query_data::<u32, u32>(1, |_| Some(5678));
+        client.update_query_data::<String, String>(zero.clone(), |_| Some("1234".into()));
+        client.update_query_data::<String, String>(one.clone(), |_| Some("5678".into()));
+        client.update_query_data::<u32, u32>(0, |_| Some(1234));
+        client.update_query_data::<u32, u32>(1, |_| Some(5678));
 
         let state0_string = client.get_query_state::<String, String>(move || zero.clone());
 
@@ -790,8 +810,8 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        client.set_query_data::<u32, u32>(0, |_| Some(1234));
-        client.set_query_data::<u32, u32>(1, |_| Some(1234));
+        client.update_query_data::<u32, u32>(0, |_| Some(1234));
+        client.update_query_data::<u32, u32>(1, |_| Some(1234));
 
         let state0 = client.get_query_state::<u32, u32>(|| 0);
         let state1 = client.get_query_state::<u32, u32>(|| 1);

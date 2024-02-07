@@ -83,7 +83,10 @@ where
     let query = Signal::derive(move || query.get().0);
 
     let query_observer = create_memo(move |_| {
-        logging::log!("Registering observer {:?}", query.get_untracked().key);
+        logging::log!(
+            "Registering observer for key {:?}",
+            query.get_untracked().key
+        );
         query.get().register_observer()
     });
     let query_state = Signal::derive(move || query_observer.get().state_signal().get());
@@ -120,7 +123,7 @@ where
     };
 
     create_isomorphic_effect(move |_| {
-        if query_state.with(|s| matches!(s, QueryState::Loaded(_))) {
+        if query_state.with(|s| matches!(s, QueryState::Loaded(_) | QueryState::Invalid(_))) {
             resource.refetch();
         }
     });
@@ -161,11 +164,7 @@ where
             #[cfg(feature = "hydrate")]
             if let Some(ref data) = read {
                 if query.with_state(|state| matches!(state, QueryState::Created)) {
-                    let updated_at = crate::Instant::now();
-                    let data = QueryData {
-                        data: data.clone(),
-                        updated_at,
-                    };
+                    let data = QueryData::now(data.clone());
                     query.set_state(QueryState::Loaded(data));
                 }
             }
