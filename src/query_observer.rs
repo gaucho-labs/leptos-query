@@ -4,10 +4,11 @@ use crate::QueryState;
 
 // TODO: On drop?
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub(crate) struct QueryObserver<V: 'static> {
     id: u32,
     state: RwSignal<QueryState<V>>,
+    unsubscribe: Box<dyn Fn()>,
 }
 
 impl<V> QueryObserver<V> {
@@ -15,10 +16,12 @@ impl<V> QueryObserver<V> {
         self.id
     }
 
-    pub fn new(id: u32, state: QueryState<V>) -> Self {
+    pub fn new(id: u32, state: QueryState<V>, unsubscribe: impl Fn() + 'static) -> Self {
+        logging::log!("QueryObserver new {}", id);
         QueryObserver {
             id,
             state: RwSignal::new(state),
+            unsubscribe: Box::new(unsubscribe),
         }
     }
 
@@ -29,11 +32,16 @@ impl<V> QueryObserver<V> {
     pub(crate) fn state_signal(&self) -> Signal<QueryState<V>> {
         self.state.into()
     }
+
+    pub(crate) fn destroy(&self) {
+        logging::log!("QueryObserver destroy {}", self.id);
+        (self.unsubscribe)();
+    }
 }
 
 impl<V> Drop for QueryObserver<V> {
     fn drop(&mut self) {
-        logging::log!("QueryObserver dropped");
+        logging::log!("QueryObserver dropped {}", self.id);
     }
 }
 

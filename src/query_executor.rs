@@ -43,7 +43,7 @@ pub(crate) fn create_executor<K, V, Fu>(
 ) -> impl Fn() + Clone
 where
     K: Clone + Hash + Eq + 'static,
-    V: Clone + 'static,
+    V: std::fmt::Debug + Clone + 'static,
     Fu: Future<Output = V> + 'static,
 {
     let fetcher = Rc::new(fetcher);
@@ -75,21 +75,20 @@ where
                                 QueryState::Fetching(data)
                                 | QueryState::Loaded(data)
                                 | QueryState::Invalid(data) => {
-                                    logging::log!("Refetching {}", execution);
                                     query.set_state(QueryState::Fetching(data));
 
                                     let new_data = fetcher(query.key.clone()).await;
 
                                     if !query.is_cancelled(execution) {
-                                        logging::log!("Query not cancelled {}", execution);
                                         let new_data = QueryData::now(new_data);
                                         query.set_state(QueryState::Loaded(new_data));
                                     } else {
-                                        logging::log!("Query was cancelled {}", execution);
+                                        // If no other execution is active, then set state to Loaded.
                                         query.maybe_map_state(|state| match state {
                                             QueryState::Fetching(data) if !query.is_executing() => {
                                                 Ok(QueryState::Loaded(data))
                                             }
+                                            // Don't do anything to state.
                                             already_loaded @ (QueryState::Fetching(_)
                                             | QueryState::Loaded(_)
                                             | QueryState::Invalid(_)) => Err(already_loaded),
@@ -106,29 +105,6 @@ where
                 })
             }
         })
-    }
-}
-
-async fn execute_fetcher<K, V, Fu>(
-    fetcher: Rc<impl Fn(K) -> Fu>,
-    query: Query<K, V>,
-    data: QueryData<V>,
-) where
-    K: Clone + Hash + Eq + 'static,
-    V: Clone + 'static,
-    Fu: Future<Output = V> + 'static,
-{
-    logging::log!("Refetching");
-    query.set_state(QueryState::Fetching(data));
-
-    // query.fetching.set(true);
-    let new_data = fetcher(query.key.clone()).await;
-    // query.fetching.set(false);
-
-    // Check if query was cancelled.
-    if query.with_state(|state| matches!(state, QueryState::Fetching(_))) {
-        let data = QueryData::now(new_data);
-        query.set_state(QueryState::Loaded(data));
     }
 }
 

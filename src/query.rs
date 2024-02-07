@@ -1,8 +1,9 @@
-use leptos::*;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
+
+use leptos::logging;
 
 use crate::{query_observer::QueryObserver, QueryState};
 
@@ -72,9 +73,8 @@ where
     }
 
     /**
-     * Only scenario where two requests can exist at the same time is if they are cancelled.
+     * Only scenario where two requests can exist at the same time is the first is ancelled.
      */
-
     pub(crate) fn new_execution(&self) -> Option<usize> {
         let is_executing = {
             let active = self.active_execs.borrow();
@@ -138,7 +138,6 @@ where
             active.len() - cancelled.len() <= 1,
             "More than one active non-cancelled execution"
         );
-        // logging::log!("Active: {:?}, Cancelled: {:?}", active, cancelled);
     }
 
     pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
@@ -167,8 +166,21 @@ where
 
     pub(crate) fn register_observer(&self) -> Rc<QueryObserver<V>> {
         let mut observers = self.observers.try_borrow_mut().expect("register_observer");
-        let observer_id = observers.last().map(|o| o.get_id()).unwrap_or_default();
-        let observer = Rc::new(QueryObserver::new(observer_id, self.get_state()));
+        logging::log!("register_observer: {}", observers.len());
+
+        let observer_id = observers.last().map(|o| o.get_id() + 1).unwrap_or_default();
+        let unsubscribe = {
+            let observers = self.observers.clone();
+            move || {
+                let mut observers = observers.borrow_mut();
+                observers.retain(|o| o.get_id() != observer_id);
+            }
+        };
+        let observer = Rc::new(QueryObserver::new(
+            observer_id,
+            self.get_state(),
+            unsubscribe,
+        ));
         observers.push(observer.clone());
         observer
     }

@@ -1,4 +1,5 @@
 use crate::query_executor::create_executor;
+use crate::query_observer::QueryObserver;
 use crate::query_result::QueryResult;
 use crate::{
     use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn, ResourceOption,
@@ -6,6 +7,7 @@ use crate::{
 use leptos::*;
 use std::future::Future;
 use std::hash::Hash;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// Creates a query. Useful for data fetching, caching, and synchronization with server state.
@@ -82,13 +84,20 @@ where
 
     let query = Signal::derive(move || query.get().0);
 
-    let query_observer = create_memo(move |_| {
-        // logging::log!(
-        //     "Registering observer for key {:?}",
-        //     query.get_untracked().key
-        // );
-        query.get().register_observer()
+    let query_observer = create_memo(move |_| query.get().register_observer());
+
+    create_effect(move |prev_observer: Option<Rc<QueryObserver<V>>>| {
+        if let Some(prev_observer) = prev_observer {
+            prev_observer.destroy();
+        }
+        query_observer.get()
     });
+
+    on_cleanup(move || {
+        let observer = query_observer.get();
+        observer.destroy();
+    });
+
     let query_state = Signal::derive(move || query_observer.get().state_signal().get());
 
     let resource_fetcher = move |query: Query<K, V>| {
@@ -122,10 +131,10 @@ where
         }
     };
 
+    // Ensure latest data in resource.
     create_isomorphic_effect(move |_| {
-        if query_state.with(|s| matches!(s, QueryState::Loaded(_) | QueryState::Invalid(_))) {
-            resource.refetch();
-        }
+        let _ = query_state.with(|_| ());
+        resource.refetch();
     });
 
     let executor = create_executor(query.into(), fetcher);
