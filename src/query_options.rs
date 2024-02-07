@@ -20,7 +20,7 @@ pub struct QueryOptions<V> {
     /// cache_time can never be less than stale_time.
     /// Default is 5 minutes.
     /// NOTE: If different cache times are used for the same key, the minimum time will be used.
-    pub cache_time: Option<Duration>,
+    pub gc_time: Option<Duration>,
     /// If no refetch interval, the query will never refetch.
     pub refetch_interval: Option<Duration>,
     /// Determines which type of resource to use.
@@ -42,7 +42,7 @@ impl<V> QueryOptions<V> {
         Self {
             default_value: None,
             stale_time: None,
-            cache_time: None,
+            gc_time: None,
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
         }
@@ -52,7 +52,7 @@ impl<V> QueryOptions<V> {
         Self {
             default_value: None,
             stale_time: Some(stale_time),
-            cache_time: Some(DEFAULT_CACHE_TIME),
+            gc_time: Some(DEFAULT_GC_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
         }
@@ -63,7 +63,7 @@ impl<V> QueryOptions<V> {
         Self {
             default_value: None,
             stale_time: Some(DEFAULT_STALE_TIME),
-            cache_time: Some(DEFAULT_CACHE_TIME),
+            gc_time: Some(DEFAULT_GC_TIME),
             refetch_interval: Some(refetch_interval),
             resource_option: ResourceOption::NonBlocking,
         }
@@ -87,14 +87,14 @@ pub(crate) fn ensure_valid_stale_time(
 }
 
 const DEFAULT_STALE_TIME: Duration = Duration::from_secs(0);
-const DEFAULT_CACHE_TIME: Duration = Duration::from_secs(60 * 5);
+const DEFAULT_GC_TIME: Duration = Duration::from_secs(60 * 5);
 
 impl<V> Default for QueryOptions<V> {
     fn default() -> Self {
         Self {
             default_value: None,
             stale_time: Some(DEFAULT_STALE_TIME),
-            cache_time: Some(DEFAULT_CACHE_TIME),
+            gc_time: Some(DEFAULT_GC_TIME),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
         }

@@ -146,9 +146,26 @@ fn TodoBody(todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
 
 #[component]
 fn AllTodos() -> impl IntoView {
-    let QueryResult { data, refetch, .. } = use_todos_query();
+    let QueryResult {
+        data,
+        state,
+        refetch,
+        ..
+    } = use_todos_query();
 
     let todos: Signal<Vec<Todo>> = Signal::derive(move || data.get().unwrap_or_default());
+
+    create_effect(move |_| {
+        let state = state.get();
+        let log = match state {
+            QueryState::Created => "created",
+            QueryState::Loading => "loading",
+            QueryState::Fetching(_) => "fetching",
+            QueryState::Loaded(_) => "loaded",
+            QueryState::Invalid(_) => "invalid",
+        };
+        logging::log!("STATE: {log}")
+    });
 
     let delete_todo = create_action(move |id: &TodoId| {
         let id = *id;

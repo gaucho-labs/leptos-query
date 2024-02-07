@@ -1,5 +1,6 @@
 use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
+use crate::util::time_until_stale;
 use crate::{
     use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn, ResourceOption,
 };
@@ -68,6 +69,14 @@ where
     // Find relevant state.
     let query = use_query_client().get_query_signal(key);
 
+    // Update options.
+    create_isomorphic_effect({
+        let options = options.clone();
+        move |_| {
+            query.get().update_options(options.clone());
+        }
+    });
+
     let query_state = register_observer_handle_cleanup(query);
 
     let resource_fetcher = move |query: Query<K, V>| {
@@ -108,6 +117,8 @@ where
     });
 
     let executor = create_executor(query.into(), fetcher);
+
+    ensure_not_stale(query, options.stale_time, executor.clone());
 
     // Ensure key changes are considered.
     create_isomorphic_effect({
@@ -198,9 +209,59 @@ where
     }
 }
 
-fn register_observer_handle_cleanup<K: Clone, V: Clone>(
+// TODO: integrate with query, stale time should be a signal.
+fn ensure_not_stale<K: Clone, V: Clone>(
     query: Memo<Query<K, V>>,
-) -> Signal<QueryState<V>> {
+    stale_time: Option<Duration>,
+    executor: impl Fn() + Clone + 'static,
+) {
+    create_isomorphic_effect(move |_| {
+        let query = query.get();
+
+        if let (Some(updated_at), Some(stale_time)) =
+            (query.with_state(|state| state.updated_at()), stale_time)
+        {
+            if time_until_stale(updated_at, stale_time).is_zero() {
+                executor();
+            }
+        }
+    });
+}
+
+// TODO: Handle refetching...
+
+// Effect for refetching query on interval, if present.
+// fn sync_refetch<K, V>(state: Signal<QueryState<V>>)
+// where
+//     K: Clone + 'static,
+//     V: Clone + 'static,
+// {
+//     let _ = crate::util::use_timeout(move || {
+//         let query = query;
+//         let updated_at = query.state.get().updated_at();
+//         let refetch_interval = query.refetch_interval.get();
+//         match (updated_at, refetch_interval) {
+//             (Some(updated_at), Some(refetch_interval)) => {
+//                 let executor = executor.clone();
+//                 let timeout = time_until_stale(updated_at, refetch_interval);
+//                 set_timeout_with_handle(
+//                     move || {
+//                         executor();
+//                     },
+//                     timeout,
+//                 )
+//                 .ok()
+//             }
+//             _ => None,
+//         }
+//     });
+// }
+
+fn register_observer_handle_cleanup<K, V>(query: Memo<Query<K, V>>) -> Signal<QueryState<V>>
+where
+    K: Clone + Eq + Hash + 'static,
+    V: Clone + 'static,
+{
     let state_signal = RwSignal::new(query.get_untracked().get_state());
 
     let ensure_cleanup = Rc::new(std::cell::Cell::<Option<Box<dyn Fn()>>>::new(None));

@@ -54,7 +54,7 @@ pub(crate) trait CacheEntryTrait: CacheSize + CacheInvalidate {
 
 impl<K, V> CacheEntryTrait for CacheEntry<K, V>
 where
-    K: Clone,
+    K: Clone + Hash + Eq,
     V: Clone,
 {
     fn as_any(&self) -> &dyn Any {
@@ -82,7 +82,7 @@ pub(crate) trait CacheInvalidate {
 
 impl<K, V> CacheInvalidate for CacheEntry<K, V>
 where
-    K: Clone,
+    K: Clone + Hash + Eq,
     V: Clone,
 {
     fn invalidate(&self) {
@@ -281,7 +281,7 @@ impl QueryClient {
     /// ```
     pub fn invalidate_query_type<K, V>(&self) -> &Self
     where
-        K: Clone + 'static,
+        K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
         self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
@@ -516,7 +516,7 @@ impl QueryClient {
 
     fn use_cache<K, V, R>(&self, func: impl FnOnce((Owner, &mut HashMap<K, Query<K, V>>)) -> R) -> R
     where
-        K: Clone + 'static,
+        K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
         let mut cache = RefCell::try_borrow_mut(&self.cache).expect("use_cache borrow");
@@ -556,7 +556,7 @@ impl QueryClient {
                 }
                 Entry::Vacant(entry) => {
                     let query = with_owner(owner, || Query::new(key));
-                    (entry.insert(query.clone()), true)
+                    (entry.insert(query), true)
                 }
             };
             (query.clone(), new)

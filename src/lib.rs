@@ -123,6 +123,7 @@
 //! ```
 //!
 
+mod garbage_collector;
 mod instant;
 mod query;
 mod query_client;
