@@ -1,5 +1,4 @@
 use crate::query_executor::create_executor;
-use crate::query_observer::QueryObserver;
 use crate::query_result::QueryResult;
 use crate::{
     use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn, ResourceOption,
@@ -81,24 +80,7 @@ where
     //         }
     //     }
     // });
-
-    let query = Signal::derive(move || query.get().0);
-
-    let query_observer = create_memo(move |_| query.get().register_observer());
-
-    create_effect(move |prev_observer: Option<Rc<QueryObserver<V>>>| {
-        if let Some(prev_observer) = prev_observer {
-            prev_observer.destroy();
-        }
-        query_observer.get()
-    });
-
-    on_cleanup(move || {
-        let observer = query_observer.get();
-        observer.destroy();
-    });
-
-    let query_state = Signal::derive(move || query_observer.get().state_signal().get());
+    let query_state = register_observer_handle_cleanup(query);
 
     let resource_fetcher = move |query: Query<K, V>| {
         async move {
@@ -226,4 +208,57 @@ where
             v => <V>::de(v).map(Some).map(ResourceData),
         }
     }
+}
+
+fn register_observer_handle_cleanup<K: Clone, V: Clone>(
+    query: Memo<Query<K, V>>,
+) -> Signal<QueryState<V>> {
+    #[derive(Clone)]
+    struct RemoveObserver<K: Clone + 'static, V: Clone + 'static> {
+        query: Query<K, V>,
+        observer_id: crate::ObserverKey,
+    }
+
+    impl<K: Clone, V: Clone> RemoveObserver<K, V> {
+        fn destroy(&self) {
+            self.query.remove_observer(self.observer_id);
+        }
+    }
+
+    let state_signal = RwSignal::new(query.get().get_state());
+
+    let ensure_cleanup = Rc::new(std::cell::Cell::<Option<RemoveObserver<K, V>>>::new(None));
+
+    create_effect({
+        let ensure_cleanup = ensure_cleanup.clone();
+        move |cleanup: Option<RemoveObserver<K, V>>| {
+            if let Some(ref remove) = cleanup {
+                remove.destroy();
+                ensure_cleanup.set(None);
+            }
+
+            let query = query.get();
+            let (observer_id, observer_signal) = query.register_observer();
+
+            // Forward state changes to the signal.
+            create_effect(move |_| {
+                let latest_state = observer_signal.get();
+                state_signal.set(latest_state);
+            });
+
+            let remove = RemoveObserver { query, observer_id };
+
+            ensure_cleanup.set(Some(remove.clone()));
+
+            remove
+        }
+    });
+
+    on_cleanup(move || {
+        if let Some(remove) = ensure_cleanup.take() {
+            remove.destroy();
+        }
+    });
+
+    state_signal.into()
 }

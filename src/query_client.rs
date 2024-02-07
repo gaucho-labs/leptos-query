@@ -541,7 +541,7 @@ impl QueryClient {
         func((self.owner, &mut cache.0))
     }
 
-    fn get_or_create_query<K, V>(&self, key: K) -> (Query<K, V>, bool)
+    fn get_or_create_query<K, V>(&self, key: K) -> Query<K, V>
     where
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
@@ -567,13 +567,10 @@ impl QueryClient {
             self.notify.set(());
         }
 
-        result
+        result.0
     }
 
-    pub(crate) fn get_query_signal<K, V>(
-        &self,
-        key: impl Fn() -> K + 'static,
-    ) -> Memo<(Query<K, V>, bool)>
+    pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
     where
         K: Hash + Eq + Clone + 'static,
         V: Clone + 'static,

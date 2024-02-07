@@ -3,9 +3,10 @@ use std::{
     rc::Rc,
 };
 
-use leptos::logging;
+use leptos::*;
+use slotmap::{new_key_type, SlotMap};
 
-use crate::{query_observer::QueryObserver, QueryState};
+use crate::QueryState;
 
 #[derive(Clone)]
 pub(crate) struct Query<K, V>
@@ -20,8 +21,12 @@ where
     cancelled_execs: Rc<RefCell<Vec<usize>>>,
     active_execs: Rc<RefCell<Vec<usize>>>,
 
-    observers: Rc<RefCell<Vec<Rc<QueryObserver<V>>>>>,
+    observers: Rc<RefCell<SlotMap<ObserverKey, RwSignal<QueryState<V>>>>>,
     state: Rc<Cell<QueryState<V>>>,
+}
+
+new_key_type! {
+    pub(crate) struct ObserverKey;
 }
 
 impl<K: PartialEq, V> PartialEq for Query<K, V> {
@@ -39,7 +44,7 @@ impl<K, V> Query<K, V> {
             version: Rc::new(Cell::new(0)),
             active_execs: Rc::new(RefCell::new(Vec::new())),
             cancelled_execs: Rc::new(RefCell::new(Vec::new())),
-            observers: Rc::new(RefCell::new(Vec::new())),
+            observers: Rc::new(RefCell::new(SlotMap::with_key())),
             state: Rc::new(Cell::new(QueryState::Created)),
         }
     }
@@ -59,8 +64,8 @@ where
 
     pub(crate) fn set_state(&self, state: QueryState<V>) {
         let observers = self.observers.borrow();
-        for observer in observers.iter() {
-            observer.update(state.clone())
+        for observer in observers.values() {
+            observer.set(state.clone())
         }
         self.state.set(state);
     }
@@ -164,25 +169,24 @@ where
         }
     }
 
-    pub(crate) fn register_observer(&self) -> Rc<QueryObserver<V>> {
-        let mut observers = self.observers.try_borrow_mut().expect("register_observer");
-        logging::log!("register_observer: {}", observers.len());
+    pub(crate) fn register_observer(&self) -> (ObserverKey, ReadSignal<QueryState<V>>) {
+        logging::log!("register_observer: {}", self.observers.borrow().len());
 
-        let observer_id = observers.last().map(|o| o.get_id() + 1).unwrap_or_default();
-        let unsubscribe = {
-            let observers = self.observers.clone();
-            move || {
-                let mut observers = observers.borrow_mut();
-                observers.retain(|o| o.get_id() != observer_id);
-            }
-        };
-        let observer = Rc::new(QueryObserver::new(
-            observer_id,
-            self.get_state(),
-            unsubscribe,
-        ));
-        observers.push(observer.clone());
-        observer
+        let current_state = self.get_state();
+        let state_signal = RwSignal::new(current_state);
+        let observer_id = self.observers.borrow_mut().insert(state_signal);
+
+        (observer_id, state_signal.read_only())
+    }
+
+    pub(crate) fn remove_observer(&self, observer_id: ObserverKey) {
+        logging::log!("remove_observer: {}", self.observers.borrow().len());
+        let removed = self.observers.borrow_mut().remove(observer_id);
+
+        if let Some(signal) = removed {
+            logging::log!("remove_observer ID {:?}", observer_id);
+            signal.dispose();
+        }
     }
 
     /// Marks the resource as invalid, which will cause it to be refetched on next read.

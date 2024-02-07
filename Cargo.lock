@@ -661,6 +661,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "leptos",
+ "slotmap",
  "tokio",
 ]
 
