@@ -152,16 +152,20 @@ where
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
             if read.is_none() && matches!(query.state.get_untracked(), QueryState::Created) {
                 executor()
+            }
+
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
-            } else if let Some(ref data) = read {
+            // Need to force insert the resource data into the query state.
+            #[cfg(feature = "hydrate")]
+            if let Some(ref data) = read {
                 if let QueryState::Created = query.state.get_untracked() {
                     let updated_at = crate::Instant::now();
                     let data = QueryData {
                         data: data.clone(),
                         updated_at,
                     };
-                    query.state.set(QueryState::Loaded(data))
+                    query.state.set(QueryState::Loaded(data));
                 }
             }
             read

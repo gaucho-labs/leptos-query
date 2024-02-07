@@ -55,22 +55,38 @@ where
                     let query = query.get_untracked();
                     let data_state = query.state.get_untracked();
                     match data_state {
-                        QueryState::Fetching(_) | QueryState::Loading => (),
+                        // Already loading.
+                        QueryState::Fetching(_) | QueryState::Loading => {}
                         // First load.
                         QueryState::Created => {
                             query.state.set(QueryState::Loading);
+                            query.fetching.set(true);
                             let data = fetcher(query.key.clone()).await;
+                            query.fetching.set(false);
                             let updated_at = crate::Instant::now();
                             let data = QueryData { data, updated_at };
                             query.state.set(QueryState::Loaded(data));
                         }
                         // Subsequent loads.
                         QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                            query.state.set(QueryState::Fetching(data));
-                            let data = fetcher(query.key.clone()).await;
-                            let updated_at = crate::Instant::now();
-                            let data = QueryData { data, updated_at };
-                            query.state.set(QueryState::Loaded(data));
+                            if !query.fetching.get() {
+                                query.state.set(QueryState::Fetching(data));
+
+                                query.fetching.set(true);
+                                let new_data = fetcher(query.key).await;
+                                query.fetching.set(false);
+
+                                // Check if query was cancelled.
+                                if query.state.with_untracked(|state| {
+                                    matches!(state, QueryState::Fetching(_))
+                                }) {
+                                    let data = QueryData {
+                                        data: new_data,
+                                        updated_at: crate::Instant::now(),
+                                    };
+                                    query.state.set(QueryState::Loaded(data));
+                                }
+                            }
                         }
                     }
                 })
@@ -125,13 +141,16 @@ fn ensure_not_stale<K: Clone, V: Clone>(
 
 /// Refetch data once marked as invalid.
 fn ensure_not_invalid<K: Clone, V: Clone>(
-    state: Signal<Query<K, V>>,
+    query: Signal<Query<K, V>>,
     executor: impl Fn() + 'static,
 ) {
-    create_isomorphic_effect(move |_| {
-        let state = state.get();
+    create_effect(move |_| {
+        let query = query.get();
         // Refetch query if Invalid.
-        if let QueryState::Invalid(_) = state.state.get() {
+        if query
+            .state
+            .with(|state| matches!(state, QueryState::Invalid(_)))
+        {
             executor()
         }
     });

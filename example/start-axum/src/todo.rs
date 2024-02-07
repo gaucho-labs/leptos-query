@@ -3,11 +3,14 @@ use leptos_query::*;
 use leptos_router::ActionForm;
 
 use serde::*;
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Todo {
-    id: u32,
+    id: TodoId,
     content: String,
 }
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct TodoId(u32);
 
 #[component]
 pub fn InteractiveTodo() -> impl IntoView {
@@ -25,11 +28,11 @@ pub fn InteractiveTodo() -> impl IntoView {
 
 #[component]
 fn TodoWithResource() -> impl IntoView {
-    let (todo_id, set_todo_id) = create_signal(0_u32);
+    let (todo_id, set_todo_id) = create_signal(TodoId(0));
 
     // todo_id is a Signal<String>, and that is fed into the resource fetcher function.
     // any time todo_id changes, the resource will re-execute.
-    let todo_resource: Resource<u32, TodoResponse> = create_resource(todo_id, get_todo);
+    let todo_resource: Resource<TodoId, TodoResponse> = create_resource(todo_id, get_todo);
 
     view! {
         <div
@@ -45,10 +48,11 @@ fn TodoWithResource() -> impl IntoView {
                 type="number"
                 on:input=move |ev| {
                     if let Ok(todo_id) = event_target_value(&ev).parse() {
-                        set_todo_id(todo_id);
+                        set_todo_id(TodoId(todo_id));
                     }
                 }
-                prop:value=todo_id
+
+                prop:value=move || todo_id.get().0
             />
             <Transition fallback=move || {
                 view! { <p>"Loading..."</p> }
@@ -64,6 +68,7 @@ fn TodoWithResource() -> impl IntoView {
                                 }
                             })
                     }}
+
                 </p>
             </Transition>
         </div>
@@ -72,9 +77,9 @@ fn TodoWithResource() -> impl IntoView {
 
 #[component]
 fn TodoWithQuery() -> impl IntoView {
-    let (todo_id, set_todo_id) = create_signal(0_u32);
+    let (todo_id, set_todo_id) = create_signal(TodoId(0));
 
-    let QueryResult { data, .. } = use_query(todo_id, get_todo, QueryOptions::default());
+    let QueryResult { data, .. } = use_todo_query(todo_id);
 
     view! {
         <div
@@ -90,10 +95,11 @@ fn TodoWithQuery() -> impl IntoView {
                 type="number"
                 on:input=move |ev| {
                     if let Ok(todo_id) = event_target_value(&ev).parse() {
-                        set_todo_id(todo_id);
+                        set_todo_id(TodoId(todo_id));
                     }
                 }
-                prop:value=todo_id
+
+                prop:value=move || todo_id.get().0
             />
             <Transition fallback=move || {
                 view! { <p>"Loading..."</p> }
@@ -108,6 +114,7 @@ fn TodoWithQuery() -> impl IntoView {
                                 }
                             })
                     }}
+
                 </p>
             </Transition>
         </div>
@@ -118,7 +125,7 @@ fn TodoWithQuery() -> impl IntoView {
 #[component]
 fn TodoBody(todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
     view! {
-        <Transition fallback=move || {
+        <Suspense fallback=move || {
             view! { <p>"Loading..."</p> }
         }>
             <p>
@@ -131,28 +138,32 @@ fn TodoBody(todo: Signal<Option<Option<Todo>>>) -> impl IntoView {
                             }
                         })
                 }}
+
             </p>
-        </Transition>
+        </Suspense>
     }
 }
 
 #[component]
 fn AllTodos() -> impl IntoView {
-    let QueryResult { data, refetch, .. } = use_query(
-        || (),
-        |_| async move { get_todos().await.unwrap_or_default() },
-        QueryOptions::default(),
-    );
+    let QueryResult { data, refetch, .. } = use_todos_query();
 
     let todos: Signal<Vec<Todo>> = Signal::derive(move || data.get().unwrap_or_default());
 
-    let delete_todo = create_action(move |id: &u32| {
+    let delete_todo = create_action(move |id: &TodoId| {
         let id = *id;
         let refetch = refetch.clone();
         async move {
+            cancel_todos();
+
+            update_todos(|todos| {
+                todos.retain(|t| t.id != id);
+            });
+
+            // Delete todos on the server.
             let _ = delete_todo(id).await;
-            refetch();
-            use_query_client().invalidate_query::<u32, TodoResponse>(&id);
+
+            refetch()
         }
     });
 
@@ -168,21 +179,25 @@ fn AllTodos() -> impl IntoView {
                         view! { <p>"No todos"</p> }
                     }
                 >
+
                     <For
                         each=todos
                         key=|todo| todo.id
                         children=move |todo| {
                             view! {
                                 <li>
-                                    <span>{todo.id}</span>
+                                    <span>{todo.id.0}</span>
                                     <span>": "</span>
                                     <span>{todo.content}</span>
                                     <span>" "</span>
-                                    <button on:click=move |_| delete_todo.dispatch(todo.id)>"X"</button>
+                                    <button on:click=move |_| {
+                                        delete_todo.dispatch(todo.id)
+                                    }>"X"</button>
                                 </li>
                             }
                         }
                     />
+
                 </Show>
             </ul>
         </Transition>
@@ -195,21 +210,28 @@ fn AddTodoComponent() -> impl IntoView {
 
     let response = add_todo.value();
 
-    let client = use_query_client();
-
     create_effect(move |_| {
         // If action is successful.
         if let Some(Ok(todo)) = response.get() {
-            let id = todo.id;
+            cancel_todos();
+
+            // Optimistic update for all todos.
+            update_todos({
+                let todo = todo.clone();
+                |todos| {
+                    todos.push(todo);
+                }
+            });
+
+            // Optimistic update for individual TodoResponse.
+            let id = todo.id.clone();
+            set_todo(id.clone(), Some(todo));
+
             // Invalidate individual TodoResponse.
-            client.clone().invalidate_query::<u32, TodoResponse>(id);
+            invalidate_todo(id);
 
             // Invalidate AllTodos.
-            client.clone().invalidate_query::<(), Vec<Todo>>(());
-
-            // Optimistic update.
-            let as_response = Ok(Some(todo));
-            client.set_query_data::<u32, TodoResponse>(id, |_| Some(as_response));
+            invalidate_todos();
         }
     });
 
@@ -219,6 +241,52 @@ fn AddTodoComponent() -> impl IntoView {
             <input type="submit" autocomplete="off" value="Add"/>
         </ActionForm>
     }
+}
+
+/**
+ * Todo Helpers.
+ */
+fn use_todo_query(id: impl Fn() -> TodoId + 'static) -> QueryResult<TodoResponse, impl RefetchFn> {
+    use_query(id, get_todo, QueryOptions::default())
+}
+
+fn invalidate_todo(id: TodoId) -> bool {
+    let client = use_query_client();
+    client.invalidate_query::<TodoId, TodoResponse>(id)
+}
+
+fn set_todo(id: TodoId, todo: Option<Todo>) {
+    let client = use_query_client();
+    client.set_query_data::<TodoId, TodoResponse>(id, move |_| Some(Ok(todo)));
+}
+
+/**
+ * All Todos Helpers.
+ */
+
+#[derive(Hash, Eq, PartialEq, Clone)]
+struct AllTodosTag;
+fn use_todos_query() -> QueryResult<Vec<Todo>, impl RefetchFn> {
+    use_query(
+        || AllTodosTag,
+        |_| async move { get_todos().await.unwrap_or_default() },
+        QueryOptions::default(),
+    )
+}
+
+fn invalidate_todos() -> bool {
+    let client = use_query_client();
+    client.invalidate_query::<AllTodosTag, Vec<Todo>>(AllTodosTag)
+}
+
+fn cancel_todos() -> bool {
+    let client = use_query_client();
+    client.cancel_query::<AllTodosTag, Vec<Todo>>(AllTodosTag)
+}
+
+fn update_todos(func: impl FnOnce(&mut Vec<Todo>)) {
+    let client = use_query_client();
+    client.update_query_data_mut::<AllTodosTag, Vec<Todo>>(AllTodosTag, func);
 }
 
 cfg_if::cfg_if! {
@@ -233,7 +301,7 @@ cfg_if::cfg_if! {
 type TodoResponse = Result<Option<Todo>, ServerFnError>;
 
 #[server(GetTodo, "/api")]
-async fn get_todo(id: u32) -> Result<Option<Todo>, ServerFnError> {
+async fn get_todo(id: TodoId) -> Result<Option<Todo>, ServerFnError> {
     tokio::time::sleep(Duration::from_millis(1000)).await;
     let todos = GLOBAL_TODOS.read().unwrap();
     Ok(todos.iter().find(|t| t.id == id).cloned())
@@ -250,12 +318,17 @@ pub async fn get_todos() -> Result<Vec<Todo>, ServerFnError> {
 
 #[server(AddTodo, "/api")]
 pub async fn add_todo(content: String) -> Result<Todo, ServerFnError> {
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     let mut todos = GLOBAL_TODOS.write().unwrap();
 
-    let new_id = todos.last().map(|t| t.id + 1).unwrap_or(0);
+    let new_id = todos
+        .last()
+        .map(|t| t.id.0 + 1)
+        .map(TodoId)
+        .unwrap_or(TodoId(0));
 
     let new_todo = Todo {
-        id: new_id as u32,
+        id: new_id,
         content,
     };
 
@@ -265,7 +338,8 @@ pub async fn add_todo(content: String) -> Result<Todo, ServerFnError> {
 }
 
 #[server(DeleteTodo, "/api")]
-async fn delete_todo(id: u32) -> Result<(), ServerFnError> {
+async fn delete_todo(id: TodoId) -> Result<(), ServerFnError> {
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     let mut todos = GLOBAL_TODOS.write().unwrap();
     todos.retain(|t| t.id != id);
     Ok(())

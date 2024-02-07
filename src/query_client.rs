@@ -370,8 +370,7 @@ impl QueryClient {
         &self,
         key: K,
         updater: impl FnOnce(Option<&V>) -> Option<V> + 'static,
-    ) -> &Self
-    where
+    ) where
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
@@ -413,8 +412,52 @@ impl QueryClient {
         if let SetResult::Inserted = result {
             self.notify.set(());
         }
+    }
 
-        self
+    /// Mutate the existing data if it exists.
+    pub fn update_query_data_mut<K, V>(
+        &self,
+        key: impl Borrow<K>,
+        updater: impl FnOnce(&mut V),
+    ) -> bool
+    where
+        K: Clone + Eq + Hash + 'static,
+        V: Clone + 'static,
+    {
+        self.use_cache::<K, V, bool>(move |(_, cache)| {
+            let mut updated = false;
+            if let Some(query) = cache.get(key.borrow()) {
+                query.state.update(|state| {
+                    if let Some(data) = state.data_mut() {
+                        updater(data);
+                        updated = true;
+                    }
+                });
+            }
+            updated
+        })
+    }
+
+    /// Cancel any currently executing query.
+    /// Returns whether the query was cancelled or not.
+    pub fn cancel_query<K, V>(&self, key: K) -> bool
+    where
+        K: Clone + Eq + Hash + 'static,
+        V: Clone + 'static,
+    {
+        self.use_cache::<K, V, bool>(move |(_, cache)| {
+            if let Some(query) = cache.get(&key) {
+                match query.state.get_untracked() {
+                    QueryState::Fetching(data) => {
+                        query.state.set(QueryState::Loaded(data));
+                        true
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        })
     }
 
     fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
@@ -451,10 +494,7 @@ impl QueryClient {
         func(&mut cache.0)
     }
 
-    fn use_cache<K, V, R>(
-        &self,
-        func: impl FnOnce((Owner, &mut HashMap<K, Query<K, V>>)) -> R + 'static,
-    ) -> R
+    fn use_cache<K, V, R>(&self, func: impl FnOnce((Owner, &mut HashMap<K, Query<K, V>>)) -> R) -> R
     where
         K: Clone + 'static,
         V: Clone + 'static,

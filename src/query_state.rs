@@ -57,6 +57,15 @@ impl<V> QueryState<V> {
     pub fn updated_at(&self) -> Option<Instant> {
         self.query_data().map(|s| s.updated_at)
     }
+
+    pub(crate) fn data_mut(&mut self) -> Option<&mut V> {
+        match self {
+            QueryState::Loading | QueryState::Created => None,
+            QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
+                Some(&mut data.data)
+            }
+        }
+    }
 }
 
 impl<V> std::fmt::Debug for QueryState<V>

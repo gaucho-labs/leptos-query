@@ -11,6 +11,7 @@ where
 {
     pub(crate) key: K,
     // State.
+    pub(crate) fetching: Rc<Cell<bool>>,
     pub(crate) observers: Rc<Cell<usize>>,
     pub(crate) state: RwSignal<QueryState<V>>,
     // Config.
@@ -40,6 +41,7 @@ where
 
         Query {
             key,
+            fetching: Rc::new(Cell::new(false)),
             observers: Rc::new(Cell::new(0)),
             state,
             stale_time,
@@ -56,11 +58,12 @@ where
 {
     /// Marks the resource as invalid, which will cause it to be refetched on next read.
     pub(crate) fn mark_invalid(&self) -> bool {
-        if let QueryState::Loaded(data) = self.state.get_untracked() {
-            self.state.set(QueryState::Invalid(data));
-            true
-        } else {
-            false
+        match self.state.get_untracked() {
+            QueryState::Loaded(data) => {
+                self.state.set(QueryState::Invalid(data));
+                true
+            }
+            _ => false,
         }
     }
 
