@@ -473,10 +473,7 @@ impl QueryClient {
     {
         self.use_cache::<K, V, bool>(move |(_, cache)| {
             if let Some(query) = cache.get(&key) {
-                query.maybe_map_state(|state| match state {
-                    QueryState::Fetching(data) => Ok(QueryState::Loaded(data)),
-                    state => Err(state),
-                })
+                query.cancel()
             } else {
                 false
             }
@@ -585,7 +582,6 @@ impl QueryClient {
 
         // This memo is crucial to avoid crazy amounts of lookups.
         create_memo(move |_| {
-            logging::log!("GETTING QUERY");
             let key = key();
             client.get_or_create_query(key)
         })

@@ -13,6 +13,12 @@ where
     V: 'static,
 {
     pub(crate) key: K,
+
+    // pub(crate) fetching: Rc<Cell<bool>>,
+    version: Rc<Cell<usize>>,
+    cancelled_execs: Rc<RefCell<Vec<usize>>>,
+    active_execs: Rc<RefCell<Vec<usize>>>,
+
     observers: Rc<RefCell<Vec<Rc<QueryObserver<V>>>>>,
     state: Rc<Cell<QueryState<V>>>,
 }
@@ -29,6 +35,9 @@ impl<K, V> Query<K, V> {
     pub(crate) fn new(key: K) -> Self {
         Query {
             key,
+            version: Rc::new(Cell::new(0)),
+            active_execs: Rc::new(RefCell::new(Vec::new())),
+            cancelled_execs: Rc::new(RefCell::new(Vec::new())),
             observers: Rc::new(RefCell::new(Vec::new())),
             state: Rc::new(Cell::new(QueryState::Created)),
         }
@@ -62,10 +71,74 @@ where
         result
     }
 
-    pub(crate) fn map_state(&self, func: impl FnOnce(QueryState<V>) -> QueryState<V>) {
-        let state = self.state.replace(QueryState::Created);
-        let new_state = func(state);
-        self.set_state(new_state);
+    /**
+     * Only scenario where two requests can exist at the same time is if they are cancelled.
+     */
+
+    pub(crate) fn new_execution(&self) -> Option<usize> {
+        let is_executing = {
+            let active = self.active_execs.borrow();
+            let cancelled = self.cancelled_execs.borrow();
+            self.debug_cancellation();
+
+            active.len() > cancelled.len()
+        };
+        if is_executing {
+            None
+        } else {
+            let exec_count = self.version.get() + 1;
+            self.version.set(exec_count);
+            self.active_execs.borrow_mut().push(exec_count);
+            Some(exec_count)
+        }
+    }
+
+    pub(crate) fn is_executing(&self) -> bool {
+        let active = self.active_execs.borrow();
+        let cancelled = self.cancelled_execs.borrow();
+        self.debug_cancellation();
+        active.len() > cancelled.len()
+    }
+
+    pub(crate) fn finish_exec(&self, execution_id: usize) {
+        self.active_execs
+            .borrow_mut()
+            .retain(|id| *id != execution_id);
+        self.cancelled_execs
+            .borrow_mut()
+            .retain(|id| *id != execution_id);
+    }
+
+    pub(crate) fn is_cancelled(&self, execution_version: usize) -> bool {
+        self.cancelled_execs.borrow().contains(&execution_version)
+    }
+
+    pub(crate) fn cancel(&self) -> bool {
+        self.debug_cancellation();
+
+        let latest_executing = self.active_execs.borrow().last().cloned();
+        let mut cancelled = self.cancelled_execs.borrow_mut();
+
+        if cancelled.last() != latest_executing.as_ref() {
+            cancelled.push(latest_executing.unwrap());
+            true
+        } else {
+            false
+        }
+    }
+
+    fn debug_cancellation(&self) {
+        let active = self.active_execs.borrow();
+        let cancelled = self.cancelled_execs.borrow();
+        debug_assert!(
+            active.len() >= cancelled.len(),
+            "More cancelled than active executions"
+        );
+        debug_assert!(
+            active.len() - cancelled.len() <= 1,
+            "More than one active non-cancelled execution"
+        );
+        // logging::log!("Active: {:?}, Cancelled: {:?}", active, cancelled);
     }
 
     pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
@@ -96,10 +169,7 @@ where
         let mut observers = self.observers.try_borrow_mut().expect("register_observer");
         let observer_id = observers.last().map(|o| o.get_id()).unwrap_or_default();
         let observer = Rc::new(QueryObserver::new(observer_id, self.get_state()));
-        logging::log!("Updating observers {}", observers.len() + 1);
         observers.push(observer.clone());
-        // drop(observers);
-        // logging::log!("Dropping observers");
         observer
     }
 

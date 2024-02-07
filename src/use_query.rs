@@ -83,10 +83,10 @@ where
     let query = Signal::derive(move || query.get().0);
 
     let query_observer = create_memo(move |_| {
-        logging::log!(
-            "Registering observer for key {:?}",
-            query.get_untracked().key
-        );
+        // logging::log!(
+        //     "Registering observer for key {:?}",
+        //     query.get_untracked().key
+        // );
         query.get().register_observer()
     });
     let query_state = Signal::derive(move || query_observer.get().state_signal().get());

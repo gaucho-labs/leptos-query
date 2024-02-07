@@ -53,34 +53,82 @@ where
             if !supressed.get() {
                 spawn_local(async move {
                     let query = query.get_untracked();
-                    let data_state = query.get_state();
-                    match data_state {
-                        // Already loading.
-                        QueryState::Fetching(_) | QueryState::Loading => {}
-                        // First load.
-                        QueryState::Created => {
-                            query.set_state(QueryState::Loading);
-                            let data = fetcher(query.key.clone()).await;
-                            let data = QueryData::now(data);
-                            query.set_state(QueryState::Loaded(data));
+
+                    match query.new_execution() {
+                        None => {
+                            logging::log!("Query already loading. Skipping.");
                         }
-                        // Subsequent loads.
-                        QueryState::Loaded(data) | QueryState::Invalid(data) => {
-                            logging::log!("Refetching");
-                            query.set_state(QueryState::Fetching(data));
+                        Some(execution) => {
+                            match query.get_state() {
+                                // Already loading.
+                                QueryState::Loading | QueryState::Created => {
+                                    query.set_state(QueryState::Loading);
+                                    let data = fetcher(query.key.clone()).await;
+                                    if !query.is_cancelled(execution) {
+                                        let data = QueryData::now(data);
+                                        query.set_state(QueryState::Loaded(data));
+                                    } else {
+                                        query.set_state(QueryState::Created);
+                                    }
+                                }
+                                // Subsequent loads.
+                                QueryState::Fetching(data)
+                                | QueryState::Loaded(data)
+                                | QueryState::Invalid(data) => {
+                                    logging::log!("Refetching {}", execution);
+                                    query.set_state(QueryState::Fetching(data));
 
-                            let new_data = fetcher(query.key.clone()).await;
+                                    let new_data = fetcher(query.key.clone()).await;
 
-                            // Check if query was cancelled.
-                            if query.with_state(|state| matches!(state, QueryState::Fetching(_))) {
-                                let data = QueryData::now(new_data);
-                                query.set_state(QueryState::Loaded(data));
+                                    if !query.is_cancelled(execution) {
+                                        logging::log!("Query not cancelled {}", execution);
+                                        let new_data = QueryData::now(new_data);
+                                        query.set_state(QueryState::Loaded(new_data));
+                                    } else {
+                                        logging::log!("Query was cancelled {}", execution);
+                                        query.maybe_map_state(|state| match state {
+                                            QueryState::Fetching(data) if !query.is_executing() => {
+                                                Ok(QueryState::Loaded(data))
+                                            }
+                                            already_loaded @ (QueryState::Fetching(_)
+                                            | QueryState::Loaded(_)
+                                            | QueryState::Invalid(_)) => Err(already_loaded),
+                                            QueryState::Loading | QueryState::Created => {
+                                                unreachable!("Invalid State")
+                                            }
+                                        });
+                                    }
+                                }
                             }
+                            query.finish_exec(execution)
                         }
                     }
                 })
             }
         })
+    }
+}
+
+async fn execute_fetcher<K, V, Fu>(
+    fetcher: Rc<impl Fn(K) -> Fu>,
+    query: Query<K, V>,
+    data: QueryData<V>,
+) where
+    K: Clone + Hash + Eq + 'static,
+    V: Clone + 'static,
+    Fu: Future<Output = V> + 'static,
+{
+    logging::log!("Refetching");
+    query.set_state(QueryState::Fetching(data));
+
+    // query.fetching.set(true);
+    let new_data = fetcher(query.key.clone()).await;
+    // query.fetching.set(false);
+
+    // Check if query was cancelled.
+    if query.with_state(|state| matches!(state, QueryState::Fetching(_))) {
+        let data = QueryData::now(new_data);
+        query.set_state(QueryState::Loaded(data));
     }
 }
 
