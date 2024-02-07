@@ -225,32 +225,29 @@ fn register_observer_handle_cleanup<K: Clone, V: Clone>(
         }
     }
 
-    let state_signal = RwSignal::new(query.get().get_state());
+    let state_signal = RwSignal::new(query.get_untracked().get_state());
 
     let ensure_cleanup = Rc::new(std::cell::Cell::<Option<RemoveObserver<K, V>>>::new(None));
 
-    create_effect({
+    create_isomorphic_effect({
         let ensure_cleanup = ensure_cleanup.clone();
-        move |cleanup: Option<RemoveObserver<K, V>>| {
-            if let Some(ref remove) = cleanup {
+        move |_| {
+            if let Some(remove) = ensure_cleanup.take() {
                 remove.destroy();
-                ensure_cleanup.set(None);
             }
 
             let query = query.get();
             let (observer_id, observer_signal) = query.register_observer();
 
             // Forward state changes to the signal.
-            create_effect(move |_| {
+            create_isomorphic_effect(move |_| {
                 let latest_state = observer_signal.get();
                 state_signal.set(latest_state);
             });
 
             let remove = RemoveObserver { query, observer_id };
 
-            ensure_cleanup.set(Some(remove.clone()));
-
-            remove
+            ensure_cleanup.set(Some(remove));
         }
     });
 

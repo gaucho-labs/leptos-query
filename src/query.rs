@@ -16,7 +16,6 @@ where
 {
     pub(crate) key: K,
 
-    // pub(crate) fetching: Rc<Cell<bool>>,
     version: Rc<Cell<usize>>,
     cancelled_execs: Rc<RefCell<Vec<usize>>>,
     active_execs: Rc<RefCell<Vec<usize>>>,
@@ -77,9 +76,53 @@ where
         result
     }
 
+    pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
+        let mut state = self.state.replace(QueryState::Created);
+        update_fn(&mut state);
+        self.set_state(state);
+    }
+
+    /// Be careful with this function. Used to avoid cloning.
+    /// If update returns Ok(_) the state will be updated and subscribers will be notified.
+    /// If update returns Err(_) the state will not be updated and subscribers will not be notified.
+    /// Err(_) should always contain the previous state.
+    pub(crate) fn maybe_map_state(
+        &self,
+        update_fn: impl FnOnce(QueryState<V>) -> Result<QueryState<V>, QueryState<V>>,
+    ) -> bool {
+        let current_state = self.state.replace(QueryState::Created);
+
+        match update_fn(current_state) {
+            Ok(new_state) => {
+                self.set_state(new_state);
+                true
+            }
+            Err(old_state) => {
+                self.state.set(old_state);
+                false
+            }
+        }
+    }
+
+    /// Marks the resource as invalid, which will cause it to be refetched on next read.
+    pub(crate) fn mark_invalid(&self) -> bool {
+        let mut updated = false;
+        self.maybe_map_state(|state| {
+            if let QueryState::Loaded(data) = state {
+                updated = true;
+                Ok(QueryState::Invalid(data))
+            } else {
+                Err(state)
+            }
+        });
+        updated
+    }
+
     /**
-     * Only scenario where two requests can exist at the same time is the first is ancelled.
+     * Execution and Cancellation.
      */
+
+    // Only scenario where two requests can exist at the same time is the first is cancelled.
     pub(crate) fn new_execution(&self) -> Option<usize> {
         let is_executing = {
             let active = self.active_execs.borrow();
@@ -145,30 +188,6 @@ where
         );
     }
 
-    pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
-        let mut state = self.state.replace(QueryState::Created);
-        update_fn(&mut state);
-        self.set_state(state);
-    }
-
-    pub(crate) fn maybe_map_state(
-        &self,
-        update_fn: impl FnOnce(QueryState<V>) -> Result<QueryState<V>, QueryState<V>>,
-    ) -> bool {
-        let current_state = self.state.replace(QueryState::Created);
-
-        match update_fn(current_state) {
-            Ok(new_state) => {
-                self.set_state(new_state);
-                true
-            }
-            Err(old_state) => {
-                self.state.set(old_state);
-                false
-            }
-        }
-    }
-
     pub(crate) fn register_observer(&self) -> (ObserverKey, ReadSignal<QueryState<V>>) {
         logging::log!("register_observer: {}", self.observers.borrow().len());
 
@@ -187,20 +206,6 @@ where
             logging::log!("remove_observer ID {:?}", observer_id);
             signal.dispose();
         }
-    }
-
-    /// Marks the resource as invalid, which will cause it to be refetched on next read.
-    pub(crate) fn mark_invalid(&self) -> bool {
-        let mut updated = false;
-        self.maybe_map_state(|state| {
-            if let QueryState::Loaded(data) = state {
-                updated = true;
-                Ok(QueryState::Invalid(data))
-            } else {
-                Err(state)
-            }
-        });
-        updated
     }
 
     // pub(crate) fn overwrite_options(&self, options: QueryOptions<V>) {
