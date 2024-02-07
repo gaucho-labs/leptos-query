@@ -188,24 +188,19 @@ where
         );
     }
 
-    pub(crate) fn register_observer(&self) -> (ObserverKey, ReadSignal<QueryState<V>>) {
-        logging::log!("register_observer: {}", self.observers.borrow().len());
-
+    pub(crate) fn register_observer(&self) -> (impl Fn() + Clone, ReadSignal<QueryState<V>>) {
         let current_state = self.get_state();
         let state_signal = RwSignal::new(current_state);
         let observer_id = self.observers.borrow_mut().insert(state_signal);
 
-        (observer_id, state_signal.read_only())
-    }
+        let remove_observer = {
+            let observers = self.observers.clone();
+            move || {
+                observers.borrow_mut().remove(observer_id);
+            }
+        };
 
-    pub(crate) fn remove_observer(&self, observer_id: ObserverKey) {
-        logging::log!("remove_observer: {}", self.observers.borrow().len());
-        let removed = self.observers.borrow_mut().remove(observer_id);
-
-        if let Some(signal) = removed {
-            logging::log!("remove_observer ID {:?}", observer_id);
-            signal.dispose();
-        }
+        (remove_observer, state_signal.read_only())
     }
 
     // pub(crate) fn overwrite_options(&self, options: QueryOptions<V>) {

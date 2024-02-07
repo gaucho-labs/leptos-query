@@ -68,18 +68,6 @@ where
     // Find relevant state.
     let query = use_query_client().get_query_signal(key);
 
-    // Update options.
-    // create_isomorphic_effect({
-    //     let options = options.clone();
-    //     move |_| {
-    //         let (query, new) = query.get();
-    //         if new {
-    //             query.overwrite_options(options.clone())
-    //         } else {
-    //             query.update_options(options.clone())
-    //         }
-    //     }
-    // });
     let query_state = register_observer_handle_cleanup(query);
 
     let resource_fetcher = move |query: Query<K, V>| {
@@ -213,31 +201,19 @@ where
 fn register_observer_handle_cleanup<K: Clone, V: Clone>(
     query: Memo<Query<K, V>>,
 ) -> Signal<QueryState<V>> {
-    #[derive(Clone)]
-    struct RemoveObserver<K: Clone + 'static, V: Clone + 'static> {
-        query: Query<K, V>,
-        observer_id: crate::ObserverKey,
-    }
-
-    impl<K: Clone, V: Clone> RemoveObserver<K, V> {
-        fn destroy(&self) {
-            self.query.remove_observer(self.observer_id);
-        }
-    }
-
     let state_signal = RwSignal::new(query.get_untracked().get_state());
 
-    let ensure_cleanup = Rc::new(std::cell::Cell::<Option<RemoveObserver<K, V>>>::new(None));
+    let ensure_cleanup = Rc::new(std::cell::Cell::<Option<Box<dyn Fn()>>>::new(None));
 
     create_isomorphic_effect({
         let ensure_cleanup = ensure_cleanup.clone();
         move |_| {
             if let Some(remove) = ensure_cleanup.take() {
-                remove.destroy();
+                remove();
             }
 
             let query = query.get();
-            let (observer_id, observer_signal) = query.register_observer();
+            let (unsubscribe, observer_signal) = query.register_observer();
 
             // Forward state changes to the signal.
             create_isomorphic_effect(move |_| {
@@ -245,15 +221,13 @@ fn register_observer_handle_cleanup<K: Clone, V: Clone>(
                 state_signal.set(latest_state);
             });
 
-            let remove = RemoveObserver { query, observer_id };
-
-            ensure_cleanup.set(Some(remove));
+            ensure_cleanup.set(Some(Box::new(unsubscribe)));
         }
     });
 
     on_cleanup(move || {
         if let Some(remove) = ensure_cleanup.take() {
-            remove.destroy();
+            remove();
         }
     });
 
