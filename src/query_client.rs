@@ -45,7 +45,7 @@ pub fn use_query_client() -> QueryClient {
 pub struct QueryClient {
     pub(crate) owner: Owner,
     // Signal to indicate a cache entry has been added or removed.
-    pub(crate) notify: RwSignal<()>,
+    pub(crate) size: RwSignal<usize>,
     pub(crate) cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
     pub(crate) default_options: DefaultQueryOptions,
 }
@@ -126,7 +126,7 @@ impl QueryClient {
     /// Creates a new Query Client.
     pub fn new(owner: Owner, default_options: DefaultQueryOptions) -> Self {
         Self {
-            notify: create_rw_signal(()),
+            size: create_rw_signal(0),
             owner,
             cache: Rc::new(RefCell::new(HashMap::new())),
             default_options,
@@ -179,7 +179,7 @@ impl QueryClient {
         let maybe_query = create_memo(move |_| {
             let key = key();
             // Subscribe to inserts/deletions.
-            client.notify.get();
+            client.size.get();
             client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
         });
 
@@ -347,14 +347,21 @@ impl QueryClient {
     ///
     /// ```
     pub fn size(&self) -> Signal<usize> {
-        let notify = self.notify;
-        let cache = self.cache.clone();
-        create_memo(move |_| {
-            notify.get();
-            let cache = RefCell::try_borrow(&cache).expect("size borrow");
-            cache.values().map(|b| b.size()).sum()
-        })
-        .into()
+        cfg_if::cfg_if! {
+            if #[cfg(debug_assertions)] {
+                let size_signal = self.size.clone();
+                let cache = self.cache.clone();
+                create_memo(move |_| {
+                    let size = size_signal.get();
+                    let cache = RefCell::try_borrow(&cache).expect("size borrow");
+                    let real_size: usize = cache.values().map(|b| b.size()).sum();
+                    assert!(size == real_size, "Cache size mismatch");
+                    size
+                }).into()
+            } else {
+        self.size.into()
+            }
+        }
     }
 
     /// A synchronous function that can be used to immediately set a query's data.
@@ -392,12 +399,7 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        enum SetResult {
-            Inserted,
-            Updated,
-            Nothing,
-        }
-        let result = self.use_cache(move |(owner, cache)| {
+        self.use_cache(move |(owner, cache)| {
             match cache.entry(key.clone()) {
                 Entry::Occupied(entry) => {
                     let query = entry.get();
@@ -432,12 +434,6 @@ impl QueryClient {
                             }
                         }
                     });
-
-                    if updated {
-                        SetResult::Updated
-                    } else {
-                        SetResult::Nothing
-                    }
                 }
                 Entry::Vacant(entry) => {
                     // Only insert query if updater returns Some.
@@ -445,17 +441,11 @@ impl QueryClient {
                         let query = with_owner(owner, || Query::new(key));
                         query.set_state(QueryState::Loaded(QueryData::now(result)));
                         entry.insert(query);
-                        SetResult::Inserted
-                    } else {
-                        SetResult::Nothing
+                        self.size.set(self.size.get_untracked() + 1);
                     }
                 }
             }
         });
-
-        if let SetResult::Inserted = result {
-            self.notify.set(());
-        }
     }
 
     /// Mutate the existing data if it exists.
@@ -562,7 +552,7 @@ impl QueryClient {
         K: Clone + Eq + Hash + 'static,
         V: Clone + 'static,
     {
-        let result = self.use_cache(move |(owner, cache)| {
+        let (query, created) = self.use_cache(move |(owner, cache)| {
             let entry = cache.entry(key.clone());
 
             let (query, new) = match entry {
@@ -579,11 +569,11 @@ impl QueryClient {
         });
 
         // Notify on insert.
-        if result.1 {
-            self.notify.set(());
+        if created {
+            self.size.set(self.size.get_untracked() + 1);
         }
 
-        result.0
+        query
     }
 
     pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
@@ -608,7 +598,7 @@ impl QueryClient {
         let result = self.use_cache_option_mut(move |cache| cache.remove(key));
 
         if result.is_some() {
-            self.notify.set(());
+            self.size.set(self.size.get_untracked() - 1);
         }
         result
     }
