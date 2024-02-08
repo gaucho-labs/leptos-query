@@ -27,18 +27,9 @@ pub struct QueryOptions<V> {
     pub resource_option: ResourceOption,
 }
 
-/// Determines which type of resource to use.
-#[derive(Clone, Copy)]
-pub enum ResourceOption {
-    /// Query will use [`create_resource()`](leptos::create_resource)
-    NonBlocking,
-    /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
-    Blocking,
-}
-
 impl<V> QueryOptions<V> {
-    /// Empty options.
-    pub fn empty() -> Self {
+    /// Only fetches the query once.
+    pub fn once() -> Self {
         Self {
             default_value: None,
             stale_time: None,
@@ -47,30 +38,49 @@ impl<V> QueryOptions<V> {
             resource_option: ResourceOption::NonBlocking,
         }
     }
-    /// QueryOption with custom stale_time.
-    pub fn stale_time(stale_time: Duration) -> Self {
-        Self {
-            default_value: None,
-            stale_time: Some(stale_time),
-            gc_time: Some(DEFAULT_GC_TIME),
-            refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
-        }
-    }
+}
 
-    /// QueryOption with custom refetch_interval.
-    pub fn refetch_interval(refetch_interval: Duration) -> Self {
-        Self {
-            default_value: None,
-            stale_time: Some(DEFAULT_STALE_TIME),
-            gc_time: Some(DEFAULT_GC_TIME),
-            refetch_interval: Some(refetch_interval),
-            resource_option: ResourceOption::NonBlocking,
+const DEFAULT_STALE_TIME: Duration = Duration::from_secs(10);
+const DEFAULT_GC_TIME: Duration = Duration::from_secs(60 * 5);
+
+impl<V> Default for QueryOptions<V> {
+    fn default() -> Self {
+        // Use cache wide defaults if they exist.
+        if let Some(client) = leptos::use_context::<crate::QueryClient>() {
+            let default_options = client.default_options;
+            Self {
+                default_value: None,
+                stale_time: default_options.stale_time,
+                gc_time: default_options.gc_time,
+                refetch_interval: default_options.refetch_interval,
+                resource_option: default_options.resource_option,
+            }
+        } else {
+            Self {
+                default_value: None,
+                stale_time: Some(DEFAULT_STALE_TIME),
+                gc_time: Some(DEFAULT_GC_TIME),
+                refetch_interval: None,
+                resource_option: ResourceOption::NonBlocking,
+            }
         }
     }
 }
 
+/// Determines which type of resource to use.
+#[derive(Clone, Copy, Default)]
+pub enum ResourceOption {
+    /// Query will use [`create_resource()`](leptos::create_resource)
+    #[default]
+    NonBlocking,
+    /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
+    Blocking,
+}
+
 // TODO: USE
+
+// disable warn unused
+#[allow(unused)]
 pub(crate) fn ensure_valid_stale_time(
     stale_time: &Option<Duration>,
     cache_time: &Option<Duration>,
@@ -84,20 +94,5 @@ pub(crate) fn ensure_valid_stale_time(
             }
         }
         (stale_time, _) => *stale_time,
-    }
-}
-
-const DEFAULT_STALE_TIME: Duration = Duration::from_secs(0);
-const DEFAULT_GC_TIME: Duration = Duration::from_secs(60 * 5);
-
-impl<V> Default for QueryOptions<V> {
-    fn default() -> Self {
-        Self {
-            default_value: None,
-            stale_time: Some(DEFAULT_STALE_TIME),
-            gc_time: Some(DEFAULT_GC_TIME),
-            refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
-        }
     }
 }

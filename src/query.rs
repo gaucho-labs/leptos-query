@@ -158,6 +158,11 @@ where
         state_clone
     }
 
+    pub(crate) fn get_refetch_interval(&self) -> Signal<Option<Duration>> {
+        self.refetch_interval.into()
+    }
+
+    // Useful to avoid clones.
     pub(crate) fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
         let state = self.state.take();
         let result = func(&state);
@@ -195,10 +200,6 @@ where
         } else {
             false
         }
-    }
-
-    pub(crate) fn get_refetch_interval(&self) -> Signal<Option<Duration>> {
-        self.refetch_interval.into()
     }
 
     // Enables having different stale times & refetch intervals for the same query.

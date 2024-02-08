@@ -119,11 +119,7 @@ where
     let executor = create_executor(query.into(), fetcher);
 
     ensure_not_stale(query, options.stale_time, executor.clone());
-    sync_refetch(
-        query_state,
-        Signal::derive(move || options.refetch_interval),
-        executor.clone(),
-    );
+    sync_refetch(query, query_state, executor.clone());
 
     // Ensure key changes are considered.
     create_isomorphic_effect({
@@ -252,7 +248,8 @@ where
     state_signal.into()
 }
 
-// TODO: is there a problem with doing this on every query usage?
+// On mount of a new query, ensure it's not stale.
+// Not reactive to individual query state changes.
 fn ensure_not_stale<K: Clone, V: Clone>(
     query: Memo<Query<K, V>>,
     stale_time: Option<Duration>,
@@ -261,28 +258,35 @@ fn ensure_not_stale<K: Clone, V: Clone>(
     create_isomorphic_effect(move |_| {
         let query = query.get();
 
-        if let (Some(updated_at), Some(stale_time)) =
-            (query.with_state(|state| state.updated_at()), stale_time)
-        {
-            if time_until_stale(updated_at, stale_time).is_zero() {
-                executor();
+        let last_update = query.with_state(|state| state.updated_at());
+
+        match (last_update, stale_time) {
+            (Some(updated_at), Some(stale_time)) => {
+                if time_until_stale(updated_at, stale_time).is_zero() {
+                    executor();
+                }
             }
+            _ => {}
         }
     });
 }
 
 // Effect for refetching query on interval, if present.
-// TODO: is there a problem with doing this on every query usage?
-fn sync_refetch<V>(
-    state: Signal<QueryState<V>>,
-    refetch_interval: Signal<Option<Duration>>,
+// This is passing a query explicitly, because this should only apply to the active query.
+fn sync_refetch<K, V>(
+    query: Memo<Query<K, V>>,
+    query_state: Signal<QueryState<V>>,
     executor: impl Fn() + Clone + 'static,
 ) where
+    K: Clone,
     V: Clone + 'static,
 {
+    let updated_at = create_memo(move |_| query_state.with(|state| state.updated_at()));
+
     let _ = crate::util::use_timeout(move || {
-        let updated_at = state.get().updated_at();
-        let refetch_interval = refetch_interval.get();
+        let refetch_interval = query.with(|q| q.get_refetch_interval().get());
+        let updated_at = updated_at.get();
+
         match (updated_at, refetch_interval) {
             (Some(updated_at), Some(refetch_interval)) => {
                 let executor = executor.clone();

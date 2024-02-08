@@ -4,18 +4,23 @@ use std::{
     any::{Any, TypeId},
     borrow::Borrow,
     cell::RefCell,
-    collections::hash_map::Entry,
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     future::Future,
     hash::Hash,
     rc::Rc,
+    time::Duration,
 };
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client() {
-    provide_context(QueryClient::new(
-        Owner::current().expect("Owner to be present"),
-    ));
+    provide_query_client_with_options(DefaultQueryOptions::default());
+}
+
+/// Provides a Query Client to the current scope with custom options.
+pub fn provide_query_client_with_options(options: DefaultQueryOptions) {
+    let owner = Owner::current().expect("Owner to be present");
+
+    provide_context(QueryClient::new(owner, options));
 }
 
 /// Retrieves a Query Client from the current scope.
@@ -42,6 +47,31 @@ pub struct QueryClient {
     // Signal to indicate a cache entry has been added or removed.
     pub(crate) notify: RwSignal<()>,
     pub(crate) cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
+    pub(crate) default_options: DefaultQueryOptions,
+}
+
+/// Default options for all queries under this client.
+#[derive(Clone, Copy)]
+pub struct DefaultQueryOptions {
+    /// Time before a query is considered stale.
+    pub stale_time: Option<Duration>,
+    /// Time before an inactive query is removed from cache.
+    pub gc_time: Option<Duration>,
+    /// Time before a query is refetched.
+    pub refetch_interval: Option<Duration>,
+    /// Determines which type of resource to use.
+    pub resource_option: ResourceOption,
+}
+
+impl Default for DefaultQueryOptions {
+    fn default() -> Self {
+        Self {
+            stale_time: Some(Duration::from_secs(10)),
+            gc_time: Some(Duration::from_secs(60 * 5)),
+            refetch_interval: None,
+            resource_option: ResourceOption::NonBlocking,
+        }
+    }
 }
 
 pub(crate) struct CacheEntry<K: 'static, V: 'static>(HashMap<K, Query<K, V>>);
@@ -94,11 +124,12 @@ where
 
 impl QueryClient {
     /// Creates a new Query Client.
-    pub fn new(owner: Owner) -> Self {
+    pub fn new(owner: Owner, default_options: DefaultQueryOptions) -> Self {
         Self {
             notify: create_rw_signal(()),
             owner,
             cache: Rc::new(RefCell::new(HashMap::new())),
+            default_options,
         }
     }
 

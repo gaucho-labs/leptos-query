@@ -67,6 +67,12 @@ pub fn App() -> impl IntoView {
                             }
                         />
                         <Route
+                            path="refetch"
+                            view=|| {
+                                view! {  <RefetchInterval/> }
+                            }
+                        />
+                        <Route
                             path="todos"
                             view=|| {
                                 view! { <InteractiveTodo/> }
@@ -107,6 +113,9 @@ fn HomePage() -> impl IntoView {
                 </li>
                 <li>
                     <a href="/unique">"Non-Dynamic Key"</a>
+                </li>
+                <li>
+                    <a href="/refetch">"Refetch Interval"</a>
                 </li>
                 <li>
                     <a href="/todos">"Todos"</a>
@@ -257,7 +266,7 @@ fn UniqueKey() -> impl IntoView {
     let QueryResult { data, .. } = use_query(
         || (),
         |_| async { get_unique().await.expect("Failed to retrieve unique") },
-        QueryOptions::empty(),
+        QueryOptions::once(),
     );
 
     view! {
@@ -275,6 +284,49 @@ fn UniqueKey() -> impl IntoView {
                             })
                     }}
                 </Transition>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn RefetchInterval() -> impl IntoView {
+    let QueryResult {
+        data,
+        state,
+        refetch,
+        ..
+    } = use_query(
+        || (),
+        |_| async { get_unique().await.expect("Failed to retrieve unique") },
+        QueryOptions {
+            refetch_interval: Some(Duration::from_secs(5)),
+            ..QueryOptions::once()
+        },
+    );
+
+    create_effect(move |_| logging::log!("State: {:#?}", state.get()));
+
+    view! {
+        <div class="container">
+            <a href="/">"Home"</a>
+            <div class="post-body">
+                <p>"Refetch Interval"</p>
+                <Transition fallback=move || {
+                    view! {  <h2>"Loading..."</h2> }
+                }>
+                    {move || {
+                        data.get()
+                            .map(|response| {
+                                view! {  <h2>{response}</h2> }
+                            })
+                    }}
+                </Transition>
+            </div>
+            <div>
+                <button class="button" on:click=move |_| refetch()>
+                    "Refetch query"
+                </button>
             </div>
         </div>
     }

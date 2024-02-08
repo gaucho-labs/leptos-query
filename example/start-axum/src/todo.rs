@@ -283,6 +283,7 @@ fn set_todo(id: TodoId, todo: Option<Todo>) {
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 struct AllTodosTag;
+
 fn use_todos_query() -> QueryResult<Vec<Todo>, impl RefetchFn> {
     use_query(
         || AllTodosTag,
@@ -298,22 +299,12 @@ fn invalidate_todos() -> bool {
 
 fn cancel_todos() {
     let client = use_query_client();
-    let cancelled = client.cancel_query::<AllTodosTag, Vec<Todo>>(AllTodosTag);
-    if cancelled {
-        logging::log!("Cancelled all todos")
-    } else {
-        logging::log!("Didn't cancel all todos")
-    }
+    client.cancel_query::<AllTodosTag, Vec<Todo>>(AllTodosTag);
 }
 
 fn update_todos(func: impl FnOnce(&mut Vec<Todo>)) {
     let client = use_query_client();
-    let updated = client.update_query_data_mut::<AllTodosTag, Vec<Todo>>(AllTodosTag, func);
-    if updated {
-        logging::log!("Updated todos")
-    } else {
-        logging::log!("Failed to update todos")
-    }
+    client.update_query_data_mut::<AllTodosTag, Vec<Todo>>(AllTodosTag, func);
 }
 
 cfg_if::cfg_if! {
