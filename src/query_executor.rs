@@ -96,32 +96,3 @@ where
         })
     }
 }
-
-// Refetch data once marked as invalid.
-
-// Effect for refetching query on interval, if present.
-// fn sync_refetch<K, V>(query: Signal<Query<K, V>>, executor: impl Fn() + Clone + 'static)
-// where
-//     K: Clone + 'static,
-//     V: Clone + 'static,
-// {
-//     let _ = use_timeout(move || {
-//         let query = query.get();
-//         let updated_at = query.state.get().updated_at();
-//         let refetch_interval = query.refetch_interval.get();
-//         match (updated_at, refetch_interval) {
-//             (Some(updated_at), Some(refetch_interval)) => {
-//                 let executor = executor.clone();
-//                 let timeout = time_until_stale(updated_at, refetch_interval);
-//                 set_timeout_with_handle(
-//                     move || {
-//                         executor();
-//                     },
-//                     timeout,
-//                 )
-//                 .ok()
-//             }
-//             _ => None,
-//         }
-//     });
-// }
