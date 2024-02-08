@@ -1,18 +1,7 @@
 use leptos::*;
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    future::Future,
-    hash::Hash,
-    rc::Rc,
-};
+use std::{cell::Cell, future::Future, hash::Hash, rc::Rc};
 
-use crate::{
-    query::Query,
-    use_query_client,
-    util::{maybe_time_until_stale, time_until_stale, use_timeout},
-    QueryData, QueryState,
-};
+use crate::{query::Query, QueryData, QueryState};
 
 thread_local! {
     static SUPPRESS_QUERY_LOAD: Cell<bool> = Cell::new(false);

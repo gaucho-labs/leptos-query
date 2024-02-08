@@ -126,7 +126,7 @@ where
         updated
     }
 
-    pub(crate) fn register_observer(&self) -> (impl Fn() + Clone, ReadSignal<QueryState<V>>) {
+    pub(crate) fn register_observer(&self) -> (ReadSignal<QueryState<V>>, impl Fn() + Clone) {
         let current_state = self.get_state();
         let state_signal = RwSignal::new(current_state);
         let observer_id = self.observers.borrow_mut().insert(state_signal);
@@ -145,7 +145,7 @@ where
 
         self.garbage_collector.disable();
 
-        (remove_observer, state_signal.read_only())
+        (state_signal.read_only(), remove_observer)
     }
 }
 

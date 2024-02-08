@@ -119,6 +119,11 @@ where
     let executor = create_executor(query.into(), fetcher);
 
     ensure_not_stale(query, options.stale_time, executor.clone());
+    sync_refetch(
+        query_state,
+        Signal::derive(move || options.refetch_interval),
+        executor.clone(),
+    );
 
     // Ensure key changes are considered.
     create_isomorphic_effect({
@@ -209,54 +214,6 @@ where
     }
 }
 
-// TODO: integrate with query, stale time should be a signal.
-fn ensure_not_stale<K: Clone, V: Clone>(
-    query: Memo<Query<K, V>>,
-    stale_time: Option<Duration>,
-    executor: impl Fn() + Clone + 'static,
-) {
-    create_isomorphic_effect(move |_| {
-        let query = query.get();
-
-        if let (Some(updated_at), Some(stale_time)) =
-            (query.with_state(|state| state.updated_at()), stale_time)
-        {
-            if time_until_stale(updated_at, stale_time).is_zero() {
-                executor();
-            }
-        }
-    });
-}
-
-// TODO: Handle refetching...
-
-// Effect for refetching query on interval, if present.
-// fn sync_refetch<K, V>(state: Signal<QueryState<V>>)
-// where
-//     K: Clone + 'static,
-//     V: Clone + 'static,
-// {
-//     let _ = crate::util::use_timeout(move || {
-//         let query = query;
-//         let updated_at = query.state.get().updated_at();
-//         let refetch_interval = query.refetch_interval.get();
-//         match (updated_at, refetch_interval) {
-//             (Some(updated_at), Some(refetch_interval)) => {
-//                 let executor = executor.clone();
-//                 let timeout = time_until_stale(updated_at, refetch_interval);
-//                 set_timeout_with_handle(
-//                     move || {
-//                         executor();
-//                     },
-//                     timeout,
-//                 )
-//                 .ok()
-//             }
-//             _ => None,
-//         }
-//     });
-// }
-
 fn register_observer_handle_cleanup<K, V>(query: Memo<Query<K, V>>) -> Signal<QueryState<V>>
 where
     K: Clone + Eq + Hash + 'static,
@@ -274,7 +231,7 @@ where
             }
 
             let query = query.get();
-            let (unsubscribe, observer_signal) = query.register_observer();
+            let (observer_signal, unsubscribe) = query.register_observer();
 
             // Forward state changes to the signal.
             create_isomorphic_effect(move |_| {
@@ -293,4 +250,52 @@ where
     });
 
     state_signal.into()
+}
+
+// TODO: is there a problem with doing this on every query usage?
+fn ensure_not_stale<K: Clone, V: Clone>(
+    query: Memo<Query<K, V>>,
+    stale_time: Option<Duration>,
+    executor: impl Fn() + Clone + 'static,
+) {
+    create_isomorphic_effect(move |_| {
+        let query = query.get();
+
+        if let (Some(updated_at), Some(stale_time)) =
+            (query.with_state(|state| state.updated_at()), stale_time)
+        {
+            if time_until_stale(updated_at, stale_time).is_zero() {
+                executor();
+            }
+        }
+    });
+}
+
+// Effect for refetching query on interval, if present.
+// TODO: is there a problem with doing this on every query usage?
+fn sync_refetch<V>(
+    state: Signal<QueryState<V>>,
+    refetch_interval: Signal<Option<Duration>>,
+    executor: impl Fn() + Clone + 'static,
+) where
+    V: Clone + 'static,
+{
+    let _ = crate::util::use_timeout(move || {
+        let updated_at = state.get().updated_at();
+        let refetch_interval = refetch_interval.get();
+        match (updated_at, refetch_interval) {
+            (Some(updated_at), Some(refetch_interval)) => {
+                let executor = executor.clone();
+                let timeout = time_until_stale(updated_at, refetch_interval);
+                set_timeout_with_handle(
+                    move || {
+                        executor();
+                    },
+                    timeout,
+                )
+                .ok()
+            }
+            _ => None,
+        }
+    });
 }

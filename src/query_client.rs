@@ -102,50 +102,6 @@ impl QueryClient {
         }
     }
 
-    /// Prefetch a query and store it in cache. Returns QueryResult.
-    /// If the entry already exists it will still be refetched.
-    ///
-    /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
-    // pub fn fetch_query<K, V, Fu>(
-    //     &self,
-    //     key: impl Fn() -> K + 'static,
-    //     fetcher: impl Fn(K) -> Fu + 'static,
-    //     isomorphic: bool,
-    // ) -> QueryResult<V, impl RefetchFn>
-    // where
-    //     K: Hash + Eq + Clone + 'static,
-    //     V: Clone + 'static,
-    //     Fu: Future<Output = V> + 'static,
-    // {
-    //     todo!()
-    //     let state = self.get_query_signal(key);
-
-    //     let state = Signal::derive(move || state.get().0);
-
-    //     let executor = create_executor(state, fetcher);
-
-    //     let sync = {
-    //         let executor = executor.clone();
-    //         move |_| {
-    //             let _ = state.get();
-    //             executor()
-    //         }
-    //     };
-    //     if isomorphic {
-    //         create_isomorphic_effect(sync);
-    //     } else {
-    //         create_effect(sync);
-    //     }
-
-    //     synchronize_state(state, executor.clone());
-
-    //     create_query_result(
-    //         state,
-    //         Signal::derive(move || state.get().state.get().data().cloned()),
-    //         executor,
-    //     )
-    // }
-
     /// Prefetch a query and store it in cache.
     /// If the entry already exists it will still be refetched.
     ///
@@ -157,27 +113,23 @@ impl QueryClient {
         isomorphic: bool,
     ) where
         K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
+        V: Clone + std::fmt::Debug + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        // let state = self.get_query_signal(key);
+        let state = self.get_query_signal(key);
 
-        // let state = Signal::derive(move || state.get().0);
+        let executor = create_executor(state.into(), query);
 
-        // let executor = create_executor(state, query);
+        let sync = move |_| {
+            let _ = state.get();
+            executor()
+        };
 
-        // let sync = {
-        //     move |_| {
-        //         let _ = state.get();
-        //         executor()
-        //     }
-        // };
-        // if isomorphic {
-        //     create_isomorphic_effect(sync);
-        // } else {
-        //     create_effect(sync);
-        // }
-        ()
+        if isomorphic {
+            create_isomorphic_effect(sync);
+        } else {
+            create_effect(sync);
+        }
     }
 
     /// Retrieve the current state for an existing query.
@@ -190,19 +142,54 @@ impl QueryClient {
         K: Hash + Eq + Clone + 'static,
         V: Clone,
     {
-        // let client = self.clone();
+        let client = self.clone();
 
-        // // Memoize state to avoid unnecessary hashmap lookups.
-        // let maybe_query = create_memo(move |_| {
-        //     let key = key();
-        //     client.notify.get();
-        //     client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
-        // });
+        // Memoize state to avoid unnecessary hashmap lookups.
+        let maybe_query = create_memo(move |_| {
+            let key = key();
+            // Subscribe to inserts/deletions.
+            client.notify.get();
+            client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
+        });
 
-        // synchronize_observer(maybe_query.into());
+        let state_signal = RwSignal::new(maybe_query.get_untracked().map(|q| q.get_state()));
 
-        // Signal::derive(move || maybe_query.get().map(|s| s.state.get()))
-        todo!();
+        let ensure_cleanup = Rc::new(std::cell::Cell::<Option<Box<dyn Fn()>>>::new(None));
+
+        on_cleanup({
+            let ensure_cleanup = ensure_cleanup.clone();
+            move || {
+                if let Some(cleanup) = ensure_cleanup.take() {
+                    cleanup();
+                }
+            }
+        });
+
+        create_isomorphic_effect({
+            let ensure_cleanup = ensure_cleanup.clone();
+            move |_| {
+                if let Some(remove) = ensure_cleanup.take() {
+                    remove();
+                }
+
+                if let Some(query) = maybe_query.get() {
+                    let (observer_signal, unsubscribe) = query.register_observer();
+
+                    // Forward state changes to the signal.
+                    // TODO: confirm that this is "closed" when outer effect changes.
+                    create_isomorphic_effect(move |_| {
+                        let latest_state = observer_signal.get();
+                        state_signal.set(Some(latest_state));
+                    });
+
+                    ensure_cleanup.set(Some(Box::new(unsubscribe)));
+                } else {
+                    state_signal.set(None);
+                }
+            }
+        });
+
+        state_signal.into()
     }
 
     /// Attempts to invalidate an entry in the Query Cache.
@@ -534,9 +521,7 @@ impl QueryClient {
         let cache: &mut CacheEntry<K, V> = cache
             .as_any_mut()
             .downcast_mut::<CacheEntry<K, V>>()
-            .expect(
-            "Error: Query Cache Type Mismatch. This should not happen. Please file a bug report.",
-        );
+            .expect(EXPECT_CACHE_ERROR);
 
         func((self.owner, &mut cache.0))
     }
