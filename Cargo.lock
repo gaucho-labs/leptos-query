@@ -658,6 +658,8 @@ name = "leptos_query"
 version = "0.4.2"
 dependencies = [
  "cfg-if",
+ "futures",
+ "futures-channel",
  "gloo-timers",
  "js-sys",
  "leptos",

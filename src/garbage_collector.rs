@@ -36,11 +36,11 @@ where
         self.last_update.set(instant);
     }
 
-    pub fn enable(&self) {
+    pub fn enable_gc(&self) {
         self.enabled.set(true);
     }
 
-    pub fn disable(&self) {
+    pub fn disable_gc(&self) {
         self.enabled.set(false);
     }
 

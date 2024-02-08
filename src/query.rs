@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use futures_channel::oneshot;
 use leptos::*;
 use slotmap::{new_key_type, SlotMap};
 
@@ -18,9 +19,7 @@ where
     pub(crate) key: K,
 
     // Cancellation.
-    version: Rc<Cell<usize>>,
-    cancelled_execs: Rc<RefCell<Vec<usize>>>,
-    active_execs: Rc<RefCell<Vec<usize>>>,
+    current_request: Rc<Cell<Option<oneshot::Sender<()>>>>,
 
     // Synchronization.
     observers: Rc<RefCell<SlotMap<ObserverKey, RwSignal<QueryState<V>>>>>,
@@ -53,9 +52,7 @@ where
         Query {
             key: key.clone(),
 
-            version: Rc::new(Cell::new(0)),
-            active_execs: Rc::new(RefCell::new(Vec::new())),
-            cancelled_execs: Rc::new(RefCell::new(Vec::new())),
+            current_request: Rc::new(Cell::new(None)),
 
             observers: Rc::new(RefCell::new(SlotMap::with_key())),
             state: Rc::new(Cell::new(QueryState::Created)),
@@ -138,12 +135,12 @@ where
                 let mut observers = observers.borrow_mut();
                 observers.remove(observer_id);
                 if observers.is_empty() {
-                    collector.enable();
+                    collector.enable_gc();
                 }
             }
         };
 
-        self.garbage_collector.disable();
+        self.garbage_collector.disable_gc();
 
         (state_signal.read_only(), remove_observer)
     }
@@ -173,69 +170,35 @@ where
      */
 
     // Only scenario where two requests can exist at the same time is the first is cancelled.
-    pub(crate) fn new_execution(&self) -> Option<usize> {
-        let is_executing = {
-            let active = self.active_execs.borrow();
-            let cancelled = self.cancelled_execs.borrow();
-            self.debug_cancellation();
-
-            active.len() > cancelled.len()
-        };
-        if is_executing {
-            None
+    pub(crate) fn new_execution(&self) -> Option<oneshot::Receiver<()>> {
+        let current_request = self.current_request.take();
+        if current_request.is_none() {
+            let (sender, receiver) = oneshot::channel();
+            self.current_request.set(Some(sender));
+            Some(receiver)
         } else {
-            let exec_count = self.version.get() + 1;
-            self.version.set(exec_count);
-            self.active_execs.borrow_mut().push(exec_count);
-            Some(exec_count)
+            None
         }
     }
 
-    pub(crate) fn is_executing(&self) -> bool {
-        let active = self.active_execs.borrow();
-        let cancelled = self.cancelled_execs.borrow();
-        self.debug_cancellation();
-        active.len() > cancelled.len()
-    }
-
-    pub(crate) fn finish_exec(&self, execution_id: usize) {
-        self.active_execs
-            .borrow_mut()
-            .retain(|id| *id != execution_id);
-        self.cancelled_execs
-            .borrow_mut()
-            .retain(|id| *id != execution_id);
-    }
-
-    pub(crate) fn is_cancelled(&self, execution_version: usize) -> bool {
-        self.cancelled_execs.borrow().contains(&execution_version)
+    pub(crate) fn finalize_execution(&self) {
+        self.current_request.set(None);
     }
 
     pub(crate) fn cancel(&self) -> bool {
-        self.debug_cancellation();
-
-        let latest_executing = self.active_execs.borrow().last().cloned();
-        let mut cancelled = self.cancelled_execs.borrow_mut();
-
-        if cancelled.last() != latest_executing.as_ref() {
-            cancelled.push(latest_executing.unwrap());
-            true
+        if let Some(current_request) = self.current_request.take() {
+            let cancellation = current_request.send(());
+            if cancellation.is_err() {
+                logging::error!("Failed to cancel request");
+            }
+            cancellation.is_ok()
         } else {
             false
         }
     }
 
-    fn debug_cancellation(&self) {
-        let active = self.active_execs.borrow();
-        let cancelled = self.cancelled_execs.borrow();
-        debug_assert!(
-            active.len() >= cancelled.len(),
-            "More cancelled than active executions"
-        );
-        debug_assert!(
-            active.len() - cancelled.len() <= 1,
-            "More than one active non-cancelled execution"
-        );
+    pub(crate) fn get_refetch_interval(&self) -> Signal<Option<Duration>> {
+        self.refetch_interval.into()
     }
 
     // Enables having different stale times & refetch intervals for the same query.

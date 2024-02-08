@@ -17,6 +17,8 @@ js-sys = {version = "0.3", optional = true}
 gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
 tokio = { version = "1", optional = true, features = ["time"]}
 slotmap = "1"
+futures-channel = "0.3.30"
+futures = "0.3.30"
 
 [features]
 hydrate = ["dep:js-sys", "dep:gloo-timers"] 

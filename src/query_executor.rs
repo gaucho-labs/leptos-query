@@ -1,5 +1,6 @@
+use futures_channel::oneshot;
 use leptos::*;
-use std::{cell::Cell, future::Future, hash::Hash, rc::Rc};
+use std::{cell::Cell, future::Future, hash::Hash, pin::pin, rc::Rc};
 
 use crate::{query::Query, QueryData, QueryState};
 
@@ -47,17 +48,18 @@ where
                         None => {
                             logging::log!("Query already loading. Skipping.");
                         }
-                        Some(execution) => {
+                        Some(cancellation) => {
                             match query.get_state() {
                                 // Already loading.
                                 QueryState::Loading | QueryState::Created => {
                                     query.set_state(QueryState::Loading);
-                                    let data = fetcher(query.key.clone()).await;
-                                    if !query.is_cancelled(execution) {
-                                        let data = QueryData::now(data);
-                                        query.set_state(QueryState::Loaded(data));
-                                    } else {
-                                        query.set_state(QueryState::Created);
+                                    let fetch = pin!(fetcher(query.key.clone()));
+                                    match execute_with_cancellation(fetch, cancellation).await {
+                                        Ok(data) => {
+                                            let data = QueryData::now(data);
+                                            query.set_state(QueryState::Loaded(data));
+                                        }
+                                        Err(_) => query.set_state(QueryState::Created),
                                     }
                                 }
                                 // Subsequent loads.
@@ -65,34 +67,46 @@ where
                                 | QueryState::Loaded(data)
                                 | QueryState::Invalid(data) => {
                                     query.set_state(QueryState::Fetching(data));
-
-                                    let new_data = fetcher(query.key.clone()).await;
-
-                                    if !query.is_cancelled(execution) {
-                                        let new_data = QueryData::now(new_data);
-                                        query.set_state(QueryState::Loaded(new_data));
-                                    } else {
-                                        // If no other execution is active, then set state to Loaded.
-                                        query.maybe_map_state(|state| match state {
-                                            QueryState::Fetching(data) if !query.is_executing() => {
-                                                Ok(QueryState::Loaded(data))
-                                            }
-                                            // Don't do anything to state.
-                                            already_loaded @ (QueryState::Fetching(_)
-                                            | QueryState::Loaded(_)
-                                            | QueryState::Invalid(_)) => Err(already_loaded),
-                                            QueryState::Loading | QueryState::Created => {
-                                                unreachable!("Invalid State")
-                                            }
-                                        });
+                                    let fetch = pin!(fetcher(query.key.clone()));
+                                    match execute_with_cancellation(fetch, cancellation).await {
+                                        Ok(data) => {
+                                            let data = QueryData::now(data);
+                                            query.set_state(QueryState::Loaded(data));
+                                        }
+                                        Err(_) => {
+                                            query.maybe_map_state(|state| {
+                                                if let QueryState::Fetching(data) = state {
+                                                    Ok(QueryState::Loaded(data))
+                                                } else {
+                                                    Err(state)
+                                                }
+                                            });
+                                        }
                                     }
                                 }
                             }
-                            query.finish_exec(execution)
+                            query.finalize_execution()
                         }
                     }
                 })
             }
         })
+    }
+}
+
+async fn execute_with_cancellation<V, Fu>(
+    fut: Fu,
+    cancellation: oneshot::Receiver<()>,
+) -> Result<V, ()>
+where
+    Fu: Future<Output = V> + Unpin,
+{
+    use futures::future::Either;
+
+    let result = futures::future::select(fut, cancellation).await;
+
+    match result {
+        Either::Left((result, _)) => Ok(result),
+        Either::Right((_, _)) => Err(()),
     }
 }
