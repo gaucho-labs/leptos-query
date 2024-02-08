@@ -4,13 +4,14 @@ use crate::Instant;
 ///
 /// Each variant in the enum corresponds to a particular state of a query in its lifecycle,
 /// starting from creation and covering all possible transitions up to invalidation.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub enum QueryState<V> {
     /// The initial state of a Query upon its creation.
     ///
     /// In this state, a query is instantiated but no fetching operation has been initiated yet.
     /// This means that no data has been requested or received, and the query is in a "pending" state,
     /// waiting to begin its first fetch operation.
+    #[default]
     Created,
 
     /// Query is fetching for the first time.

@@ -85,7 +85,7 @@ where
     }
 
     pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
-        let mut state = self.state.replace(QueryState::Created);
+        let mut state = self.state.take();
         update_fn(&mut state);
         self.set_state(state);
     }
@@ -98,7 +98,7 @@ where
         &self,
         update_fn: impl FnOnce(QueryState<V>) -> Result<QueryState<V>, QueryState<V>>,
     ) -> bool {
-        let current_state = self.state.replace(QueryState::Created);
+        let current_state = self.state.take();
 
         match update_fn(current_state) {
             Ok(new_state) => {
@@ -130,9 +130,9 @@ where
         let current_state = self.get_state();
         let state_signal = RwSignal::new(current_state);
         let observer_id = self.observers.borrow_mut().insert(state_signal);
-        let collector = self.garbage_collector.clone();
 
         let remove_observer = {
+            let collector = self.garbage_collector.clone();
             let observers = self.observers.clone();
             move || {
                 let mut observers = observers.borrow_mut();
@@ -155,14 +155,14 @@ where
     V: Clone,
 {
     pub(crate) fn get_state(&self) -> QueryState<V> {
-        let state = self.state.replace(QueryState::Created);
+        let state = self.state.take();
         let state_clone = state.clone();
         self.state.set(state);
         state_clone
     }
 
     pub(crate) fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
-        let state = self.state.replace(QueryState::Created);
+        let state = self.state.take();
         let result = func(&state);
         self.state.set(state);
         result
