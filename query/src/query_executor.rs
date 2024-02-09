@@ -57,7 +57,10 @@ where
                                             let data = QueryData::now(data);
                                             query.set_state(QueryState::Loaded(data));
                                         }
-                                        Err(_) => query.set_state(QueryState::Created),
+                                        Err(_) => {
+                                            logging::error!("Failed to await!");
+                                            query.set_state(QueryState::Created);
+                                        }
                                     }
                                 }
                                 // Subsequent loads.

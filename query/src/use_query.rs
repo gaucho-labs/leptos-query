@@ -1,7 +1,9 @@
 use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
 use crate::util::time_until_stale;
-use crate::{use_query_client, Query, QueryOptions, QueryState, RefetchFn, ResourceOption};
+use crate::{
+    use_query_client, Query, QueryObserverKind, QueryOptions, QueryState, RefetchFn, ResourceOption,
+};
 use leptos::*;
 use std::future::Future;
 use std::rc::Rc;
@@ -110,6 +112,7 @@ where
     // Ensure latest data in resource.
     create_isomorphic_effect(move |_| {
         let _ = query_state.with(|_| ());
+        logging::log!("SETTING RESOURCE TO LATEST VALUE");
         resource.refetch();
     });
 
@@ -224,11 +227,12 @@ where
             }
 
             let query = query.get();
-            let (observer_signal, unsubscribe) = query.register_observer();
+            let (observer_signal, unsubscribe) = query.register_observer(QueryObserverKind::Active);
 
             // Forward state changes to the signal.
             create_isomorphic_effect(move |_| {
                 let latest_state = observer_signal.get();
+                logging::log!("NEW STATE {:?}", latest_state);
                 state_signal.set(latest_state);
             });
 

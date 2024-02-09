@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-use self::query_cache::QueryCache;
+use self::{cache_observer::CacheObserver, query_cache::QueryCache};
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client() {
@@ -68,54 +68,6 @@ impl Default for DefaultQueryOptions {
             gc_time: Some(Duration::from_secs(60 * 5)),
             refetch_interval: None,
             resource_option: ResourceOption::NonBlocking,
-        }
-    }
-}
-
-pub(crate) struct CacheEntry<K: 'static, V: 'static>(HashMap<K, Query<K, V>>);
-
-// Trait to enable cache introspection among distinct cache entry maps.
-pub(crate) trait CacheEntryTrait: CacheSize + CacheInvalidate {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-impl<K, V> CacheEntryTrait for CacheEntry<K, V>
-where
-    K: crate::QueryKey + 'static,
-    V: crate::QueryValue + 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-pub(crate) trait CacheSize {
-    fn size(&self) -> usize;
-}
-
-impl<K, V> CacheSize for CacheEntry<K, V> {
-    fn size(&self) -> usize {
-        self.0.len()
-    }
-}
-
-pub(crate) trait CacheInvalidate {
-    fn invalidate(&self);
-}
-
-impl<K, V> CacheInvalidate for CacheEntry<K, V>
-where
-    K: QueryKey + 'static,
-    V: QueryValue + 'static,
-{
-    fn invalidate(&self) {
-        for (_, query) in self.0.iter() {
-            query.mark_invalid();
         }
     }
 }
@@ -203,7 +155,8 @@ impl QueryClient {
                 }
 
                 if let Some(query) = maybe_query.get() {
-                    let (observer_signal, unsubscribe) = query.register_observer();
+                    let (observer_signal, unsubscribe) =
+                        query.register_observer(QueryObserverKind::Active);
 
                     // Forward state changes to the signal.
                     // TODO: confirm that this is "closed" when outer effect changes.
@@ -459,6 +412,11 @@ impl QueryClient {
                 false
             }
         })
+    }
+
+    /// Registers the cache observer.
+    pub fn register_cache_observer(&self, observer: impl CacheObserver + 'static) {
+        self.cache.register_query_observer(observer);
     }
 }
 

@@ -5,6 +5,7 @@ use crate::{
 use leptos::*;
 use leptos_meta::*;
 use leptos_query::*;
+use leptos_query_devtools::LeptosQueryDevtools;
 use leptos_router::{Outlet, Route, Router, Routes};
 use std::time::Duration;
 
@@ -18,11 +19,11 @@ pub fn App() -> impl IntoView {
     view! {
         <Stylesheet id="leptos" href="/pkg/start-axum.css"/>
         <Title text="Welcome to Leptos"/>
+        <LeptosQueryDevtools/>
         <Router fallback=|| {
             let mut outside_errors = Errors::default();
             outside_errors.insert_with_default_key(AppError::NotFound);
-            view! {  <ErrorTemplate outside_errors/> }
-                .into_view()
+            view! { <ErrorTemplate outside_errors/> }.into_view()
         }>
             <main>
                 <Routes>
@@ -36,48 +37,56 @@ pub fn App() -> impl IntoView {
                             }
                         }
                     >
+
                         <Route
                             path="/"
                             view=|| {
-                                view! {  <HomePage/> }
+                                view! { <HomePage/> }
                             }
                         />
+
                         <Route
                             path="single"
                             view=|| {
-                                view! {  <OnePost/> }
+                                view! { <OnePost/> }
                             }
                         />
+
                         <Route
                             path="multi"
                             view=|| {
-                                view! {  <MultiPost/> }
+                                view! { <MultiPost/> }
                             }
                         />
+
                         <Route
                             path="reactive"
                             view=|| {
-                                view! {  <ReactivePost/> }
+                                view! { <ReactivePost/> }
                             }
                         />
+
                         <Route
                             path="unique"
                             view=|| {
-                                view! {  <UniqueKey/> }
+                                view! { <UniqueKey/> }
                             }
                         />
+
                         <Route
                             path="refetch"
                             view=|| {
-                                view! {  <RefetchInterval/> }
+                                view! { <RefetchInterval/> }
                             }
                         />
+
                         <Route
                             path="todos"
                             view=|| {
                                 view! { <InteractiveTodo/> }
                             }
                         />
+
                     </Route>
                 </Routes>
             </main>
@@ -205,21 +214,20 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
             <div class="post-body">
                 <p>"Post Body"</p>
                 <Transition fallback=move || {
-                    view! {  <h2>"Loading..."</h2> }
+                    view! { <h2>"Loading..."</h2> }
                 }>
                     <h2>
-                        {
-                           move || {
-                            data
-                            .get()
-                            .map(|post| {
-                                match post {
-                                    Some(post) => post,
-                                    None => "Not Found".into(),
-                                }
-                            })
-                        }
-                        }
+
+                        {move || {
+                            data.get()
+                                .map(|post| {
+                                    match post {
+                                        Some(post) => post,
+                                        None => "Not Found".into(),
+                                    }
+                                })
+                        }}
+
                     </h2>
                 </Transition>
             </div>
@@ -249,6 +257,7 @@ fn ReactivePost() -> impl IntoView {
                     }
                 }
             >
+
                 "Switch Post"
             </button>
         </div>
@@ -275,14 +284,15 @@ fn UniqueKey() -> impl IntoView {
             <div class="post-body">
                 <p>"Unique Key"</p>
                 <Transition fallback=move || {
-                    view! {  <h2>"Loading..."</h2> }
+                    view! { <h2>"Loading..."</h2> }
                 }>
                     {move || {
                         data.get()
                             .map(|response| {
-                                view! {  <h2>{response}</h2> }
+                                view! { <h2>{response}</h2> }
                             })
                     }}
+
                 </Transition>
             </div>
         </div>
@@ -313,14 +323,15 @@ fn RefetchInterval() -> impl IntoView {
             <div class="post-body">
                 <p>"Refetch Interval"</p>
                 <Transition fallback=move || {
-                    view! {  <h2>"Loading..."</h2> }
+                    view! { <h2>"Loading..."</h2> }
                 }>
                     {move || {
                         data.get()
                             .map(|response| {
-                                view! {  <h2>{response}</h2> }
+                                view! { <h2>{response}</h2> }
                             })
                     }}
+
                 </Transition>
             </div>
             <div>

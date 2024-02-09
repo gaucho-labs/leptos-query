@@ -67,6 +67,25 @@ impl<V> QueryState<V> {
             }
         }
     }
+
+    pub(crate) fn map_data<R>(&self, mapper: impl FnOnce(&V) -> R) -> QueryState<R> {
+        match self {
+            QueryState::Loading => QueryState::Loading,
+            QueryState::Created => QueryState::Created,
+            QueryState::Fetching(data) => QueryState::Fetching(QueryData {
+                data: mapper(&data.data),
+                updated_at: data.updated_at,
+            }),
+            QueryState::Loaded(data) => QueryState::Loaded(QueryData {
+                data: mapper(&data.data),
+                updated_at: data.updated_at,
+            }),
+            QueryState::Invalid(data) => QueryState::Invalid(QueryData {
+                data: mapper(&data.data),
+                updated_at: data.updated_at,
+            }),
+        }
+    }
 }
 
 impl<V> std::fmt::Debug for QueryState<V>

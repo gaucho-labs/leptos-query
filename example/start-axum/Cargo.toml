@@ -26,6 +26,7 @@ tracing = { version = "0.1", optional = true }
 http = "1"
 serde = "1.0"
 leptos_query = { path = "../../query"}
+leptos_query_devtools = { path = "../../devtools"}
 
 [features]
 hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate", "leptos_query/hydrate"]

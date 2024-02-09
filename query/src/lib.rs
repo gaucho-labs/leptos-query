@@ -136,6 +136,7 @@ mod query_state;
 mod use_query;
 mod util;
 
+pub use cache_observer::*;
 pub use instant::*;
 use query::*;
 pub use query_client::*;

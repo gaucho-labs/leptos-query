@@ -6,14 +6,23 @@ use std::{
 };
 
 use leptos::*;
+use slotmap::SlotMap;
 
-use crate::{Query, QueryKey, QueryValue};
+use crate::{
+    cache_observer::{CacheEvent, CacheObserver},
+    Query, QueryKey, QueryValue,
+};
 
 #[derive(Clone)]
 pub(crate) struct QueryCache {
     owner: Owner,
     cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
+    observers: Rc<RefCell<SlotMap<CacheObserverKey, Box<dyn CacheObserver>>>>,
     size: RwSignal<usize>,
+}
+
+slotmap::new_key_type! {
+    struct CacheObserverKey;
 }
 
 pub(crate) struct CacheEntry<K: 'static, V: 'static>(HashMap<K, Query<K, V>>);
@@ -69,6 +78,7 @@ impl QueryCache {
         Self {
             owner,
             cache: Rc::new(RefCell::new(HashMap::new())),
+            observers: Rc::new(RefCell::new(SlotMap::with_key())),
             size: RwSignal::new(0),
         }
     }
@@ -78,7 +88,7 @@ impl QueryCache {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        let owner = self.owner;
+        let query_cache = self.clone();
         let (query, created) = self.use_cache(move |cache| {
             let entry = cache.entry(key.clone());
 
@@ -88,7 +98,8 @@ impl QueryCache {
                     (entry, false)
                 }
                 Entry::Vacant(entry) => {
-                    let query = with_owner(owner, || Query::new(key));
+                    let query = with_owner(query_cache.owner, || Query::new(key));
+                    query_cache.notify_query_update(query.clone());
                     (entry.insert(query), true)
                 }
             };
@@ -101,6 +112,14 @@ impl QueryCache {
         }
 
         query
+    }
+
+    pub(crate) fn get_query<K, V>(&self, key: K) -> Option<Query<K, V>>
+    where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+    {
+        self.use_cache_option_mut(move |cache| cache.get(&key).cloned())
     }
 
     pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
@@ -143,6 +162,7 @@ impl QueryCache {
         let result = self.use_cache_option_mut::<K, V, _, _>(move |cache| cache.remove(key));
 
         if let Some(query) = result {
+            self.notify_query_eviction(&query.key);
             self.size.set(self.size.get_untracked() - 1);
             query.dispose();
             true
@@ -231,14 +251,52 @@ impl QueryCache {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        let owner = self.owner;
-        let size = self.size;
-        self.use_cache(|cache| {
-            let entry = cache.entry(key);
-            if func((owner, entry)) {
-                size.set(self.size.get_untracked() + 1);
+        let query_cache = self;
+
+        let inserted = {
+            let key = key.clone();
+            self.use_cache(|cache| {
+                let entry = cache.entry(key);
+                let inserted = func((query_cache.owner, entry));
+                if inserted {
+                    query_cache.size.set(self.size.get_untracked() + 1);
+                }
+                inserted
+            })
+        };
+
+        if inserted {
+            if let Some(query) = self.get_query::<K, V>(key) {
+                self.notify_query_update(query)
             }
-        })
+        }
+    }
+
+    pub(crate) fn register_query_observer(&self, observer: impl CacheObserver + 'static) {
+        self.observers.borrow_mut().insert(Box::new(observer));
+    }
+
+    pub(crate) fn notify_query_update<K, V>(&self, query: Query<K, V>)
+    where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+    {
+        let observers = self.observers.borrow();
+        let event = CacheEvent::updated(query);
+        for observer in observers.values() {
+            observer.process_cache_event(event.clone())
+        }
+    }
+
+    pub(crate) fn notify_query_eviction<K>(&self, key: &K)
+    where
+        K: QueryKey + 'static,
+    {
+        let observers = self.observers.borrow();
+        let event = CacheEvent::removed(key);
+        for observer in observers.values() {
+            observer.process_cache_event(event.clone())
+        }
     }
 }
 

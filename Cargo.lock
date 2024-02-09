@@ -670,6 +670,10 @@ dependencies = [
 [[package]]
 name = "leptos_query_devtools"
 version = "0.1.0"
+dependencies = [
+ "leptos",
+ "leptos_query",
+]
 
 [[package]]
 name = "leptos_reactive"

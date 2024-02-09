@@ -13,7 +13,6 @@ use crate::{garbage_collector::GarbageCollector, QueryState};
 #[derive(Clone)]
 pub(crate) struct Query<K, V>
 where
-    K: 'static,
     V: 'static,
 {
     pub(crate) key: K,
@@ -22,7 +21,7 @@ where
     current_request: Rc<Cell<Option<oneshot::Sender<()>>>>,
 
     // Synchronization.
-    observers: Rc<RefCell<SlotMap<ObserverKey, RwSignal<QueryState<V>>>>>,
+    observers: Rc<RefCell<SlotMap<ObserverKey, QueryObserver<V>>>>,
     state: Rc<Cell<QueryState<V>>>,
     garbage_collector: Rc<GarbageCollector<K, V>>,
 
@@ -42,6 +41,17 @@ impl<K: PartialEq, V> PartialEq for Query<K, V> {
 }
 
 impl<K: PartialEq, V> Eq for Query<K, V> {}
+
+struct QueryObserver<V: 'static> {
+    state_signal: RwSignal<QueryState<V>>,
+    kind: QueryObserverKind,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum QueryObserverKind {
+    Active,
+    Passive,
+}
 
 impl<K, V> Query<K, V>
 where
@@ -73,7 +83,7 @@ where
     pub(crate) fn set_state(&self, state: QueryState<V>) {
         let observers = self.observers.borrow();
         for observer in observers.values() {
-            observer.set(state.clone())
+            observer.state_signal.set(state.clone())
         }
         if let Some(updated_at) = state.updated_at() {
             self.garbage_collector.new_update(updated_at);
@@ -124,10 +134,14 @@ where
         updated
     }
 
-    pub(crate) fn register_observer(&self) -> (ReadSignal<QueryState<V>>, impl Fn() + Clone) {
+    pub(crate) fn register_observer(
+        &self,
+        kind: QueryObserverKind,
+    ) -> (ReadSignal<QueryState<V>>, impl Fn() + Clone) {
         let current_state = self.get_state();
         let state_signal = RwSignal::new(current_state);
-        let observer_id = self.observers.borrow_mut().insert(state_signal);
+        let observer = QueryObserver { state_signal, kind };
+        let observer_id = self.observers.borrow_mut().insert(observer);
 
         let remove_observer = {
             let collector = self.garbage_collector.clone();
@@ -135,7 +149,11 @@ where
             move || {
                 let mut observers = observers.borrow_mut();
                 observers.remove(observer_id);
-                if observers.is_empty() {
+                if observers
+                    .values()
+                    .map(|o| o.kind)
+                    .all(|k| matches!(k, QueryObserverKind::Passive))
+                {
                     collector.enable_gc();
                 }
             }
@@ -233,7 +251,16 @@ where
 
 impl<K, V> Query<K, V> {
     pub(crate) fn dispose(&self) {
-        debug_assert!(self.observers.borrow().is_empty(), "Query has observers");
+        debug_assert!(
+            {
+                self.observers
+                    .borrow()
+                    .values()
+                    .map(|o| o.kind)
+                    .all(|k| matches!(k, QueryObserverKind::Passive))
+            },
+            "Query has active observers"
+        );
         self.gc_time.dispose();
         self.refetch_interval.dispose();
     }
