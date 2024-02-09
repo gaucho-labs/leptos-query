@@ -1,15 +1,16 @@
 use crate::*;
 use leptos::*;
 use std::{
-    any::{Any, TypeId},
+    any::Any,
     borrow::Borrow,
-    cell::RefCell,
+    cell::Cell,
     collections::{hash_map::Entry, HashMap},
     future::Future,
-    hash::Hash,
     rc::Rc,
     time::Duration,
 };
+
+use self::query_cache::QueryCache;
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client() {
@@ -43,10 +44,7 @@ pub fn use_query_client() -> QueryClient {
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct QueryClient {
-    pub(crate) owner: Owner,
-    // Signal to indicate a cache entry has been added or removed.
-    pub(crate) size: RwSignal<usize>,
-    pub(crate) cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
+    pub(crate) cache: QueryCache,
     pub(crate) default_options: DefaultQueryOptions,
 }
 
@@ -84,8 +82,8 @@ pub(crate) trait CacheEntryTrait: CacheSize + CacheInvalidate {
 
 impl<K, V> CacheEntryTrait for CacheEntry<K, V>
 where
-    K: Clone + Hash + Eq,
-    V: Clone,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -112,8 +110,8 @@ pub(crate) trait CacheInvalidate {
 
 impl<K, V> CacheInvalidate for CacheEntry<K, V>
 where
-    K: Clone + Hash + Eq,
-    V: Clone,
+    K: QueryKey + 'static,
+    V: QueryValue + 'static,
 {
     fn invalidate(&self) {
         for (_, query) in self.0.iter() {
@@ -126,9 +124,7 @@ impl QueryClient {
     /// Creates a new Query Client.
     pub fn new(owner: Owner, default_options: DefaultQueryOptions) -> Self {
         Self {
-            size: create_rw_signal(0),
-            owner,
-            cache: Rc::new(RefCell::new(HashMap::new())),
+            cache: QueryCache::new(owner),
             default_options,
         }
     }
@@ -140,20 +136,22 @@ impl QueryClient {
     pub fn prefetch_query<K, V, Fu>(
         &self,
         key: impl Fn() -> K + 'static,
-        query: impl Fn(K) -> Fu + 'static,
+        fetcher: impl Fn(K) -> Fu + 'static,
         isomorphic: bool,
     ) where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + std::fmt::Debug + 'static,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let state = self.get_query_signal(key);
+        let query = self.cache.get_query_signal(key);
 
-        let executor = create_executor(state.into(), query);
+        let executor = create_executor(query.into(), fetcher);
 
         let sync = move |_| {
-            let _ = state.get();
-            executor()
+            let query = query.get();
+            if query.with_state(|s| matches!(s, QueryState::Created)) {
+                executor()
+            }
         };
 
         if isomorphic {
@@ -170,22 +168,23 @@ impl QueryClient {
         key: impl Fn() -> K + 'static,
     ) -> Signal<Option<QueryState<V>>>
     where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
     {
-        let client = self.clone();
+        let cache = self.cache.clone();
+        let size = self.size();
 
         // Memoize state to avoid unnecessary hashmap lookups.
         let maybe_query = create_memo(move |_| {
             let key = key();
             // Subscribe to inserts/deletions.
-            client.size.get();
-            client.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
+            size.get();
+            cache.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
         });
 
         let state_signal = RwSignal::new(maybe_query.get_untracked().map(|q| q.get_state()));
 
-        let ensure_cleanup = Rc::new(std::cell::Cell::<Option<Box<dyn Fn()>>>::new(None));
+        let ensure_cleanup = Rc::new(Cell::<Option<Box<dyn Fn()>>>::new(None));
 
         on_cleanup({
             let ensure_cleanup = ensure_cleanup.clone();
@@ -235,15 +234,16 @@ impl QueryClient {
     /// ```
     pub fn invalidate_query<K, V>(&self, key: impl Borrow<K>) -> bool
     where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
     {
-        self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
-            cache
-                .get(Borrow::borrow(&key))
-                .map(|state| state.mark_invalid())
-        })
-        .unwrap_or(false)
+        self.cache
+            .use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+                cache
+                    .get(Borrow::borrow(&key))
+                    .map(|state| state.mark_invalid())
+            })
+            .unwrap_or(false)
     }
 
     /// Attempts to invalidate multiple entries in the Query Cache with a common <K, V> type.
@@ -260,30 +260,23 @@ impl QueryClient {
     /// ```
     pub fn invalidate_queries<K, V, Q>(&self, keys: impl IntoIterator<Item = Q>) -> Option<Vec<Q>>
     where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
-        Q: Borrow<K>,
+        K: crate::QueryKey + 'static,
+        V: crate::QueryValue + 'static,
+        Q: Borrow<K> + 'static,
     {
-        // Find all states, drop borrow, then mark invalid.
-        let cache_borrowed = RefCell::try_borrow(&self.cache).expect("invalidate_queries borrow");
-        let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
-        let cache = cache_borrowed.get(&type_key)?;
-        let cache = cache
-            .as_any()
-            .downcast_ref::<CacheEntry<K, V>>()
-            .expect(EXPECT_CACHE_ERROR);
-        let result = keys
-            .into_iter()
-            .filter(|key| {
-                cache
-                    .0
-                    .get(Borrow::borrow(key))
-                    .map(|query| query.mark_invalid())
-                    .unwrap_or(false)
+        self.cache
+            .use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+                let result = keys
+                    .into_iter()
+                    .filter(|key| {
+                        cache
+                            .get(Borrow::borrow(key))
+                            .map(|query| query.mark_invalid())
+                            .unwrap_or(false)
+                    })
+                    .collect::<Vec<_>>();
+                Some(result)
             })
-            .collect::<Vec<_>>();
-
-        Some(result)
     }
 
     /// Invalidate all queries with a common <K, V> type.
@@ -297,19 +290,18 @@ impl QueryClient {
     /// client.invalidate_query_type::<String, Monkey>();
     ///
     /// ```
-    pub fn invalidate_query_type<K, V>(&self) -> &Self
+    pub fn invalidate_query_type<K, V>(&self)
     where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
     {
-        self.use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
-            for q in cache.values() {
-                q.mark_invalid();
-            }
-            Some(())
-        });
-
-        self
+        self.cache
+            .use_cache_option(|cache: &HashMap<K, Query<K, V>>| {
+                for q in cache.values() {
+                    q.mark_invalid();
+                }
+                Some(())
+            });
     }
 
     /// Invalidates all queries in the cache.
@@ -325,14 +317,8 @@ impl QueryClient {
     ///
     /// ```
     ///
-    pub fn invalidate_all_queries(&self) -> &Self {
-        for cache in RefCell::try_borrow(&self.cache)
-            .expect("invalidate_all_queries borrow")
-            .values()
-        {
-            cache.invalidate();
-        }
-        self
+    pub fn invalidate_all_queries(&self) {
+        self.cache.invalidate_all_queries()
     }
 
     /// Returns the current size of the cache.
@@ -347,21 +333,7 @@ impl QueryClient {
     ///
     /// ```
     pub fn size(&self) -> Signal<usize> {
-        cfg_if::cfg_if! {
-            if #[cfg(debug_assertions)] {
-                let size_signal = self.size.clone();
-                let cache = self.cache.clone();
-                create_memo(move |_| {
-                    let size = size_signal.get();
-                    let cache = RefCell::try_borrow(&cache).expect("size borrow");
-                    let real_size: usize = cache.values().map(|b| b.size()).sum();
-                    assert!(size == real_size, "Cache size mismatch");
-                    size
-                }).into()
-            } else {
-        self.size.into()
-            }
-        }
+        self.cache.size()
     }
 
     /// A synchronous function that can be used to immediately set a query's data.
@@ -396,11 +368,11 @@ impl QueryClient {
         key: K,
         updater: impl FnOnce(Option<&V>) -> Option<V> + 'static,
     ) where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
     {
-        self.use_cache(move |(owner, cache)| {
-            match cache.entry(key.clone()) {
+        self.cache
+            .use_cache_entry(key.clone(), move |(owner, entry)| match entry {
                 Entry::Occupied(entry) => {
                     let query = entry.get();
 
@@ -434,18 +406,19 @@ impl QueryClient {
                             }
                         }
                     });
+                    false
                 }
                 Entry::Vacant(entry) => {
-                    // Only insert query if updater returns Some.
                     if let Some(result) = updater(None) {
                         let query = with_owner(owner, || Query::new(key));
                         query.set_state(QueryState::Loaded(QueryData::now(result)));
                         entry.insert(query);
-                        self.size.set(self.size.get_untracked() + 1);
+                        true
+                    } else {
+                        false
                     }
                 }
-            }
-        });
+            });
     }
 
     /// Mutate the existing data if it exists.
@@ -455,10 +428,10 @@ impl QueryClient {
         updater: impl FnOnce(&mut V),
     ) -> bool
     where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
     {
-        self.use_cache::<K, V, bool>(move |(_, cache)| {
+        self.cache.use_cache::<K, V, bool>(move |cache| {
             let mut updated = false;
             if let Some(query) = cache.get(key.borrow()) {
                 query.update_state(|state| {
@@ -476,10 +449,10 @@ impl QueryClient {
     /// Returns whether the query was cancelled or not.
     pub fn cancel_query<K, V>(&self, key: K) -> bool
     where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
     {
-        self.use_cache::<K, V, bool>(move |(_, cache)| {
+        self.cache.use_cache::<K, V, bool>(move |cache| {
             if let Some(query) = cache.get(&key) {
                 query.cancel()
             } else {
@@ -487,125 +460,7 @@ impl QueryClient {
             }
         })
     }
-
-    fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
-    where
-        K: 'static,
-        V: 'static,
-        F: FnOnce(&HashMap<K, Query<K, V>>) -> Option<R>,
-        R: 'static,
-    {
-        let cache = RefCell::try_borrow(&self.cache).expect("use_cache_option borrow");
-        let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
-        let cache = cache.get(&type_key)?;
-        let cache = cache
-            .as_any()
-            .downcast_ref::<CacheEntry<K, V>>()
-            .expect(EXPECT_CACHE_ERROR);
-        func(&cache.0)
-    }
-
-    fn use_cache_option_mut<K, V, F, R>(&self, func: F) -> Option<R>
-    where
-        K: 'static,
-        V: 'static,
-        F: FnOnce(&mut HashMap<K, Query<K, V>>) -> Option<R>,
-        R: 'static,
-    {
-        let mut cache = RefCell::try_borrow_mut(&self.cache).expect("use_cache_option_mut borrow");
-        let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
-        let cache = cache.get_mut(&type_key)?;
-        let cache = cache
-            .as_any_mut()
-            .downcast_mut::<CacheEntry<K, V>>()
-            .expect(EXPECT_CACHE_ERROR);
-        func(&mut cache.0)
-    }
-
-    fn use_cache<K, V, R>(&self, func: impl FnOnce((Owner, &mut HashMap<K, Query<K, V>>)) -> R) -> R
-    where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
-    {
-        let mut cache = RefCell::try_borrow_mut(&self.cache).expect("use_cache borrow");
-
-        let type_key = (TypeId::of::<K>(), TypeId::of::<V>());
-
-        let cache: &mut Box<dyn CacheEntryTrait> = match cache.entry(type_key) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => {
-                let wrapped: CacheEntry<K, V> = CacheEntry(HashMap::new());
-                v.insert(Box::new(wrapped))
-            }
-        };
-
-        let cache: &mut CacheEntry<K, V> = cache
-            .as_any_mut()
-            .downcast_mut::<CacheEntry<K, V>>()
-            .expect(EXPECT_CACHE_ERROR);
-
-        func((self.owner, &mut cache.0))
-    }
-
-    fn get_or_create_query<K, V>(&self, key: K) -> Query<K, V>
-    where
-        K: Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
-    {
-        let (query, created) = self.use_cache(move |(owner, cache)| {
-            let entry = cache.entry(key.clone());
-
-            let (query, new) = match entry {
-                Entry::Occupied(entry) => {
-                    let entry = entry.into_mut();
-                    (entry, false)
-                }
-                Entry::Vacant(entry) => {
-                    let query = with_owner(owner, || Query::new(key));
-                    (entry.insert(query), true)
-                }
-            };
-            (query.clone(), new)
-        });
-
-        // Notify on insert.
-        if created {
-            self.size.set(self.size.get_untracked() + 1);
-        }
-
-        query
-    }
-
-    pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
-    where
-        K: Hash + Eq + Clone + 'static,
-        V: Clone + 'static,
-    {
-        let client = self.clone();
-
-        // This memo is crucial to avoid crazy amounts of lookups.
-        create_memo(move |_| {
-            let key = key();
-            client.get_or_create_query(key)
-        })
-    }
-
-    pub(crate) fn evict_and_notify<K, V: 'static>(&self, key: &K) -> Option<Query<K, V>>
-    where
-        K: Hash + Eq + 'static,
-        V: 'static,
-    {
-        let result = self.use_cache_option_mut(move |cache| cache.remove(key));
-
-        if result.is_some() {
-            self.size.set(self.size.get_untracked() - 1);
-        }
-        result
-    }
 }
-
-const EXPECT_CACHE_ERROR: &str =
-    "Error: Query Cache Type Mismatch. This should not happen. Please file a bug report.";
 
 #[cfg(test)]
 mod tests {

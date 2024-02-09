@@ -45,7 +45,8 @@ impl<K: PartialEq, V> Eq for Query<K, V> {}
 
 impl<K, V> Query<K, V>
 where
-    K: Clone + Eq + std::hash::Hash,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
 {
     pub(crate) fn new(key: K) -> Self {
         let gc_time = RwSignal::new(None);
@@ -66,8 +67,8 @@ where
 
 impl<K, V> Query<K, V>
 where
-    K: Clone + Eq + std::hash::Hash,
-    V: Clone,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
 {
     pub(crate) fn set_state(&self, state: QueryState<V>) {
         let observers = self.observers.borrow();
@@ -144,13 +145,7 @@ where
 
         (state_signal.read_only(), remove_observer)
     }
-}
 
-impl<K, V> Query<K, V>
-where
-    K: Clone,
-    V: Clone,
-{
     pub(crate) fn get_state(&self) -> QueryState<V> {
         let state = self.state.take();
         let state_clone = state.clone();

@@ -15,8 +15,8 @@ pub(crate) struct GarbageCollector<K, V> {
 
 impl<K, V> GarbageCollector<K, V>
 where
-    V: 'static,
-    K: core::hash::Hash + core::cmp::Eq + Clone + 'static,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
 {
     pub(crate) fn new(key: K, gc_time: Signal<Option<Duration>>) -> Self {
         let gc = Self {
@@ -70,9 +70,7 @@ where
                     set_timeout_with_handle(
                         move || {
                             let client = crate::use_query_client();
-                            if let Some(query) = client.evict_and_notify::<K, V>(&key) {
-                                query.dispose();
-                            }
+                            client.cache.evict_query::<K, V>(&key);
                         },
                         time_until_gc,
                     )

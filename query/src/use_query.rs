@@ -4,7 +4,6 @@ use crate::util::time_until_stale;
 use crate::{use_query_client, Query, QueryOptions, QueryState, RefetchFn, ResourceOption};
 use leptos::*;
 use std::future::Future;
-use std::hash::Hash;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -60,12 +59,12 @@ pub fn use_query<K, V, Fu>(
     options: QueryOptions<V>,
 ) -> QueryResult<V, impl RefetchFn>
 where
-    K: std::fmt::Debug + Hash + Eq + Clone + 'static,
-    V: std::fmt::Debug + Clone + Serializable + 'static,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
     Fu: Future<Output = V> + 'static,
 {
     // Find relevant state.
-    let query = use_query_client().get_query_signal(key);
+    let query = use_query_client().cache.get_query_signal(key);
 
     // Update options.
     create_isomorphic_effect({
@@ -186,7 +185,7 @@ async fn sleep(duration: Duration) {
 
 /// Wrapper type to enable using `Serializable`
 #[derive(Clone, Debug)]
-struct ResourceData<V>(Option<V>);
+pub struct ResourceData<V>(Option<V>);
 
 impl<V> Serializable for ResourceData<V>
 where
@@ -210,8 +209,8 @@ where
 
 fn register_observer_handle_cleanup<K, V>(query: Memo<Query<K, V>>) -> Signal<QueryState<V>>
 where
-    K: Clone + Eq + Hash + 'static,
-    V: Clone + 'static,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
 {
     let state_signal = RwSignal::new(query.get_untracked().get_state());
 
@@ -248,11 +247,14 @@ where
 
 // On mount of a new query, ensure it's not stale.
 // Not reactive to individual query state changes.
-fn ensure_not_stale<K: Clone, V: Clone>(
+fn ensure_not_stale<K, V>(
     query: Memo<Query<K, V>>,
     stale_time: Option<Duration>,
     executor: impl Fn() + Clone + 'static,
-) {
+) where
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
+{
     create_isomorphic_effect(move |_| {
         let query = query.get();
 
@@ -276,8 +278,8 @@ fn sync_refetch<K, V>(
     query_state: Signal<QueryState<V>>,
     executor: impl Fn() + Clone + 'static,
 ) where
-    K: Clone,
-    V: Clone + 'static,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
 {
     let updated_at = create_memo(move |_| query_state.with(|state| state.updated_at()));
 

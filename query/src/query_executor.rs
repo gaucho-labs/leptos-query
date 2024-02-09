@@ -1,6 +1,6 @@
 use futures_channel::oneshot;
 use leptos::*;
-use std::{cell::Cell, future::Future, hash::Hash, pin::pin, rc::Rc};
+use std::{cell::Cell, future::Future, pin::pin, rc::Rc};
 
 use crate::{query::Query, QueryData, QueryState};
 
@@ -32,8 +32,8 @@ pub(crate) fn create_executor<K, V, Fu>(
     fetcher: impl Fn(K) -> Fu + 'static,
 ) -> impl Fn() + Clone
 where
-    K: Clone + Hash + Eq + 'static,
-    V: std::fmt::Debug + Clone + 'static,
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
     Fu: Future<Output = V> + 'static,
 {
     let fetcher = Rc::new(fetcher);
