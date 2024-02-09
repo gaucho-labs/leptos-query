@@ -1,9 +1,7 @@
 use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
 use crate::util::time_until_stale;
-use crate::{
-    use_query_client, Query, QueryData, QueryOptions, QueryState, RefetchFn, ResourceOption,
-};
+use crate::{use_query_client, Query, QueryOptions, QueryState, RefetchFn, ResourceOption};
 use leptos::*;
 use std::future::Future;
 use std::hash::Hash;
@@ -155,7 +153,7 @@ where
             #[cfg(feature = "hydrate")]
             if let Some(ref data) = read {
                 if query.with_state(|state| matches!(state, QueryState::Created)) {
-                    let data = QueryData::now(data.clone());
+                    let data = crate::QueryData::now(data.clone());
                     query.set_state(QueryState::Loaded(data));
                 }
             }

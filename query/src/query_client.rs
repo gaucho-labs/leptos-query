@@ -404,7 +404,7 @@ impl QueryClient {
                 Entry::Occupied(entry) => {
                     let query = entry.get();
 
-                    let updated = query.maybe_map_state(|state| match state {
+                    let _ = query.maybe_map_state(|state| match state {
                         QueryState::Created | QueryState::Loading => {
                             if let Some(result) = updater(None) {
                                 Ok(QueryState::Loaded(QueryData::now(result)))

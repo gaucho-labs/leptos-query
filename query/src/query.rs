@@ -238,7 +238,6 @@ where
 
 impl<K, V> Query<K, V> {
     pub(crate) fn dispose(&self) {
-        logging::log!("disposing of query");
         debug_assert!(self.observers.borrow().is_empty(), "Query has observers");
         self.gc_time.dispose();
         self.refetch_interval.dispose();

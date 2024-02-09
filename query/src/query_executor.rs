@@ -45,9 +45,7 @@ where
                     let query = query.get_untracked();
 
                     match query.new_execution() {
-                        None => {
-                            logging::log!("Query already loading. Skipping.");
-                        }
+                        None => {}
                         Some(cancellation) => {
                             match query.get_state() {
                                 // Already loading.

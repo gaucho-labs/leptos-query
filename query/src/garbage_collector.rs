@@ -53,16 +53,12 @@ where
         create_effect({
             move |maybe_timeout_handle: Option<Option<TimeoutHandle>>| {
                 if let Some(timeout_handle) = maybe_timeout_handle.flatten() {
-                    logging::log!("Clearing previous timeout");
                     timeout_handle.clear();
                 }
                 // Ensure enabled
                 if !enabled.get() {
-                    logging::log!("GC not enabled");
                     return None;
                 }
-
-                logging::log!("GC Enabled");
 
                 let gc_time = gc_time.get();
                 let last_update = last_update.get();
@@ -73,7 +69,6 @@ where
 
                     set_timeout_with_handle(
                         move || {
-                            logging::log!("Evicting and notifying");
                             let client = crate::use_query_client();
                             if let Some(query) = client.evict_and_notify::<K, V>(&key) {
                                 query.dispose();
