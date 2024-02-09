@@ -195,6 +195,7 @@ where
             self.current_request.set(Some(sender));
             Some(receiver)
         } else {
+            self.current_request.set(current_request);
             None
         }
     }
@@ -249,7 +250,11 @@ where
     }
 }
 
-impl<K, V> Query<K, V> {
+impl<K, V> Query<K, V>
+where
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
+{
     pub(crate) fn dispose(&self) {
         debug_assert!(
             {

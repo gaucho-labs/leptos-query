@@ -102,12 +102,27 @@ async fn execute_with_cancellation<V, Fu>(
 where
     Fu: Future<Output = V> + Unpin,
 {
-    use futures::future::Either;
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "hydrate")] {
+            use futures::future::Either;
 
-    let result = futures::future::select(fut, cancellation).await;
+            let result = futures::future::select(fut, cancellation).await;
 
-    match result {
-        Either::Left((result, _)) => Ok(result),
-        Either::Right((_, _)) => Err(()),
+            match result {
+                Either::Left((result, _)) => Ok(result),
+                Either::Right((cancelled ,_)) => {
+                    if let Err(_) = cancelled {
+                        logging::debug_warn!("Query cancellation was incorrectly dropped.");
+                    }
+
+                    Err(())
+                },
+            }
+        // No cancellation on server side.
+        } else {
+            let _ = cancellation;
+            let result = fut.await;
+            Ok(result)
+        }
     }
 }
