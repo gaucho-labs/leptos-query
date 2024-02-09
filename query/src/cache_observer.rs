@@ -8,14 +8,17 @@ pub trait CacheObserver {
     fn process_cache_event(&self, event: CacheEvent);
 }
 
+/// The events that can be observed from the query cache.
 #[derive(Debug, Clone)]
 pub enum CacheEvent {
+    /// A new query that has become active in the cache.
     Created(QueryCachePayload),
+    /// A query that has been removed from the cache.
     Removed(QueryCacheKey),
 }
 
 impl CacheEvent {
-    pub(crate) fn updated<K, V>(query: Query<K, V>) -> Self
+    pub(crate) fn created<K, V>(query: Query<K, V>) -> Self
     where
         K: crate::QueryKey + 'static,
         V: crate::QueryValue + 'static,
@@ -32,14 +35,18 @@ impl CacheEvent {
     }
 }
 
+/// A new query that has become active in the cache.
 #[derive(Debug, Clone)]
 pub struct QueryCachePayload {
+    /// The key of the query.
     pub key: QueryCacheKey,
+    /// The serialized state of the query.
     pub state: Signal<QueryState<String>>,
 }
 
+/// A key for a query in the cache.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct QueryCacheKey(String);
+pub struct QueryCacheKey(pub String);
 
 impl<K, V> From<Query<K, V>> for QueryCachePayload
 where

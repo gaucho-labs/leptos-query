@@ -112,13 +112,13 @@ where
     // Ensure latest data in resource.
     create_isomorphic_effect(move |_| {
         let _ = query_state.with(|_| ());
-        logging::log!("SETTING RESOURCE TO LATEST VALUE");
         resource.refetch();
     });
 
     let executor = create_executor(query.into(), fetcher);
 
-    ensure_not_stale(query, options.stale_time, executor.clone());
+    ensure_fresh(query, options.stale_time, executor.clone());
+    ensure_valid(query_state, executor.clone());
     sync_refetch(query, query_state, executor.clone());
 
     // Ensure key changes are considered.
@@ -232,7 +232,6 @@ where
             // Forward state changes to the signal.
             create_isomorphic_effect(move |_| {
                 let latest_state = observer_signal.get();
-                logging::log!("NEW STATE {:?}", latest_state);
                 state_signal.set(latest_state);
             });
 
@@ -251,7 +250,7 @@ where
 
 // On mount of a new query, ensure it's not stale.
 // Not reactive to individual query state changes.
-fn ensure_not_stale<K, V>(
+fn ensure_fresh<K, V>(
     query: Memo<Query<K, V>>,
     stale_time: Option<Duration>,
     executor: impl Fn() + Clone + 'static,
@@ -304,6 +303,18 @@ fn sync_refetch<K, V>(
                 .ok()
             }
             _ => None,
+        }
+    });
+}
+
+fn ensure_valid<V>(state: Signal<QueryState<V>>, executor: impl Fn() + 'static)
+where
+    V: crate::QueryValue + 'static,
+{
+    create_isomorphic_effect(move |_| {
+        // Refetch query if Invalid.
+        if state.with(|s| matches!(s, QueryState::Invalid(_))) {
+            executor()
         }
     });
 }

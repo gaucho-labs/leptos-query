@@ -99,7 +99,7 @@ impl QueryCache {
                 }
                 Entry::Vacant(entry) => {
                     let query = with_owner(query_cache.owner, || Query::new(key));
-                    query_cache.notify_query_update(query.clone());
+                    query_cache.notify_new_query(query.clone());
                     (entry.insert(query), true)
                 }
             };
@@ -267,7 +267,7 @@ impl QueryCache {
 
         if inserted {
             if let Some(query) = self.get_query::<K, V>(key) {
-                self.notify_query_update(query)
+                self.notify_new_query(query)
             }
         }
     }
@@ -276,13 +276,14 @@ impl QueryCache {
         self.observers.borrow_mut().insert(Box::new(observer));
     }
 
-    pub(crate) fn notify_query_update<K, V>(&self, query: Query<K, V>)
+    pub(crate) fn notify_new_query<K, V>(&self, query: Query<K, V>)
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
         let observers = self.observers.borrow();
-        let event = CacheEvent::updated(query);
+        // this is crucial to avoid the signal going out of scope once the use_query instance unmounts.
+        let event = with_owner(self.owner, || CacheEvent::created(query));
         for observer in observers.values() {
             observer.process_cache_event(event.clone())
         }

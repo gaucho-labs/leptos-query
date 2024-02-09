@@ -208,7 +208,7 @@ where
         if let Some(current_request) = self.current_request.take() {
             let cancellation = current_request.send(());
             if cancellation.is_err() {
-                logging::error!("Failed to cancel request");
+                logging::error!("Failed to cancel request {:?}", self.key);
             }
             cancellation.is_ok()
         } else {

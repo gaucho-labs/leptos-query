@@ -69,7 +69,7 @@ pub fn App() -> impl IntoView {
                         <Route
                             path="unique"
                             view=|| {
-                                view! { <UniqueKey/> }
+                                view! { <UniqueKeyExample/> }
                             }
                         />
 
@@ -270,10 +270,13 @@ pub async fn get_unique() -> Result<String, ServerFnError> {
     Ok("Super duper unique value".into())
 }
 
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+struct UniqueKey;
+
 #[component]
-fn UniqueKey() -> impl IntoView {
+fn UniqueKeyExample() -> impl IntoView {
     let QueryResult { data, .. } = use_query(
-        || (),
+        || UniqueKey,
         |_| async { get_unique().await.expect("Failed to retrieve unique") },
         QueryOptions::once(),
     );
