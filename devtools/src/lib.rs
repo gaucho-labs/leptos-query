@@ -76,8 +76,17 @@ mod dev_tools {
             open,
             query_state,
             selected_query,
-            ..
+            filter,
         } = use_devtools_context();
+
+        let query_state = Signal::derive(move || {
+            let filter = filter.get().to_ascii_lowercase();
+            query_state
+                .get()
+                .into_iter()
+                .filter(|(key, _)| key.0.to_ascii_lowercase().contains(&filter))
+                .collect::<HashMap<_, _>>()
+        });
 
         view! {
             <Show
@@ -110,17 +119,24 @@ mod dev_tools {
                 <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] overflow-y-auto z-[1000]">
                     <div class="w-full h-full flex flex-col">
                         <Header/>
-                        <div class="flex w-full h-full">
-                            <ul class="flex-1 basis-1/2 h-full flex flex-col gap-1 px-1 m-0 list-none">
-                                <For
-                                    each=move || query_state.get()
-                                    key=|(key, _)| key.clone()
-                                    let:entry
-                                >
-                                    <QueryRow key=entry.0 state=entry.1/>
-                                </For>
 
-                            </ul>
+                        <div class="flex w-full h-full">
+                            <div class="flex flex-col flex-1 basis-1/2 h-full">
+                                <div class="py-1 px-2 border-b border-zinc-800">
+                                    <SearchInput/>
+                                </div>
+
+                                <ul class="flex flex-col gap-1 px-1 m-0 list-none">
+                                    <For
+                                        each=move || query_state.get()
+                                        key=|(key, _)| key.clone()
+                                        let:entry
+                                    >
+                                        <QueryRow key=entry.0 state=entry.1/>
+                                    </For>
+
+                                </ul>
+                            </div>
                             <Show when=move || selected_query.get().is_some()>
                                 <SelectedQuery/>
                             </Show>
@@ -224,6 +240,37 @@ mod dev_tools {
     }
 
     #[component]
+    fn SearchInput() -> impl IntoView {
+        let DevtoolsContext { filter, .. } = use_devtools_context();
+
+        view! {
+            <div class="relative text-zinc-400 w-72">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path
+                            fill-rule="evenodd"
+                            d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+                            clip-rule="evenodd"
+                        ></path>
+                    </svg>
+                </div>
+                <input
+                    id="search"
+                    class="block w-full rounded-md border-0 bg-zinc-700 py-1 pl-10 pr-3 text-zinc-100 focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:ring-offset-indigo-600 sm:text-sm sm:leading-6 placeholder-zinc-400"
+                    placeholder="Search"
+                    name="search"
+                    type="text"
+                    on:input=move |ev| {
+                        let value = event_target_value(&ev);
+                        filter.set(value);
+                    }
+                    prop:value=filter
+                />
+            </div>
+        }
+    }
+
+    #[component]
     fn QueryRow(key: QueryCacheKey, state: Signal<QueryState<String>>) -> impl IntoView {
         let selected_query = use_devtools_context().selected_query;
         view! {
@@ -275,19 +322,43 @@ mod dev_tools {
     fn SelectedQuery() -> impl IntoView {
         let DevtoolsContext { selected_query, .. } = use_devtools_context();
 
-        let value = Signal::derive(move || {
+        let query_state = Signal::derive(move || {
             selected_query
                 .get()
                 .expect("Selected query to be present")
                 .1
                 .get()
-                .data()
-                .cloned()
         });
 
+        let last_update = Signal::derive(move || {
+            use wasm_bindgen::JsValue;
+            query_state.get().updated_at().map(|i| {
+                let time = JsValue::from_f64(i.0.as_millis() as f64);
+                let date = js_sys::Date::new(&time);
+                let hours = date.get_hours();
+                let minutes = date.get_minutes();
+                let seconds = date.get_seconds();
+                format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+            })
+        });
+
+        let value = Signal::derive(move || query_state.get().data().cloned());
+
         view! {
-            <div class="flex-1 basis-1/2 w-full overflow-x-auto border-l">
-                <p>{move || value.get().unwrap_or_default()}</p>
+            <div class="flex-1 basis-1/2 w-full overflow-x-auto border-l p-2 overflow-y-auto">
+                <div class="flex flex-col w-full h-full items-center">
+                    <div class="w-full">
+                        <div> Query Details </div>
+                        <div class="w-full flex items-center justify-between">
+                            Last Update:
+                            {last_update}
+                        </div>
+                    </div>
+
+                    <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-3/4">
+                        <div class="p-2">{move || value.get().unwrap_or_default()}</div>
+                    </div>
+                </div>
             </div>
         }
     }
