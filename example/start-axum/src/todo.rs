@@ -177,8 +177,12 @@ fn AllTodos() -> impl IntoView {
                 todos.retain(|t| t.id != id);
             });
 
+            set_todo(id, None);
+
             // Delete todos on the server.
             let _ = delete_todo(id).await;
+
+            let _ = invalidate_todo(id);
 
             refetch()
         }

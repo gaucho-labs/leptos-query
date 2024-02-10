@@ -6,5 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cfg-if = { workspace = true } 
 leptos = { workspace = true }
 leptos_query = { path = "../query"}
+
+# [features]
+# hydrate = []
+
+# [package.metadata.docs.rs]
+# all-features = true

@@ -671,6 +671,7 @@ dependencies = [
 name = "leptos_query_devtools"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "leptos",
  "leptos_query",
 ]

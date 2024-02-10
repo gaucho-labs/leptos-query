@@ -3,10 +3,12 @@ members = [
     "devtools",
     "query",
 ]
+resolver = "2"
 exclude = ["example"]
 
 [workspace.dependencies]
 leptos = "0.6"
+leptos_meta = "0.6"
 cfg-if = "1"
 js-sys = { version = "0.3" }
 gloo-timers = { version = "0.3", features = ["futures"] }
