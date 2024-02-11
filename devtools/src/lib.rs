@@ -25,6 +25,7 @@ mod dev_tools {
         view! {
             <Portal>
                 <style>{include_str!("./styles.css")}</style>
+                <style>{include_str!("./preflight.css")}</style>
                 <div class="leptos-query-devtools">
                     <Devtools/>
                 </div>
