@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-	* {
-	  @apply border-border;
-	}
-  }
+.leptos-query-devtools * {
+	@apply border-border;
+}
