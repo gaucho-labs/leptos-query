@@ -1,3 +1,5 @@
+const { scopedPreflightStyles } = require('tailwindcss-scoped-preflight');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./src/**/*.rs"],
@@ -17,5 +19,10 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+   plugins: [
+    scopedPreflightStyles({
+        cssSelector: '.leptos-query-devtools', // or .tailwind-preflight or even [data-twp=true] - any valid CSS selector of your choice
+        mode: 'matched only', // it's the default
+    }),
+],
 }
