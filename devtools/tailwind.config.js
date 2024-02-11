@@ -6,9 +6,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'background': '#18181B', // zinc-900
+        'background': '#09090B', // zinc-950
         'foreground': '#FAFAFA', // zinc-50
-        'accent': '#3F3F46',     // zinc-700
+        'accent': '#18181B',     // zinc-900
         'border': '#52525B',     // zinc-600
         'success-background': '#166534', // green-800
         'success-foreground': '#ECFCCB', // green-100

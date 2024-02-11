@@ -42,6 +42,8 @@ pub struct QueryCachePayload {
     pub key: QueryCacheKey,
     /// The serialized state of the query.
     pub state: Signal<QueryState<String>>,
+    /// The number of active observers for this query.
+    pub observer_count: Signal<usize>,
 }
 
 /// A key for a query in the cache.
@@ -65,9 +67,15 @@ where
             })
         };
 
+        let observer_count = query.get_active_observer_count();
+
         let key: QueryCacheKey = (&query.key).into();
 
-        QueryCachePayload { key, state }
+        QueryCachePayload {
+            key,
+            state,
+            observer_count,
+        }
     }
 }
 

@@ -34,10 +34,17 @@ mod dev_tools {
 
     #[derive(Clone)]
     struct DevtoolsContext {
-        query_state: RwSignal<HashMap<QueryCacheKey, Signal<QueryState<String>>>>,
+        query_state: RwSignal<HashMap<QueryCacheKey, QueryCacheEntry>>,
         open: RwSignal<bool>,
         filter: RwSignal<String>,
-        selected_query: RwSignal<Option<(QueryCacheKey, Signal<QueryState<String>>)>>,
+        selected_query: RwSignal<Option<QueryCacheEntry>>,
+    }
+
+    #[derive(Clone)]
+    struct QueryCacheEntry {
+        key: QueryCacheKey,
+        state: Signal<QueryState<String>>,
+        observer_count: Signal<usize>,
     }
 
     fn use_devtools_context() -> DevtoolsContext {
@@ -58,11 +65,18 @@ mod dev_tools {
     impl CacheObserver for DevtoolsContext {
         fn process_cache_event(&self, event: CacheEvent) {
             match event {
-                CacheEvent::Created(QueryCachePayload { key, state }) => {
-                    self.query_state.update(|map| {
-                        map.insert(key, state);
-                    })
-                }
+                CacheEvent::Created(QueryCachePayload {
+                    key,
+                    state,
+                    observer_count,
+                }) => self.query_state.update(|map| {
+                    let entry = QueryCacheEntry {
+                        key: key.clone(),
+                        state,
+                        observer_count,
+                    };
+                    map.insert(key, entry);
+                }),
                 CacheEvent::Removed(key) => self.query_state.update(|map| {
                     map.remove(&key);
                 }),
@@ -117,10 +131,10 @@ mod dev_tools {
             >
 
                 <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] z-[1000]">
-                    <div class="h-full flex flex-col overflow-hidden">
-                        <Header/>
+                    <div class="h-full flex flex-col relative">
                         <div class="flex-1 overflow-hidden flex">
                             <div class="flex flex-col flex-1 overflow-y-auto">
+                                <Header/>
                                 <div class="py-1 px-2 border-b border-zinc-800">
                                     <SearchInput/>
                                 </div>
@@ -131,15 +145,21 @@ mod dev_tools {
                                         key=|(key, _)| key.clone()
                                         let:entry
                                     >
-                                        <QueryRow key=entry.0 state=entry.1/>
+                                        <QueryRow entry=entry.1/>
                                     </For>
 
                                 </ul>
                             </div>
                             <Show when=move || selected_query.get().is_some()>
-                                <SelectedQuery/>
+                                {move || {
+                                    selected_query.get().map(|q| view!{
+                                        <SelectedQuery query=q/>
+                                    })
+                                }}
                             </Show>
-
+                        </div>
+                        <div class="absolute -top-5 right-2">
+                            <CloseButton/>
                         </div>
                     </div>
                 </div>
@@ -154,7 +174,7 @@ mod dev_tools {
         view! {
             <button
                 on:click=move |_| open.set(false)
-                class="bg-background text-foreground rounded-full w-8 h-8 p-1 transition-colors hover:bg-accent"
+                class="bg-background text-foreground rounded-sm w-6 h-6 p-1 transition-colors hover:bg-accent"
             >
                 <svg
                     width="100%"
@@ -182,6 +202,7 @@ mod dev_tools {
             query_state
                 .get()
                 .values()
+                .map(|q| q.state)
                 .filter(|s| s.with(|s| matches!(s, QueryState::Loaded(_))))
                 .count()
         });
@@ -190,6 +211,7 @@ mod dev_tools {
             query_state
                 .get()
                 .values()
+                .map(|q| q.state)
                 .filter(|s| s.with(|s| matches!(s, QueryState::Fetching(_) | QueryState::Loading)))
                 .count()
         });
@@ -198,41 +220,40 @@ mod dev_tools {
             query_state
                 .get()
                 .values()
+                .map(|q| q.state)
                 .filter(|s| s.with(|s| matches!(s, QueryState::Invalid(_))))
                 .count()
         });
 
         let total = Signal::derive(move || query_state.get().len());
 
+        let label_class = "hidden lg:inline-block";
         view! {
-            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-zinc-800">
-                <div class="text-base font-semibold leading-6 text-foreground px-2">
-                    Leptos Query Devtools
+            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-zinc-800 py-2 px-1">
+                <div class="text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300 text-base">
+                    Leptos Query
                 </div>
-                <div class="flex items-center gap-4 pr-2">
-                    <div class="flex gap-4 p-4">
-                        <DotBadge option=BadgeOption::Blue>
-                            <span class="">Fetching</span>
-                            <span>{num_fetching}</span>
-                        </DotBadge>
 
-                        <DotBadge option=BadgeOption::Green>
-                            <span class="">Loaded</span>
-                            <span>{num_loaded}</span>
-                        </DotBadge>
+                <div class="flex gap-2 px-2">
+                    <DotBadge option=BadgeOption::Blue>
+                        <span class=label_class>Fetching</span>
+                        <span>{num_fetching}</span>
+                    </DotBadge>
 
-                        <DotBadge option=BadgeOption::Red>
-                            <span class="">Invalid</span>
-                            <span>{invalid}</span>
-                        </DotBadge>
+                    <DotBadge option=BadgeOption::Green>
+                        <span class=label_class>Loaded</span>
+                        <span>{num_loaded}</span>
+                    </DotBadge>
 
-                        <DotBadge option=BadgeOption::Gray>
-                            <span class="">Total</span>
-                            <span>{total}</span>
-                        </DotBadge>
-                    </div>
+                    <DotBadge option=BadgeOption::Red>
+                        <span class=label_class>Invalid</span>
+                        <span>{invalid}</span>
+                    </DotBadge>
 
-                    <CloseButton/>
+                    <DotBadge option=BadgeOption::Gray>
+                        <span class=label_class>Total</span>
+                        <span>{total}</span>
+                    </DotBadge>
                 </div>
             </div>
         }
@@ -255,7 +276,7 @@ mod dev_tools {
                 </div>
                 <input
                     id="search"
-                    class="block w-full rounded-md border-0 bg-zinc-700 py-1 pl-10 pr-3 text-zinc-100 focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:ring-offset-indigo-600 sm:text-sm sm:leading-6 placeholder-zinc-400"
+                    class="block w-full rounded-md border-0 bg-zinc-700 py-1 pl-10 pr-3 text-zinc-100 focus:ring-2 focus:ring-blue-800 sm:text-sm sm:leading-6 placeholder-zinc-400"
                     placeholder="Search"
                     name="search"
                     type="text"
@@ -271,24 +292,42 @@ mod dev_tools {
     }
 
     #[component]
-    fn QueryRow(key: QueryCacheKey, state: Signal<QueryState<String>>) -> impl IntoView {
+    fn QueryRow(entry: QueryCacheEntry) -> impl IntoView {
         let selected_query = use_devtools_context().selected_query;
+        let state = entry.state.clone();
+        let key = entry.key.clone();
+        let observer_count = entry.observer_count.clone();
+        let observer = move || {
+            let count = observer_count.get();
+            if count == 0 {
+                view! {
+                    <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                        {count}
+                    </span>
+                }
+            } else {
+                view! {
+                    <span class="inline-flex items-center gap-x-1.5 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                        {count}
+                    </span>
+                }
+            }
+        };
         view! {
             <li
                 class="hover:bg-accent transition-colors flex w-full gap-4 items-center border-b py-1"
                 on:click={
                     let key = key.clone();
                     move |_| {
-                        if selected_query.get_untracked().map(|(k, _)| k) == Some(key.clone()) {
+                        if selected_query.get_untracked().map(|q| q.key) == Some(key.clone()) {
                             selected_query.set(None);
                         } else {
-                            selected_query.set(Some((key.clone(), state.clone())))
+                            selected_query.set(Some(entry.clone()))
                         }
                     }
                 }
             >
-
-                <div class="px-1"></div>
+                {observer}
                 <RowStateLabel state/>
                 <span>{key.0}</span>
             </li>
@@ -319,24 +358,9 @@ mod dev_tools {
     }
 
     #[component]
-    fn SelectedQuery() -> impl IntoView {
-        let DevtoolsContext { selected_query, .. } = use_devtools_context();
-
-        let query_state = Signal::derive(move || {
-            selected_query
-                .get()
-                .expect("Selected query to be present")
-                .1
-                .get()
-        });
-
-        let query_key = Signal::derive(move || {
-            selected_query
-                .get()
-                .expect("Selected query to be present")
-                .0
-                 .0
-        });
+    fn SelectedQuery(query: QueryCacheEntry) -> impl IntoView {
+        let query_state = query.state;
+        let query_key = query.key.0;
 
         #[cfg(all(target_arch = "wasm32"))]
         let last_update = Signal::derive(move || {
@@ -376,23 +400,33 @@ mod dev_tools {
             Signal::derive(move || query_state.get().data().cloned());
 
         view! {
-            // TODO: Fix bottom padding?
-            <div class="w-1/2 border-l p-4 overflow-y-scroll max-h-full">
-                <div class="flex flex-col w-full h-full items-center">
+            <div class="w-1/2 border-l overflow-y-scroll max-h-full">
+                <div class="flex flex-col w-full h-full items-center gap-2">
                     <div class="w-full">
-                        <div class="font-medium text-foreground border-b pb-2">Query Details</div>
-                        <dl class="divide-y divide-zinc-800 border-b border-zinc-800">
-                            <div class="flex justify-between py-3 text-base font-medium">
-                                <dt class="text-zinc-100">Query Key</dt>
+                        <div class="text-base text-foreground p-1 bg-accent">Query Details</div>
+                        <dl class="px-2 py-1 flex flex-col items-center gap-1 w-full">
+                            <div class="flex items-center justify-between text-sm font-medium w-full">
+                                <dt class="text-zinc-100">Status</dt>
+                                <dd class="text-zinc-200">
+                                    <RowStateLabel state=query_state/>
+                                </dd>
+                            </div>
+                            <div class="flex items-center justify-between text-sm font-medium w-full">
+                                <dt class="text-zinc-100">Key</dt>
                                 <dd class="text-zinc-200">{query_key}</dd>
                             </div>
-                            <div class="flex justify-between py-3 text-sm font-medium">
+                            <div class="flex items-center justify-between text-sm font-medium w-full">
                                 <dt class="text-zinc-100">Last Update</dt>
                                 <dd class="text-zinc-200">{last_update}</dd>
                             </div>
+                            <div class="flex items-center justify-between text-sm font-medium w-full">
+                                <dt class="text-zinc-100">Active Observers</dt>
+                                <dd class="text-zinc-200">{query.observer_count}</dd>
+                            </div>
                         </dl>
                     </div>
-                    <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-sm">
+                    <div class="text-base text-foreground p-1 bg-accent w-full">Query Data</div>
+                    <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-sm ">
                         <pre>{move || value.get().unwrap_or_default()}</pre>
                     </div>
                 </div>

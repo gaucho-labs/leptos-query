@@ -24,6 +24,7 @@ where
     observers: Rc<RefCell<SlotMap<ObserverKey, QueryObserver<V>>>>,
     state: Rc<Cell<QueryState<V>>>,
     garbage_collector: Rc<GarbageCollector<K, V>>,
+    active_observer_count: RwSignal<usize>,
 
     // Config.
     gc_time: RwSignal<Option<Duration>>,
@@ -43,7 +44,7 @@ impl<K: PartialEq, V> PartialEq for Query<K, V> {
 impl<K: PartialEq, V> Eq for Query<K, V> {}
 
 struct QueryObserver<V: 'static> {
-    state_signal: RwSignal<QueryState<V>>,
+    state: RwSignal<QueryState<V>>,
     kind: QueryObserverKind,
 }
 
@@ -68,6 +69,7 @@ where
             observers: Rc::new(RefCell::new(SlotMap::with_key())),
             state: Rc::new(Cell::new(QueryState::Created)),
             garbage_collector: Rc::new(GarbageCollector::new(key, gc_time.clone().into())),
+            active_observer_count: RwSignal::new(0),
 
             gc_time,
             refetch_interval: RwSignal::new(None),
@@ -83,7 +85,7 @@ where
     pub(crate) fn set_state(&self, state: QueryState<V>) {
         let observers = self.observers.borrow();
         for observer in observers.values() {
-            observer.state_signal.set(state.clone())
+            observer.state.set(state.clone())
         }
         if let Some(updated_at) = state.updated_at() {
             self.garbage_collector.new_update(updated_at);
@@ -140,15 +142,31 @@ where
     ) -> (ReadSignal<QueryState<V>>, impl Fn() + Clone) {
         let current_state = self.get_state();
         let state_signal = RwSignal::new(current_state);
-        let observer = QueryObserver { state_signal, kind };
+        let observer = QueryObserver {
+            state: state_signal,
+            kind,
+        };
         let observer_id = self.observers.borrow_mut().insert(observer);
+        let observer_count = self.active_observer_count.clone();
+        if let QueryObserverKind::Active = kind {
+            observer_count.set(observer_count.get_untracked() + 1);
+        }
 
         let remove_observer = {
             let collector = self.garbage_collector.clone();
             let observers = self.observers.clone();
             move || {
                 let mut observers = observers.borrow_mut();
-                observers.remove(observer_id);
+                let removed = observers.remove(observer_id);
+
+                if let Some(QueryObserver {
+                    kind: QueryObserverKind::Active,
+                    ..
+                }) = removed
+                {
+                    observer_count.set(observer_count.get_untracked() - 1);
+                }
+
                 if observers
                     .values()
                     .map(|o| o.kind)
@@ -162,6 +180,10 @@ where
         self.garbage_collector.disable_gc();
 
         (state_signal.read_only(), remove_observer)
+    }
+
+    pub(crate) fn get_active_observer_count(&self) -> Signal<usize> {
+        self.active_observer_count.into()
     }
 
     pub(crate) fn get_state(&self) -> QueryState<V> {
