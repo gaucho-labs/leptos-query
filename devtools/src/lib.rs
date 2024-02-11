@@ -22,6 +22,24 @@ mod dev_tools {
         client.register_cache_observer(state.clone());
         provide_context(state);
 
+        // Ensure that selected query is closed if it is evicted.
+        create_effect({
+            move |_| {
+                let context = use_devtools_context();
+
+                if let Some(key) = context
+                    .selected_query
+                    .with(|maybe| maybe.as_ref().map(|q| q.key.clone()))
+                {
+                    let cache = context.query_state.get();
+
+                    if cache.get(&key).is_none() {
+                        context.selected_query.set(None);
+                    }
+                }
+            }
+        });
+
         view! {
             <Portal>
                 <style>{include_str!("./styles.css")}</style>
@@ -390,9 +408,12 @@ mod dev_tools {
                 &JsValue::NULL,
                 &JsValue::from_f64(2.0),
             )
-            .ok()?;
+            .ok()
+            .map(|r| r.as_string())
+            // If value is not json, just present value.
+            .unwrap_or(Some(value));
 
-            result.as_string()
+            result
         });
 
         #[cfg(not(all(target_arch = "wasm32")))]
