@@ -101,7 +101,7 @@ fn HomePage() -> impl IntoView {
     };
 
     let prefetch_two = move |_| {
-        use_query_client().prefetch_query(|| 2, get_post_unwrapped, true);
+        use_query_client().prefetch_query(|| PostKey(2), get_post_unwrapped, true);
     };
 
     view! {
@@ -151,7 +151,9 @@ fn HomePage() -> impl IntoView {
     }
 }
 
-fn use_post_query(key: impl Fn() -> u32 + 'static) -> QueryResult<Option<String>, impl RefetchFn> {
+fn use_post_query(
+    key: impl Fn() -> PostKey + 'static,
+) -> QueryResult<Option<String>, impl RefetchFn> {
     use_query(
         key,
         get_post_unwrapped,
@@ -165,24 +167,28 @@ fn use_post_query(key: impl Fn() -> u32 + 'static) -> QueryResult<Option<String>
     )
 }
 
-async fn get_post_unwrapped(id: u32) -> Option<String> {
+async fn get_post_unwrapped(id: PostKey) -> Option<String> {
     get_post(id).await.ok()
 }
 
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
+struct PostKey(u32);
+
 // Server function that fetches a post.
 #[server(GetPost, "/api")]
-pub async fn get_post(id: u32) -> Result<String, ServerFnError> {
+async fn get_post(id: PostKey) -> Result<String, ServerFnError> {
     use leptos_query::Instant;
 
-    logging::log!("Fetching post: {}", id);
+    logging::log!("Fetching post: {:?}", id);
     tokio::time::sleep(Duration::from_millis(2000)).await;
     let instant = Instant::now();
-    Ok(format!("Post {}: Timestamp {}", id, instant))
+    let id = id.0;
+    Ok(format!("Post {id}: Timestamp {instant}"))
 }
 
 #[component]
 fn OnePost() -> impl IntoView {
-    view! { <Post post_id=1/> }
+    view! { <Post post_id=PostKey(1)/> }
 }
 
 #[component]
@@ -190,14 +196,14 @@ fn MultiPost() -> impl IntoView {
     view! {
         <h1>"Requests are de-duplicated across components"</h1>
         <br/>
-        <Post post_id=2/>
+        <Post post_id=PostKey(2)/>
         <hr/>
-        <Post post_id=2/>
+        <Post post_id=PostKey(2)/>
     }
 }
 
 #[component]
-fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
+fn Post(#[prop(into)] post_id: MaybeSignal<PostKey>) -> impl IntoView {
     let QueryResult {
         data,
         state,
@@ -210,7 +216,7 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
     view! {
         <div class="container">
             <a href="/">"Home"</a>
-            <h2>"Post Key: " {move || post_id.get()}</h2>
+            <h2>"Post Key: " {move || post_id.get().0}</h2>
             <div class="post-body">
                 <p>"Post Body"</p>
                 <Transition fallback=move || {
@@ -242,7 +248,7 @@ fn Post(#[prop(into)] post_id: MaybeSignal<u32>) -> impl IntoView {
 
 #[component]
 fn ReactivePost() -> impl IntoView {
-    let (post_id, set_post_id) = create_signal(1);
+    let (post_id, set_post_id) = create_signal(PostKey(1));
 
     view! {
         <Post post_id=post_id/>
@@ -250,10 +256,10 @@ fn ReactivePost() -> impl IntoView {
             <button
                 class="button"
                 on:click=move |_| {
-                    if post_id.get() == 1 {
-                        set_post_id(2);
+                    if post_id.get() == PostKey(1) {
+                        set_post_id(PostKey(2));
                     } else {
-                        set_post_id(1);
+                        set_post_id(PostKey(1));
                     }
                 }
             >
