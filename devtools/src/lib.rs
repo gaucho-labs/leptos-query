@@ -9,7 +9,7 @@ pub fn LeptosQueryDevtools() -> impl IntoView {
     }
 }
 
-#[cfg(all(target_arch = "wasm32"))]
+// #[cfg(all(target_arch = "wasm32"))]
 mod dev_tools {
     use leptos::*;
     use leptos_query::*;
@@ -116,12 +116,11 @@ mod dev_tools {
                 }
             >
 
-                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] overflow-y-auto z-[1000]">
-                    <div class="w-full h-full flex flex-col">
+                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] z-[1000]">
+                    <div class="h-full flex flex-col overflow-hidden">
                         <Header/>
-
-                        <div class="flex w-full h-full">
-                            <div class="flex flex-col flex-1 basis-1/2 h-full">
+                        <div class="flex-1 overflow-hidden flex">
+                            <div class="flex flex-col flex-1 overflow-y-auto">
                                 <div class="py-1 px-2 border-b border-zinc-800">
                                     <SearchInput/>
                                 </div>
@@ -206,29 +205,29 @@ mod dev_tools {
         let total = Signal::derive(move || query_state.get().len());
 
         view! {
-            <div class="flex justify-between w-full overflow-y-hidden items-center border-b border-zinc-800">
+            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-zinc-800">
                 <div class="text-base font-semibold leading-6 text-foreground px-2">
                     Leptos Query Devtools
                 </div>
                 <div class="flex items-center gap-4 pr-2">
                     <div class="flex gap-4 p-4">
                         <DotBadge option=BadgeOption::Blue>
-                            <span class="hidden sm:inline-flex">Fetching</span>
+                            <span class="">Fetching</span>
                             <span>{num_fetching}</span>
                         </DotBadge>
 
                         <DotBadge option=BadgeOption::Green>
-                            <span class="hidden sm:inline-flex">Loaded</span>
+                            <span class="">Loaded</span>
                             <span>{num_loaded}</span>
                         </DotBadge>
 
                         <DotBadge option=BadgeOption::Red>
-                            <span class="hidden sm:inline-flex">Invalid</span>
+                            <span class="">Invalid</span>
                             <span>{invalid}</span>
                         </DotBadge>
 
                         <DotBadge option=BadgeOption::Gray>
-                            <span class="hidden sm:flex">Total</span>
+                            <span class="">Total</span>
                             <span>{total}</span>
                         </DotBadge>
                     </div>
@@ -264,6 +263,7 @@ mod dev_tools {
                         let value = event_target_value(&ev);
                         filter.set(value);
                     }
+
                     prop:value=filter
                 />
             </div>
@@ -330,6 +330,15 @@ mod dev_tools {
                 .get()
         });
 
+        let query_key = Signal::derive(move || {
+            selected_query
+                .get()
+                .expect("Selected query to be present")
+                .0
+                 .0
+        });
+
+        #[cfg(all(target_arch = "wasm32"))]
         let last_update = Signal::derive(move || {
             use wasm_bindgen::JsValue;
             query_state.get().updated_at().map(|i| {
@@ -342,21 +351,49 @@ mod dev_tools {
             })
         });
 
-        let value = Signal::derive(move || query_state.get().data().cloned());
+        #[cfg(not(all(target_arch = "wasm32")))]
+        let last_update =
+            Signal::derive(move || query_state.get().updated_at().map(|i| i.to_string()));
+
+        // Pretty print the JSON
+        #[cfg(all(target_arch = "wasm32"))]
+        let value: Signal<Option<String>> = Signal::derive(move || {
+            use wasm_bindgen::JsValue;
+            let value = query_state.get().data().cloned()?;
+            let json = js_sys::JSON::parse(value.as_str()).ok()?;
+            let result = js_sys::JSON::stringify_with_replacer_and_space(
+                &json,
+                &JsValue::NULL,
+                &JsValue::from_f64(2.0),
+            )
+            .ok()?;
+
+            result.as_string()
+        });
+
+        #[cfg(not(all(target_arch = "wasm32")))]
+        let value: Signal<Option<String>> =
+            Signal::derive(move || query_state.get().data().cloned());
 
         view! {
-            <div class="flex-1 basis-1/2 w-full overflow-x-auto border-l p-2 overflow-y-auto">
+            // TODO: Fix bottom padding?
+            <div class="w-1/2 border-l p-4 overflow-y-scroll max-h-full">
                 <div class="flex flex-col w-full h-full items-center">
                     <div class="w-full">
-                        <div> Query Details </div>
-                        <div class="w-full flex items-center justify-between">
-                            Last Update:
-                            {last_update}
-                        </div>
+                        <div class="font-medium text-foreground border-b pb-2">Query Details</div>
+                        <dl class="divide-y divide-zinc-800 border-b border-zinc-800">
+                            <div class="flex justify-between py-3 text-base font-medium">
+                                <dt class="text-zinc-100">Query Key</dt>
+                                <dd class="text-zinc-200">{query_key}</dd>
+                            </div>
+                            <div class="flex justify-between py-3 text-sm font-medium">
+                                <dt class="text-zinc-100">Last Update</dt>
+                                <dd class="text-zinc-200">{last_update}</dd>
+                            </div>
+                        </dl>
                     </div>
-
-                    <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-3/4">
-                        <div class="p-2">{move || value.get().unwrap_or_default()}</div>
+                    <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-sm">
+                        <pre>{move || value.get().unwrap_or_default()}</pre>
                     </div>
                 </div>
             </div>
