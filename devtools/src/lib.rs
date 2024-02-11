@@ -113,11 +113,18 @@ mod dev_tools {
 
         let query_state = Signal::derive(move || {
             let filter = filter.get().to_ascii_lowercase();
-            query_state
+            let mut query_state = query_state
                 .get()
                 .into_iter()
                 .filter(|(key, _)| key.0.to_ascii_lowercase().contains(&filter))
-                .collect::<HashMap<_, _>>()
+                .map(|(_, q)| q)
+                .collect::<Vec<_>>();
+            query_state.sort_by(|a, b| {
+                let a_updated = a.state.with(|s| s.updated_at()).unwrap_or(Instant::now());
+                let b_updated = b.state.with(|s| s.updated_at()).unwrap_or(Instant::now());
+                a_updated.cmp(&b_updated).reverse()
+            });
+            query_state
         });
 
         view! {
@@ -160,10 +167,10 @@ mod dev_tools {
                                 <ul class="flex flex-col gap-1 px-1 m-0 list-none">
                                     <For
                                         each=move || query_state.get()
-                                        key=|(key, _)| key.clone()
+                                        key=|q| q.key.clone()
                                         let:entry
                                     >
-                                        <QueryRow entry=entry.1/>
+                                        <QueryRow entry=entry/>
                                     </For>
 
                                 </ul>
