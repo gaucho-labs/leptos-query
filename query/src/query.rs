@@ -17,17 +17,20 @@ where
 {
     pub(crate) key: K,
 
-    // Cancellation.
+    // Cancellation
     current_request: Rc<Cell<Option<oneshot::Sender<()>>>>,
 
-    // Synchronization.
-    observers: Rc<RefCell<SlotMap<ObserverKey, QueryObserver<V>>>>,
+    // State
     state: Rc<Cell<QueryState<V>>>,
-    garbage_collector: Rc<GarbageCollector<K, V>>,
     active_observer_count: RwSignal<usize>,
 
-    // Config.
+    // Synchronization
+    observers: Rc<RefCell<SlotMap<ObserverKey, QueryObserver<V>>>>,
+    garbage_collector: Rc<GarbageCollector<K, V>>,
+
+    // Config
     gc_time: RwSignal<Option<Duration>>,
+    stale_time: RwSignal<Option<Duration>>,
     refetch_interval: RwSignal<Option<Duration>>,
 }
 
@@ -73,6 +76,7 @@ where
 
             gc_time,
             refetch_interval: RwSignal::new(None),
+            stale_time: RwSignal::new(None),
         }
     }
 }
@@ -128,6 +132,7 @@ where
         self.maybe_map_state(|state| {
             if let QueryState::Loaded(data) = state {
                 updated = true;
+                logging::log!("MARKING INVALID {:?}", self.key);
                 Ok(QueryState::Invalid(data))
             } else {
                 Err(state)
@@ -197,6 +202,10 @@ where
         self.refetch_interval.into()
     }
 
+    pub(crate) fn get_stale_time(&self) -> Signal<Option<Duration>> {
+        self.stale_time.into()
+    }
+
     // Useful to avoid clones.
     pub(crate) fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
         let state = self.state.take();
@@ -250,25 +259,47 @@ where
             _ => (),
         }
 
-        let curr_refetch_interval = self.refetch_interval.get_untracked();
+        // Handle refetch interval.
+        {
+            let curr_refetch_interval = self.refetch_interval.get_untracked();
+            let (prev_refetch, new_refetch) =
+                match (curr_refetch_interval, options.refetch_interval) {
+                    (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
+                    (None, Some(new)) => (None, Some(new)),
+                    _ => (None, None),
+                };
 
-        let (prev_refetch, new_refetch) = match (curr_refetch_interval, options.refetch_interval) {
-            (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
-            (None, Some(new)) => (None, Some(new)),
-            _ => (None, None),
-        };
-
-        if let Some(new_refetch) = new_refetch {
-            self.refetch_interval.set(Some(new_refetch));
-        }
-
-        // Reset stale time and refetch interval to previous values when scope is dropped.
-        let refetch_interval = self.refetch_interval;
-        on_cleanup(move || {
-            if let Some(prev_refetch) = prev_refetch {
-                refetch_interval.set(Some(prev_refetch));
+            if let Some(new_refetch) = new_refetch {
+                self.refetch_interval.set(Some(new_refetch));
             }
-        })
+
+            let refetch_interval = self.refetch_interval;
+            on_cleanup(move || {
+                if let Some(prev_refetch) = prev_refetch {
+                    refetch_interval.set(Some(prev_refetch));
+                }
+            });
+        }
+        // Handle stale time.
+        {
+            let curr_stale_time = self.stale_time.get_untracked();
+            let (prev_stale, new_stale) = match (curr_stale_time, options.stale_time) {
+                (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
+                (None, Some(new)) => (None, Some(new)),
+                _ => (None, None),
+            };
+
+            if let Some(stale_time) = new_stale {
+                self.stale_time.set(Some(stale_time))
+            }
+
+            let stale_time = self.stale_time;
+            on_cleanup(move || {
+                if let Some(prev_stale) = prev_stale {
+                    stale_time.set(Some(prev_stale));
+                }
+            })
+        }
     }
 }
 

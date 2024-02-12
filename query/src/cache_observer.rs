@@ -1,6 +1,11 @@
+use std::rc::Rc;
+
 use leptos::*;
 
-use crate::{Query, QueryObserverKind, QueryState};
+use crate::{
+    util::{time_until_stale, use_timeout},
+    Query, QueryObserverKind, QueryState,
+};
 
 /// Subscribing to cache events
 pub trait CacheObserver {
@@ -9,10 +14,10 @@ pub trait CacheObserver {
 }
 
 /// The events that can be observed from the query cache.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum CacheEvent {
     /// A new query that has become active in the cache.
-    Created(QueryCachePayload),
+    Created(CreatedQuery),
     /// A query that has been removed from the cache.
     Removed(QueryCacheKey),
 }
@@ -36,29 +41,36 @@ impl CacheEvent {
 }
 
 /// A new query that has become active in the cache.
-#[derive(Debug, Clone)]
-pub struct QueryCachePayload {
+#[derive(Clone)]
+pub struct CreatedQuery {
     /// The key of the query.
     pub key: QueryCacheKey,
     /// The serialized state of the query.
     pub state: Signal<QueryState<String>>,
+    /// Whether the query is currently considered stale.
+    pub is_stale: Signal<bool>,
     /// The number of active observers for this query.
     pub observer_count: Signal<usize>,
+
+    /// Mark invalid
+    pub mark_invalid: Rc<dyn Fn() -> bool>,
 }
 
-/// A key for a query in the cache.
+/// A serialized key for a query in the cache.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct QueryCacheKey(pub String);
 
-impl<K, V> From<Query<K, V>> for QueryCachePayload
+impl<K, V> From<Query<K, V>> for CreatedQuery
 where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
 {
     fn from(query: Query<K, V>) -> Self {
         let state = {
-            // TODO: How to unsub?
-            let (state, _) = query.register_observer(QueryObserverKind::Passive);
+            let (state, unsub) = query.register_observer(QueryObserverKind::Passive);
+
+            // TODO: is this sufficient?
+            on_cleanup(move || unsub());
 
             Signal::derive(move || {
                 state.get().map_data(|data| {
@@ -67,14 +79,50 @@ where
             })
         };
 
+        let is_stale = {
+            let (stale, set_stale) = create_signal(false);
+
+            let updated_at = Signal::derive(move || state.with(|s| s.updated_at()));
+            let stale_time = query.get_stale_time();
+
+            let _ = use_timeout(move || match (updated_at.get(), stale_time.get()) {
+                (Some(updated_at), Some(stale_time)) => {
+                    let duration = time_until_stale(updated_at, stale_time);
+                    if duration.is_zero() {
+                        set_stale.set(true);
+                        None
+                    } else {
+                        set_stale.set(false);
+                        set_timeout_with_handle(
+                            move || {
+                                set_stale.set(true);
+                            },
+                            duration,
+                        )
+                        .ok()
+                    }
+                }
+                _ => None,
+            });
+
+            stale.into()
+        };
+
+        let mark_invalid = {
+            let query = query.clone();
+            Rc::new(move || query.mark_invalid())
+        };
+
         let observer_count = query.get_active_observer_count();
 
         let key: QueryCacheKey = (&query.key).into();
 
-        QueryCachePayload {
+        CreatedQuery {
             key,
             state,
+            is_stale,
             observer_count,
+            mark_invalid,
         }
     }
 }
