@@ -43,7 +43,7 @@ mod dev_tools {
         view! {
             <Portal>
                 <style>{include_str!("./styles.css")}</style>
-                <div class="leptos-query-devtools">
+                <div class="leptos-query-devtools font-mono">
                     <Devtools/>
                 </div>
             </Portal>
@@ -55,7 +55,31 @@ mod dev_tools {
         query_state: RwSignal<HashMap<QueryCacheKey, QueryCacheEntry>>,
         open: RwSignal<bool>,
         filter: RwSignal<String>,
+        sort: RwSignal<SortOption>,
+        order_asc: RwSignal<bool>,
         selected_query: RwSignal<Option<QueryCacheEntry>>,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum SortOption {
+        Time,
+        Ascii,
+    }
+
+    impl SortOption {
+        fn to_string(&self) -> &str {
+            match self {
+                SortOption::Time => "Time",
+                SortOption::Ascii => "Ascii",
+            }
+        }
+        fn from_string(s: &str) -> Self {
+            match s {
+                "Ascii" => SortOption::Ascii,
+                "Time" => SortOption::Time,
+                _ => SortOption::Time,
+            }
+        }
     }
 
     #[derive(Clone)]
@@ -77,6 +101,8 @@ mod dev_tools {
                 query_state: create_rw_signal(HashMap::new()),
                 open: create_rw_signal(false),
                 filter: create_rw_signal("".to_string()),
+                sort: create_rw_signal(SortOption::Time),
+                order_asc: create_rw_signal(false),
                 selected_query: create_rw_signal(None),
             }
         }
@@ -115,21 +141,38 @@ mod dev_tools {
             query_state,
             selected_query,
             filter,
+            sort,
+            order_asc,
         } = use_devtools_context();
 
         let query_state = Signal::derive(move || {
             let filter = filter.get().to_ascii_lowercase();
+
+            // Filtered
             let mut query_state = query_state
                 .get()
                 .into_iter()
                 .filter(|(key, _)| key.0.to_ascii_lowercase().contains(&filter))
                 .map(|(_, q)| q)
                 .collect::<Vec<_>>();
-            query_state.sort_by(|a, b| {
-                let a_updated = a.state.with(|s| s.updated_at()).unwrap_or(Instant::now());
-                let b_updated = b.state.with(|s| s.updated_at()).unwrap_or(Instant::now());
-                a_updated.cmp(&b_updated).reverse()
-            });
+
+            let sort = sort.get();
+
+            match sort {
+                SortOption::Ascii => query_state.sort_by(|a, b| a.key.0.cmp(&b.key.0)),
+                SortOption::Time => {
+                    query_state.sort_by(|a, b| {
+                        let a_updated = a.state.with(|s| s.updated_at()).unwrap_or(Instant::now());
+                        let b_updated = b.state.with(|s| s.updated_at()).unwrap_or(Instant::now());
+                        a_updated.cmp(&b_updated)
+                    });
+                }
+            };
+
+            if !order_asc.get() {
+                query_state.reverse();
+            }
+
             query_state
         });
 
@@ -147,16 +190,18 @@ mod dev_tools {
                 }
             >
 
-                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] z-[1000] border-t-4">
+                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] z-[1000] border-border border-t-4">
                     <div class="h-full flex flex-col relative">
                         <div class="flex-1 overflow-hidden flex">
                             <div class="flex flex-col flex-1 overflow-y-auto">
                                 <Header/>
-                                <div class="py-1 px-2 border-b border-zinc-800">
+                                <div class="py-1 px-2 border-border border-b flex items-center w-full gap-2">
                                     <SearchInput/>
+                                    <SetSort/>
+                                    <SetSortOrder/>
                                 </div>
 
-                                <ul class="flex flex-col gap-1 px-1 m-0 list-none">
+                                <ul class="flex flex-col gap-1">
                                     <For
                                         each=move || query_state.get()
                                         key=|q| q.key.clone()
@@ -176,7 +221,7 @@ mod dev_tools {
 
                             </Show>
                         </div>
-                        <div class="absolute -top-5 right-2">
+                        <div class="absolute -top-6 right-2">
                             <CloseButton/>
                         </div>
                     </div>
@@ -192,7 +237,7 @@ mod dev_tools {
         view! {
             <button
                 on:click=move |_| open.set(false)
-                class="bg-background text-foreground rounded-sm w-6 h-6 p-1 transition-colors hover:bg-accent"
+                class="bg-background text-foreground rounded-t-sm w-6 h-6 p-1 transition-colors hover:bg-accent"
             >
                 <svg
                     width="100%"
@@ -247,8 +292,8 @@ mod dev_tools {
 
         let label_class = "hidden lg:inline-block";
         view! {
-            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-zinc-800 py-2 px-1">
-                <div class="text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300 text-base">
+            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-border py-2 px-1">
+                <div class="text-lg text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300">
                     Leptos Query
                 </div>
 
@@ -282,8 +327,8 @@ mod dev_tools {
         let DevtoolsContext { filter, .. } = use_devtools_context();
 
         view! {
-            <div class="relative text-zinc-400 w-72">
-                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+            <div class="relative w-72">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
                     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <path
                             fill-rule="evenodd"
@@ -294,11 +339,11 @@ mod dev_tools {
                 </div>
                 <input
                     id="search"
-                    class="block w-full rounded-md border-0 bg-zinc-700 py-1 pl-10 pr-3 text-zinc-100 focus:ring-2 focus:ring-blue-800 sm:text-sm sm:leading-6 placeholder-zinc-400"
+                    class="form-input block w-full rounded-md bg-input py-0.5 pl-10 pr-3 text-input-foreground text-sm leading-6 placeholder-input-foreground border border-border"
                     placeholder="Search"
                     name="search"
                     autocomplete="off"
-                    type="text"
+                    type="search"
                     on:input=move |ev| {
                         let value = event_target_value(&ev);
                         filter.set(value);
@@ -307,6 +352,83 @@ mod dev_tools {
                     prop:value=filter
                 />
             </div>
+        }
+    }
+
+    #[component]
+    fn SetSort() -> impl IntoView {
+        let DevtoolsContext { sort, .. } = use_devtools_context();
+
+        view! {
+            <select
+                id="countries"
+                class="form-select border-border border text-sm rounded-md block w-52 py-1 px-2 bg-input text-input-foreground"
+                value=move || sort.get().to_string().to_string()
+                on:change=move |ev| {
+                    let new_value = event_target_value(&ev);
+                    let option = SortOption::from_string(&new_value);
+                    sort.set(option);
+                }
+            >
+
+                <option value=SortOption::Time.to_string()>Sort by last updated</option>
+                <option value=SortOption::Ascii.to_string()>Sort by query key</option>
+            </select>
+        }
+    }
+
+    #[component]
+    fn SetSortOrder() -> impl IntoView {
+        let DevtoolsContext { order_asc, .. } = use_devtools_context();
+
+        view! {
+            <button
+                class="bg-input text-input-foreground rounded-md px-2 py-1 text-sm inline-flex items-center gap-1 border border-border"
+                on:click=move |_| {
+                    order_asc.set(!order_asc.get());
+                }
+            >
+
+                <span class="w-8">{move || { if order_asc.get() { "Asc " } else { "Desc" } }}</span>
+                {move || {
+                    if order_asc.get() {
+                        view! {
+                            <svg
+                                width="15"
+                                height="15"
+                                viewBox="0 0 15 15"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path
+                                    d="M7.14645 2.14645C7.34171 1.95118 7.65829 1.95118 7.85355 2.14645L11.8536 6.14645C12.0488 6.34171 12.0488 6.65829 11.8536 6.85355C11.6583 7.04882 11.3417 7.04882 11.1464 6.85355L8 3.70711L8 12.5C8 12.7761 7.77614 13 7.5 13C7.22386 13 7 12.7761 7 12.5L7 3.70711L3.85355 6.85355C3.65829 7.04882 3.34171 7.04882 3.14645 6.85355C2.95118 6.65829 2.95118 6.34171 3.14645 6.14645L7.14645 2.14645Z"
+                                    fill="currentColor"
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                ></path>
+                            </svg>
+                        }
+                    } else {
+                        view! {
+                            <svg
+                                width="15"
+                                height="15"
+                                viewBox="0 0 15 15"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path
+                                    d="M7.5 2C7.77614 2 8 2.22386 8 2.5L8 11.2929L11.1464 8.14645C11.3417 7.95118 11.6583 7.95118 11.8536 8.14645C12.0488 8.34171 12.0488 8.65829 11.8536 8.85355L7.85355 12.8536C7.75979 12.9473 7.63261 13 7.5 13C7.36739 13 7.24021 12.9473 7.14645 12.8536L3.14645 8.85355C2.95118 8.65829 2.95118 8.34171 3.14645 8.14645C3.34171 7.95118 3.65829 7.95118 3.85355 8.14645L7 11.2929L7 2.5C7 2.22386 7.22386 2 7.5 2Z"
+                                    fill="currentColor"
+                                    fill-rule="evenodd"
+                                    clip-rule="evenodd"
+                                ></path>
+                            </svg>
+                        }
+                    }
+                }}
+
+            </button>
         }
     }
 
@@ -338,7 +460,7 @@ mod dev_tools {
         };
         view! {
             <li
-                class="hover:bg-accent transition-colors flex w-full gap-4 items-center border-b py-1"
+                class="hover:bg-accent transition-colors flex w-full gap-4 items-center border-border border-b p-1"
                 on:click={
                     let key = key.clone();
                     move |_| {
@@ -352,8 +474,10 @@ mod dev_tools {
             >
 
                 {observer}
-                <RowStateLabel state is_stale/>
-                <span>{key.0}</span>
+                <span class="w-[4.5rem]">
+                    <RowStateLabel state is_stale/>
+                </span>
+                <span class="text-sm">{key.0}</span>
             </li>
         }
     }
@@ -385,11 +509,7 @@ mod dev_tools {
         });
 
         move || {
-            view! {
-                <DotBadge color=badge.get()>
-                    {state_label}
-                </DotBadge>
-            }
+            view! { <DotBadge color=badge.get() dot=false>{state_label}</DotBadge> }
         }
     }
 
@@ -447,10 +567,10 @@ mod dev_tools {
         let entry_class = "flex items-center justify-between text-sm font-medium w-full";
 
         view! {
-            <div class="w-1/2 border-l overflow-y-scroll max-h-full">
+            <div class="w-1/2 border-l-4 overflow-y-scroll max-h-full border-black">
                 <div class="flex flex-col w-full h-full items-center">
                     <div class="w-full">
-                        <div class="text-base text-foreground p-1 bg-accent">Query Details</div>
+                        <div class="text-sm text-foreground p-1 bg-accent">Query Details</div>
                         <dl class=section_class>
                             <div class=entry_class>
                                 <dt class="text-zinc-100">Status</dt>
@@ -473,14 +593,20 @@ mod dev_tools {
                         </dl>
                     </div>
                     <div class="w-full">
-                        <div class="text-base text-foreground p-1 bg-accent">Query Actions</div>
+                        <div class="text-sm text-foreground p-1 bg-accent">Query Actions</div>
                         <div class="flex items-center gap-2 p-1">
-                            <Button color={ColorOption::Red} on:click={move |_| {mark_invalid();}}>
+                            <Button
+                                color=ColorOption::Red
+                                on:click=move |_| {
+                                    mark_invalid();
+                                }
+                            >
+
                                 Invalidate
                             </Button>
                         </div>
                     </div>
-                    <div class="text-base text-foreground p-1 bg-accent w-full">Query Data</div>
+                    <div class="text-sm text-foreground p-1 bg-accent w-full">Query Data</div>
                     <div class="flex-1 flex p-2 w-full">
                         <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-sm ">
                             <pre>{move || value.get().unwrap_or_default()}</pre>
@@ -501,14 +627,30 @@ mod dev_tools {
     }
 
     #[component]
-    fn DotBadge(children: ChildrenFn, color: ColorOption) -> impl IntoView {
+    fn DotBadge(
+        children: ChildrenFn,
+        color: ColorOption,
+        #[prop(default = true)] dot: bool,
+    ) -> impl IntoView {
         match color {
             ColorOption::Blue => {
                 view! {
                     <span class="inline-flex items-center gap-x-1.5 rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                        <svg class="h-1.5 w-1.5 fill-blue-500" viewBox="0 0 6 6" aria-hidden="true">
-                            <circle cx="3" cy="3" r="3"></circle>
-                        </svg>
+                        {if dot {
+                            Some(
+                                view! {
+                                    <svg
+                                        class="h-1.5 w-1.5 fill-blue-500"
+                                        viewBox="0 0 6 6"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="3" cy="3" r="3"></circle>
+                                    </svg>
+                                },
+                            )
+                        } else {
+                            None
+                        }}
                         {children}
                     </span>
                 }
@@ -516,13 +658,21 @@ mod dev_tools {
             ColorOption::Green => {
                 view! {
                     <span class="inline-flex items-center gap-x-1.5 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                        <svg
-                            class="h-1.5 w-1.5 fill-green-500"
-                            viewBox="0 0 6 6"
-                            aria-hidden="true"
-                        >
-                            <circle cx="3" cy="3" r="3"></circle>
-                        </svg>
+                        {if dot {
+                            Some(
+                                view! {
+                                    <svg
+                                        class="h-1.5 w-1.5 fill-green-500"
+                                        viewBox="0 0 6 6"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="3" cy="3" r="3"></circle>
+                                    </svg>
+                                },
+                            )
+                        } else {
+                            None
+                        }}
                         {children}
                     </span>
                 }
@@ -530,9 +680,21 @@ mod dev_tools {
             ColorOption::Red => {
                 view! {
                     <span class="inline-flex items-center gap-x-1.5 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700">
-                        <svg class="h-1.5 w-1.5 fill-red-500" viewBox="0 0 6 6" aria-hidden="true">
-                            <circle cx="3" cy="3" r="3"></circle>
-                        </svg>
+                        {if dot {
+                            Some(
+                                view! {
+                                    <svg
+                                        class="h-1.5 w-1.5 fill-red-500"
+                                        viewBox="0 0 6 6"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="3" cy="3" r="3"></circle>
+                                    </svg>
+                                },
+                            )
+                        } else {
+                            None
+                        }}
                         {children}
                     </span>
                 }
@@ -540,9 +702,21 @@ mod dev_tools {
             ColorOption::Gray => {
                 view! {
                     <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
-                        <svg class="h-1.5 w-1.5 fill-gray-500" viewBox="0 0 6 6" aria-hidden="true">
-                            <circle cx="3" cy="3" r="3"></circle>
-                        </svg>
+                        {if dot {
+                            Some(
+                                view! {
+                                    <svg
+                                        class="h-1.5 w-1.5 fill-gray-500"
+                                        viewBox="0 0 6 6"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="3" cy="3" r="3"></circle>
+                                    </svg>
+                                },
+                            )
+                        } else {
+                            None
+                        }}
                         {children}
                     </span>
                 }
@@ -550,13 +724,21 @@ mod dev_tools {
             ColorOption::Yellow => {
                 view! {
                     <span class="inline-flex items-center gap-x-1.5 rounded-md bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">
-                        <svg
-                            class="h-1.5 w-1.5 fill-yellow-500"
-                            viewBox="0 0 6 6"
-                            aria-hidden="true"
-                        >
-                            <circle cx="3" cy="3" r="3"></circle>
-                        </svg>
+                        {if dot {
+                            Some(
+                                view! {
+                                    <svg
+                                        class="h-1.5 w-1.5 fill-yellow-500"
+                                        viewBox="0 0 6 6"
+                                        aria-hidden="true"
+                                    >
+                                        <circle cx="3" cy="3" r="3"></circle>
+                                    </svg>
+                                },
+                            )
+                        } else {
+                            None
+                        }}
                         {children}
                     </span>
                 }
