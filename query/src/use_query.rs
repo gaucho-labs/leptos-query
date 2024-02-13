@@ -26,28 +26,30 @@ use std::time::Duration;
 /// use std::time::Duration;
 /// use serde::*;
 ///
+/// /// /// Query key.
+/// #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+/// struct UserId(i32);
+///
 /// // Data type.
-/// #[derive(Clone, Deserialize, Serialize)]
-/// struct Monkey {
+/// #[derive(Debug, Clone, Deserialize, Serialize)]
+/// struct UserData {
 ///     name: String,
 /// }
 ///
-/// // Monkey fetcher.
-/// async fn get_monkey(id: String) -> Monkey {
+/// // Fetcher
+/// async fn get_user(id: UserId) -> UserData {
 ///     todo!()
 /// }
 ///
-/// // Query for a Monkey.
-/// fn use_monkey_query(id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+/// // Query for a User.
+/// fn use_user_query(id: impl Fn() -> UserId + 'static) -> QueryResult<UserData, impl RefetchFn> {
 ///     leptos_query::use_query(
 ///         id,
-///         get_monkey,
+///         get_user,
 ///         QueryOptions {
-///             default_value: None,
-///             refetch_interval: None,
-///             resource_option: ResourceOption::NonBlocking,
 ///             stale_time: Some(Duration::from_secs(5)),
-///             cache_time: Some(Duration::from_secs(60)),
+///             gc_time: Some(Duration::from_secs(60)),
+///             ..QueryOptions::default()
 ///         },
 ///     )
 /// }
