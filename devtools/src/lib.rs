@@ -358,9 +358,9 @@ mod dev_tools {
         let label_class = "hidden lg:inline-block";
         view! {
             <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-border pb-2 px-1">
-                <div class="text-lg text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300">
+                <h3 class="text-lg italic text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300">
                     Leptos Query
-                </div>
+                </h3>
 
                 <div class="flex gap-2 px-2">
                     <DotBadge color=ColorOption::Blue>
@@ -404,7 +404,7 @@ mod dev_tools {
                 </div>
                 <input
                     id="search"
-                    class="form-input block w-full rounded-md bg-input py-0.5 pl-10 pr-3 text-input-foreground text-sm leading-6 placeholder-input-foreground border border-border"
+                    class="form-input block w-full rounded-md bg-input py-0 pl-10 pr-3 text-input-foreground text-xs leading-6 placeholder-input-foreground border border-border"
                     placeholder="Search"
                     name="search"
                     autocomplete="off"
@@ -427,7 +427,7 @@ mod dev_tools {
         view! {
             <select
                 id="countries"
-                class="form-select border-border border text-sm rounded-md block w-52 py-1 px-2 bg-input text-input-foreground"
+                class="form-select border-border border text-xs rounded-md block w-52 py-1 px-2 bg-input text-input-foreground"
                 value=move || sort.get().to_string().to_string()
                 on:change=move |ev| {
                     let new_value = event_target_value(&ev);
@@ -448,7 +448,7 @@ mod dev_tools {
 
         view! {
             <button
-                class="bg-input text-input-foreground rounded-md px-2 py-1 text-sm inline-flex items-center gap-1 border border-border"
+                class="bg-input text-input-foreground rounded-md px-2 py-1 text-xs inline-flex items-center gap-1 border border-border"
                 on:click=move |_| {
                     order_asc.set(!order_asc.get());
                 }
@@ -629,7 +629,7 @@ mod dev_tools {
             Signal::derive(move || query_state.get().data().cloned());
 
         let section_class = "px-2 py-1 flex flex-col items-center gap-1 w-full";
-        let entry_class = "flex items-center justify-between text-sm font-medium w-full";
+        let entry_class = "flex items-center justify-between text-xs font-medium w-full";
 
         view! {
             <div class="w-1/2 border-l-4 overflow-y-scroll max-h-full border-black">
@@ -673,7 +673,7 @@ mod dev_tools {
                     </div>
                     <div class="text-sm text-foreground p-1 bg-accent w-full">Query Data</div>
                     <div class="flex-1 flex p-2 w-full">
-                        <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-sm ">
+                        <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-xs">
                             <pre>{move || value.get().unwrap_or_default()}</pre>
                         </div>
                     </div>
