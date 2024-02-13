@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::time::Duration;
@@ -16,6 +15,12 @@ use crate::{
 ///
 /// * `K`: The type of the query key.
 /// * `V`: The type of the query value.
+/// * `Fu`: The future type returned by the fetcher function.
+///
+/// # Parameters
+///
+/// * `fetcher`: A function that, given a key of type `K`, returns a `Future` that resolves to a value of type `V`.
+/// * `options`: Query options used to configure all queries within this scope.
 ///
 /// # Returns
 ///
@@ -24,57 +29,62 @@ use crate::{
 /// # Example
 ///
 /// ```
-/// let query_scope = create_query::<UserId, UserData>();
+/// use leptos_query::*;
+///  
+/// fn main() {
+///     let query_scope = create_query::<UserId, UserData, _>(fetch_user_data, QueryOptions::default());
+/// }
+///
+/// async fn fetch_user_data(id: UserId) -> UserData {
+///    todo!()
+/// }
+///
+/// #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+/// struct UserId(i32);
+///
+/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// struct UserData {
+///    name: String,
+/// }
+///
 /// ```
 pub fn create_query<K, V, Fu>(
     fetcher: impl Fn(K) -> Fu + 'static,
     options: QueryOptions<V>,
-) -> QueryScope<K, V, Fu>
+) -> QueryScope<K, V>
 where
     K: QueryKey + 'static,
     V: QueryValue + 'static,
     Fu: Future<Output = V> + 'static,
 {
     let fetcher = Rc::new(move |s| Box::pin(fetcher(s)) as Pin<Box<dyn Future<Output = V>>>);
-    QueryScope {
-        key: PhantomData,
-        value: PhantomData,
-        future: PhantomData,
-        fetcher,
-        options,
-    }
+    QueryScope { fetcher, options }
 }
 
-/// A scope for managing queries with specific key and value types.
+/// A scope for managing queries with specific key and value types within a type-safe environment.
 ///
-/// This struct provides methods to perform operations on queries, such as fetching,
-/// prefetching, and invalidating queries, within a type-safe environment.
+/// This struct allows operations such as fetching, prefetching, and invalidating queries to be performed.
 ///
 /// # Type Parameters
 ///
 /// * `K`: The type of the query key.
 /// * `V`: The type of the query value.
-pub struct QueryScope<K, V, Fu> {
-    key: PhantomData<K>,
-    value: PhantomData<V>,
-    future: PhantomData<Fu>,
+pub struct QueryScope<K, V> {
     fetcher: Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>,
     options: QueryOptions<V>,
 }
 
-impl<K, V, Fu> QueryScope<K, V, Fu>
+impl<K, V> QueryScope<K, V>
 where
     K: QueryKey + 'static,
     V: QueryValue + 'static,
-    Fu: Future<Output = V> + 'static,
 {
-    /// Executes a query using the provided key function, fetcher function, and query options.
+    /// Executes a query using the provided key function and the fetcher function specified at creation.
+    /// Data must be read inside of a Suspense/Transition component
     ///
     /// # Parameters
     ///
-    /// * `key`: A function that returns the query key.
-    /// * `fetcher`: A function that, given a key, returns a `Future` that resolves to the query value.
-    /// * `options`: Options for configuring the query.
+    /// * `key`: A function that returns the query key of type `K`.
     ///
     /// # Returns
     ///
@@ -83,9 +93,23 @@ where
     /// # Example
     ///
     /// ```
-    /// let user_data = query_scope.use_query(|| UserId(1), fetch_user_data, QueryOptions::default());
+    /// let user_data = query_scope.use_query(|| UserId(1));
     /// ```
-    pub fn use_query(
+    pub fn use_query(&self, key: impl Fn() -> K + 'static) -> QueryResult<V, impl RefetchFn> {
+        self.use_query_with_options(key, OverrideOptions::default())
+    }
+
+    /// Executes a query with additional options that override the default options provided at the scope's creation.
+    ///
+    /// # Parameters
+    ///
+    /// * `key`: A function that returns the query key of type `K`.
+    /// * `options`: Additional options to override the default query options.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `QueryResult<V, impl RefetchFn>` similar to `use_query`, but with the provided override options applied.
+    pub fn use_query_with_options(
         &self,
         key: impl Fn() -> K + 'static,
         options: OverrideOptions<V>,
@@ -93,42 +117,30 @@ where
         use_query(key, self.make_fetcher(), self.merge_options(options))
     }
 
-    /// Prefetches a query and stores it in the cache. This is useful for preloading data before it is needed. If the query already exists in the cache, it will not be refetched.
+    /// Prefetches a query and stores it in the cache. Useful for preloading data before it is needed.
     ///
     /// # Parameters
     ///
-    /// * `key`: A function that returns the query key.
-    /// * `fetcher`: A function that, given a key, returns a `Future` that resolves to the query value.
+    /// * `key`: A function that returns the query key of type `K`.
     /// * `isomorphic`: A boolean indicating whether the prefetch should be performed isomorphically (both on server and client in SSR environments).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// query_scope.prefetch_query(|| UserId(1), fetch_user_data, true);
-    /// ```
     pub fn prefetch_query(&self, key: impl Fn() -> K + 'static, isomorphic: bool) {
         use_query_client().prefetch_query(key, self.make_fetcher(), isomorphic)
     }
 
-    /// Retrieves the current state of a query identified by a given key function.
-    ///
-    /// This method allows you to introspect the current state of a query in the cache.
+    /// Retrieves the current state of a query identified by the given key function.
     ///
     /// # Parameters
     ///
-    /// * `key`: A function that returns the query key.
+    /// * `key`: A function that returns the query key of type `K`.
     ///
     /// # Returns
     ///
-    /// A `Signal` containing an `Option` with the current `QueryState` of the query.
-    /// If the query does not exist, the `Signal` will contain `None`.
+    /// A `Signal` containing an `Option` with the current `QueryState` of the query. If the query does not exist, the `Signal` will contain `None`.
     pub fn get_query_state(&self, key: impl Fn() -> K + 'static) -> Signal<Option<QueryState<V>>> {
         use_query_client().get_query_state(key)
     }
 
-    /// Invalidates a query in the cache, identified by a specific key.
-    ///
-    /// This method marks the query as invalid, triggering a refetch if the query is active.
+    /// Invalidates a query in the cache, identified by a specific key, marking it as needing a refetch.
     ///
     /// # Parameters
     ///
@@ -142,8 +154,6 @@ where
     }
 
     /// Invalidates multiple queries in the cache, identified by a collection of keys.
-    ///
-    /// This method marks all matching queries as invalid, triggering a refetch for active queries.
     ///
     /// # Parameters
     ///
@@ -161,9 +171,7 @@ where
         use_query_client().invalidate_queries::<K, V, Q>(keys)
     }
 
-    /// Invalidates all queries in the cache of a specific type.
-    ///
-    /// This method marks all queries with the given key and value types as invalid, triggering a refetch for active queries.
+    /// Invalidates all queries in the cache of a specific type, triggering a refetch for active queries.
     pub fn invalidate_all_queries(&self) {
         use_query_client().invalidate_query_type::<K, V>();
     }
@@ -185,6 +193,7 @@ where
     }
 
     /// Sets the data of an existing query in the cache, identified by a specific key.
+    ///
     /// # Parameters
     ///
     /// * `key`: The key that identifies the query to update.
@@ -234,17 +243,52 @@ where
             resource_option: options
                 .resource_option
                 .unwrap_or(self.options.resource_option),
-            default_value: options.default_value.or(self.options.default_value.clone()),
+            default_value: options
+                .default_value
+                .or_else(|| self.options.default_value.clone()),
         }
     }
 }
 
-/// Override options for a query.
-#[derive(Debug, Clone, Default)]
+/// Override options for a query. These options can be used to customize the behavior of individual queries within a `QueryScope`.
+///
+/// # Type Parameters
+///
+/// * `V`: The type of the query value.
+///
+/// # Example
+///
+/// ```
+/// use std::time::Duration;    
+/// use leptos_query::*;
+///
+/// let override_options: OverrideOptions<u32> = OverrideOptions {
+///     stale_time: Some(Duration::from_secs(30)),
+///     ..OverrideOptions::default()
+/// };
+/// ```
+#[derive(Debug, Clone)]
 pub struct OverrideOptions<V> {
+    /// Optional duration before a query is considered stale and needs refetching.
     pub stale_time: Option<Duration>,
+    /// Optional duration before an inactive query is removed from the cache.
     pub gc_time: Option<Duration>,
+    ///  Optional interval for periodically refetching the query.
     pub refetch_interval: Option<Duration>,
+    /// Optional resource option to specify how the query should be executed.
     pub resource_option: Option<ResourceOption>,
+    /// Optional default value for the query.
     pub default_value: Option<V>,
+}
+
+impl<V> Default for OverrideOptions<V> {
+    fn default() -> Self {
+        Self {
+            stale_time: None,
+            gc_time: None,
+            refetch_interval: None,
+            resource_option: None,
+            default_value: None,
+        }
+    }
 }

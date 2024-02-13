@@ -24,5 +24,8 @@ futures = { workspace = true }
 hydrate = ["js-sys", "gloo-timers"]
 ssr = ["tokio"]
 
+[dev-dependencies]
+serde = "1.0.196"
+
 [package.metadata.docs.rs]
 all-features = true

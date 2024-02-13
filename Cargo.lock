@@ -663,6 +663,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "leptos",
+ "serde",
  "slotmap",
  "tokio",
 ]

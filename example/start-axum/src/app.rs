@@ -7,7 +7,7 @@ use leptos_meta::*;
 use leptos_query::*;
 use leptos_query_devtools::LeptosQueryDevtools;
 use leptos_router::{Outlet, Route, Router, Routes};
-use std::{future::Future, time::Duration};
+use std::time::Duration;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -101,7 +101,7 @@ fn HomePage() -> impl IntoView {
     };
 
     let prefetch_two = move |_| {
-        post_query().invalidate_query(PostKey(1));
+        post_query().prefetch_query(|| PostKey(1), false);
     };
 
     view! {
@@ -151,7 +151,7 @@ fn HomePage() -> impl IntoView {
     }
 }
 
-fn post_query() -> QueryScope<PostKey, Option<String>, impl Future<Output = Option<String>>> {
+fn post_query() -> QueryScope<PostKey, Option<String>> {
     leptos_query::create_query(
         |id| async move { get_post(id).await.ok() },
         QueryOptions {
@@ -202,7 +202,7 @@ fn Post(#[prop(into)] post_id: MaybeSignal<PostKey>) -> impl IntoView {
         state,
         refetch,
         ..
-    } = post_query().use_query(post_id, OverrideOptions::default());
+    } = post_query().use_query(post_id);
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
 
@@ -308,7 +308,7 @@ fn RefetchInterval() -> impl IntoView {
         state,
         refetch,
         ..
-    } = post_query().use_query(|| PostKey(1), OverrideOptions::default());
+    } = post_query().use_query(|| PostKey(1));
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
 

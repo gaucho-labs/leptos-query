@@ -1,8 +1,7 @@
-use std::future::Future;
-
 use leptos::*;
 use leptos_query::*;
 use leptos_router::ActionForm;
+use std::time::Duration;
 
 use serde::*;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,7 +80,7 @@ fn TodoWithResource() -> impl IntoView {
 fn TodoWithQuery() -> impl IntoView {
     let (todo_id, set_todo_id) = create_signal(TodoId(0));
 
-    let QueryResult { data, .. } = use_todo_query(todo_id);
+    let QueryResult { data, .. } = todo_query().use_query(move || todo_id.get());
 
     view! {
         <div
@@ -153,7 +152,7 @@ fn AllTodos() -> impl IntoView {
         state,
         refetch,
         ..
-    } = all_todos_query().use_query(|| AllTodosTag, OverrideOptions::default());
+    } = all_todos_query().use_query(|| AllTodosTag);
 
     let todos: Signal<Vec<Todo>> = Signal::derive(move || data.get().unwrap_or_default());
 
@@ -275,7 +274,7 @@ fn AddTodoComponent() -> impl IntoView {
 /**
  * Todo Helpers.
  */
-fn todo_query() -> QueryScope<TodoId, TodoResponse, impl Future<Output = TodoResponse>> {
+fn todo_query() -> QueryScope<TodoId, TodoResponse> {
     create_query(
         get_todo,
         QueryOptions {
@@ -292,7 +291,7 @@ fn todo_query() -> QueryScope<TodoId, TodoResponse, impl Future<Output = TodoRes
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 struct AllTodosTag;
 
-fn all_todos_query() -> QueryScope<AllTodosTag, Vec<Todo>, impl Future<Output = Vec<Todo>>> {
+fn all_todos_query() -> QueryScope<AllTodosTag, Vec<Todo>> {
     create_query(
         |_| async move { get_todos().await.unwrap_or_default() },
         QueryOptions {
@@ -304,7 +303,7 @@ fn all_todos_query() -> QueryScope<AllTodosTag, Vec<Todo>, impl Future<Output = 
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "ssr")] {
-        use std::{sync::RwLock, time::Duration};
+        use std::{sync::RwLock};
         static GLOBAL_TODOS: RwLock<Vec<Todo>> = RwLock::new(vec![]);
     }
 }
