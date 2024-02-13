@@ -675,6 +675,8 @@ dependencies = [
  "js-sys",
  "leptos",
  "leptos_query",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

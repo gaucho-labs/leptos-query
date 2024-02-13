@@ -176,6 +176,64 @@ mod dev_tools {
             query_state
         });
 
+        let container_ref = leptos::create_node_ref::<leptos::html::Div>();
+
+        let height_signal = create_rw_signal(500);
+
+        // Drag start handler
+        let handle_drag_start = move |event: web_sys::MouseEvent| {
+            use wasm_bindgen::closure::Closure;
+            use wasm_bindgen::JsCast;
+
+            let bounding = container_ref
+                .get()
+                .expect("container to be mounted")
+                .get_bounding_client_rect();
+
+            let height = bounding.height();
+
+            let start_y = event.client_y() as f64;
+
+            // Do I need to forget this closure?
+            let move_closure = Closure::wrap(Box::new(move |move_event: web_sys::MouseEvent| {
+                move_event.prevent_default();
+
+                let val_to_add = start_y - move_event.client_y() as f64;
+
+                let new_height = (height + val_to_add).max(200.0);
+
+                height_signal.set(new_height as i32);
+            }) as Box<dyn FnMut(_)>);
+
+            // Register the move event listener
+            if let Some(window) = web_sys::window() {
+                window
+                    .add_event_listener_with_callback(
+                        "mousemove",
+                        move_closure.as_ref().unchecked_ref(),
+                    )
+                    .unwrap();
+                let end_closure = Closure::once({
+                    let window = window.clone();
+                    move || {
+                        window
+                            .remove_event_listener_with_callback(
+                                "mousemove",
+                                move_closure.as_ref().unchecked_ref(),
+                            )
+                            .unwrap();
+                    }
+                });
+                window
+                    .add_event_listener_with_callback(
+                        "mouseup",
+                        end_closure.as_ref().unchecked_ref(),
+                    )
+                    .unwrap();
+                end_closure.forget();
+            }
+        };
+
         view! {
             <Show
                 when=move || open.get()
@@ -190,7 +248,11 @@ mod dev_tools {
                 }
             >
 
-                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 h-[500px] z-[1000] border-border border-t-4">
+                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 z-[1000]"
+                    style:height= move || format!("{}px", height_signal.get())
+                    ref=container_ref
+                >
+                    <div  class="w-full py-1 bg-background cursor-ns-resize transition-colors hover:bg-border" on:mousedown=handle_drag_start/>
                     <div class="h-full flex flex-col relative">
                         <div class="flex-1 overflow-hidden flex">
                             <div class="flex flex-col flex-1 overflow-y-auto">
@@ -292,7 +354,7 @@ mod dev_tools {
 
         let label_class = "hidden lg:inline-block";
         view! {
-            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-border py-2 px-1">
+            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-border pb-2 px-1">
                 <div class="text-lg text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300">
                     Leptos Query
                 </div>

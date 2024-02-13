@@ -10,6 +10,8 @@ cfg-if = { workspace = true }
 js-sys = { workspace = true }
 leptos = { workspace = true }
 leptos_query = { path = "../query"}
+web-sys = { version = "0.3", features = ["DomRect"] }
+wasm-bindgen = { version = "0.2" }
 
 # [features]
 # hydrate = []
