@@ -150,7 +150,7 @@ impl QueryCache {
                     size
                 }).into()
             } else {
-        self.size.into()
+                self.size.into()
             }
         }
     }
@@ -259,14 +259,12 @@ impl QueryCache {
             self.use_cache(|cache| {
                 let entry = cache.entry(key);
                 let inserted = func((query_cache.owner, entry));
-                if inserted {
-                    query_cache.size.set(self.size.get_untracked() + 1);
-                }
                 inserted
             })
         };
 
         if inserted {
+            query_cache.size.set(self.size.get_untracked() + 1);
             if let Some(query) = self.get_query::<K, V>(key) {
                 self.notify_new_query(query)
             }
