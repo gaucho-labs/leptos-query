@@ -473,11 +473,10 @@ impl QueryClient {
     }
 }
 
-#[cfg(not(any(feature = "csr", feature = "hydrate")))]
+#[cfg(all(test, not(any(feature = "csr", feature = "hydrate"))))]
 mod tests {
     use super::*;
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     fn prefetch_query_server<K, V, Fu>(
         key: impl Fn() -> K + 'static,
         fetcher: impl Fn(K) -> Fu + 'static,
@@ -499,7 +498,6 @@ mod tests {
         });
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn prefetch_loads_data() {
         let _ = create_runtime();
@@ -535,7 +533,6 @@ mod tests {
         ));
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn set_query_data() {
         let _ = create_runtime();
@@ -574,7 +571,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_use_same_key_with_different_value_types() {
         let _ = create_runtime();
@@ -589,7 +585,6 @@ mod tests {
         assert_eq!(2, client.size().get_untracked());
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_while_subscribed() {
         let _ = create_runtime();
@@ -614,7 +609,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_multiple() {
         let _ = create_runtime();
@@ -632,7 +626,6 @@ mod tests {
         assert_eq!(keys, invalidated)
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_multiple_strings() {
         let _ = create_runtime();
@@ -654,7 +647,6 @@ mod tests {
         assert_eq!(keys, invalidated)
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn invalidate_all() {
         let _ = create_runtime();
@@ -697,7 +689,6 @@ mod tests {
         ));
     }
 
-    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_subset() {
         let _ = create_runtime();

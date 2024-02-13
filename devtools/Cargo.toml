@@ -7,14 +7,15 @@ edition = "2021"
 
 [dependencies]
 cfg-if = { workspace = true } 
-js-sys = { workspace = true }
 leptos = { workspace = true }
-leptos_query = { path = "../query"}
-web-sys = { version = "0.3", features = ["DomRect"] }
-wasm-bindgen = { version = "0.2" }
+leptos_query = { path = "../query" }
+js-sys = { workspace = true, optional = true }
+web-sys = { version = "0.3", features = ["DomRect"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
 
-# [features]
-# hydrate = []
+[features]
+csr = ["web-sys", "wasm-bindgen", "js-sys"]
+show_devtools = []
 
 # [package.metadata.docs.rs]
 # all-features = true

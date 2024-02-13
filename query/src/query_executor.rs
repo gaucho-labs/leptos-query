@@ -102,7 +102,7 @@ where
     Fu: Future<Output = V> + Unpin,
 {
     cfg_if::cfg_if! {
-        if #[cfg(feature = "hydrate")] {
+        if #[cfg(any(feature = "hydrate", feature = "csr"))] {
             use futures::future::Either;
 
             let result = futures::future::select(fut, cancellation).await;

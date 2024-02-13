@@ -12,7 +12,7 @@ impl Instant {
     /// Get the current time as a Unix Timestamp.
     pub fn now() -> Self {
         cfg_if::cfg_if! {
-            if #[cfg(all(feature = "hydrate", target_arch = "wasm32"))] {
+            if #[cfg(any(feature = "hydrate", feature = "csr"))] {
                 let millis = js_sys::Date::now();
                 let duration = std::time::Duration::from_millis(millis as u64);
                 Instant(duration)

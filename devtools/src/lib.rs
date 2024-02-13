@@ -2,14 +2,14 @@ use leptos::*;
 
 #[component]
 pub fn LeptosQueryDevtools() -> impl IntoView {
-    #[cfg(all(target_arch = "wasm32"))]
+    #[cfg(any(debug_assertions, feature = "show_devtools"))]
     {
         use dev_tools::InnerDevtools;
         view! { <InnerDevtools/> }
     }
 }
 
-// #[cfg(all(target_arch = "wasm32"))]
+#[cfg(any(debug_assertions, feature = "show_devtools"))]
 mod dev_tools {
     use leptos::*;
     use leptos_query::*;
@@ -180,7 +180,11 @@ mod dev_tools {
 
         let height_signal = create_rw_signal(500);
 
+        #[cfg(not(feature = "csr"))]
+        let handle_drag_start = move |_| ();
+
         // Drag start handler
+        #[cfg(feature = "csr")]
         let handle_drag_start = move |event: web_sys::MouseEvent| {
             use wasm_bindgen::closure::Closure;
             use wasm_bindgen::JsCast;
@@ -194,7 +198,6 @@ mod dev_tools {
 
             let start_y = event.client_y() as f64;
 
-            // Do I need to forget this closure?
             let move_closure = Closure::wrap(Box::new(move |move_event: web_sys::MouseEvent| {
                 move_event.prevent_default();
 
@@ -585,7 +588,7 @@ mod dev_tools {
             mark_invalid,
         } = query;
 
-        #[cfg(all(target_arch = "wasm32"))]
+        #[cfg(feature = "csr")]
         let last_update = Signal::derive(move || {
             use wasm_bindgen::JsValue;
             query_state.get().updated_at().map(|i| {
@@ -598,12 +601,12 @@ mod dev_tools {
             })
         });
 
-        #[cfg(not(all(target_arch = "wasm32")))]
+        #[cfg(not(feature = "csr"))]
         let last_update =
             Signal::derive(move || query_state.get().updated_at().map(|i| i.to_string()));
 
         // Pretty print the JSON
-        #[cfg(all(target_arch = "wasm32"))]
+        #[cfg(feature = "csr")]
         let value: Signal<Option<String>> = Signal::derive(move || {
             use wasm_bindgen::JsValue;
             let value = query_state.get().data().cloned()?;
@@ -621,7 +624,7 @@ mod dev_tools {
             result
         });
 
-        #[cfg(not(all(target_arch = "wasm32")))]
+        #[cfg(not(feature = "csr"))]
         let value: Signal<Option<String>> =
             Signal::derive(move || query_state.get().data().cloned());
 

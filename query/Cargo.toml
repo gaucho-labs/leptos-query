@@ -22,10 +22,11 @@ futures = { workspace = true }
 
 [features]
 hydrate = ["js-sys", "gloo-timers"]
+csr = ["js-sys", "gloo-timers"]
 ssr = ["tokio"]
 
 [dev-dependencies]
-serde = "1.0.196"
+serde = "1"
 
 [package.metadata.docs.rs]
 all-features = true

@@ -167,7 +167,7 @@ async fn sleep(duration: Duration) {
             tokio::time::sleep(duration).await;
         } else {
             let _ = duration;
-            logging::debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr', 'hydrate', or 'csr'.");
+            logging::debug_warn!("You are missing a Cargo feature for leptos_query. Please enable one of 'ssr', 'hydrate', or 'csr'.");
         }
     }
 }
