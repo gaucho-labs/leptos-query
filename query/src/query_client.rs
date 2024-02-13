@@ -377,6 +377,15 @@ impl QueryClient {
             });
     }
 
+    /// Update the query's data.
+    pub fn set_query_data<K, V>(&self, key: K, data: V)
+    where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+    {
+        self.update_query_data(key, |_| Some(data));
+    }
+
     /// Mutate the existing data if it exists.
     pub fn update_query_data_mut<K, V>(
         &self,

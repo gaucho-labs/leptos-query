@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use leptos::*;
 use leptos_query::*;
 use leptos_router::ActionForm;
@@ -151,7 +153,7 @@ fn AllTodos() -> impl IntoView {
         state,
         refetch,
         ..
-    } = use_todos_query();
+    } = all_todos_query().use_query(|| AllTodosTag, OverrideOptions::default());
 
     let todos: Signal<Vec<Todo>> = Signal::derive(move || data.get().unwrap_or_default());
 
@@ -170,19 +172,22 @@ fn AllTodos() -> impl IntoView {
     let delete_todo = create_action(move |id: &TodoId| {
         let id = *id;
         let refetch = refetch.clone();
-        async move {
-            cancel_todos();
 
-            update_todos(|todos| {
+        let todo_query = todo_query();
+        let todos = all_todos_query();
+        async move {
+            todos.cancel_query(AllTodosTag);
+
+            todos.update_query_data_mut(AllTodosTag, |todos| {
                 todos.retain(|t| t.id != id);
             });
 
-            set_todo(id, None);
+            todo_query.set_query_data(id, Ok(None));
 
             // Delete todos on the server.
             let _ = delete_todo(id).await;
 
-            let _ = invalidate_todo(id);
+            let _ = todo_query.invalidate_query(id);
 
             refetch()
         }
@@ -231,13 +236,16 @@ fn AddTodoComponent() -> impl IntoView {
 
     let response = add_todo.value();
 
+    let todo_query = todo_query();
+    let all_todos = all_todos_query();
+
     create_effect(move |_| {
         // If action is successful.
         if let Some(Ok(todo)) = response.get() {
-            cancel_todos();
+            all_todos.cancel_query(AllTodosTag);
 
             // Optimistic update for all todos.
-            update_todos({
+            all_todos.update_query_data_mut(AllTodosTag, {
                 let todo = todo.clone();
                 |todos| {
                     todos.push(todo);
@@ -246,13 +254,13 @@ fn AddTodoComponent() -> impl IntoView {
 
             // Optimistic update for individual TodoResponse.
             let id = todo.id.clone();
-            set_todo(id.clone(), Some(todo));
+            todo_query.set_query_data(id.clone(), Ok(Some(todo)));
 
             // Invalidate individual TodoResponse.
-            invalidate_todo(id);
+            todo_query.invalidate_query(id);
 
             // Invalidate AllTodos.
-            invalidate_todos();
+            all_todos.invalidate_query(AllTodosTag);
         }
     });
 
@@ -267,18 +275,14 @@ fn AddTodoComponent() -> impl IntoView {
 /**
  * Todo Helpers.
  */
-fn use_todo_query(id: impl Fn() -> TodoId + 'static) -> QueryResult<TodoResponse, impl RefetchFn> {
-    use_query(id, get_todo, QueryOptions::default())
-}
-
-fn invalidate_todo(id: TodoId) -> bool {
-    let client = use_query_client();
-    client.invalidate_query::<TodoId, TodoResponse>(id)
-}
-
-fn set_todo(id: TodoId, todo: Option<Todo>) {
-    let client = use_query_client();
-    client.update_query_data::<TodoId, TodoResponse>(id, move |_| Some(Ok(todo)));
+fn todo_query() -> QueryScope<TodoId, TodoResponse, impl Future<Output = TodoResponse>> {
+    create_query(
+        get_todo,
+        QueryOptions {
+            stale_time: Some(Duration::from_secs(5)),
+            ..Default::default()
+        },
+    )
 }
 
 /**
@@ -288,27 +292,14 @@ fn set_todo(id: TodoId, todo: Option<Todo>) {
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
 struct AllTodosTag;
 
-fn use_todos_query() -> QueryResult<Vec<Todo>, impl RefetchFn> {
-    use_query(
-        || AllTodosTag,
+fn all_todos_query() -> QueryScope<AllTodosTag, Vec<Todo>, impl Future<Output = Vec<Todo>>> {
+    create_query(
         |_| async move { get_todos().await.unwrap_or_default() },
-        QueryOptions::default(),
+        QueryOptions {
+            stale_time: Some(Duration::from_secs(5)),
+            ..Default::default()
+        },
     )
-}
-
-fn invalidate_todos() -> bool {
-    let client = use_query_client();
-    client.invalidate_query::<AllTodosTag, Vec<Todo>>(AllTodosTag)
-}
-
-fn cancel_todos() {
-    let client = use_query_client();
-    client.cancel_query::<AllTodosTag, Vec<Todo>>(AllTodosTag);
-}
-
-fn update_todos(func: impl FnOnce(&mut Vec<Todo>)) {
-    let client = use_query_client();
-    client.update_query_data_mut::<AllTodosTag, Vec<Todo>>(AllTodosTag, func);
 }
 
 cfg_if::cfg_if! {

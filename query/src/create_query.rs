@@ -184,6 +184,16 @@ where
         use_query_client().update_query_data(key, updater);
     }
 
+    /// Sets the data of an existing query in the cache, identified by a specific key.
+    /// # Parameters
+    ///
+    /// * `key`: The key that identifies the query to update.
+    /// * `data`: The new value.
+    ///
+    pub fn set_query_data(&self, key: K, data: V) {
+        use_query_client().set_query_data(key, data);
+    }
+
     /// Mutates the data of an existing query in the cache, identified by a specific key.
     ///
     /// # Parameters
