@@ -26,7 +26,7 @@ use std::time::Duration;
 /// use std::time::Duration;
 /// use serde::*;
 ///
-/// /// /// Query key.
+/// // Query key.
 /// #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 /// struct UserId(i32);
 ///
@@ -118,25 +118,10 @@ where
 
     let executor = create_executor(query.into(), fetcher);
 
-    ensure_fresh(query, options.stale_time, executor.clone());
+    ensure_fresh(query, executor.clone());
     ensure_valid(query_state, executor.clone());
     sync_refetch(query, query_state, executor.clone());
-
-    // Ensure key changes are considered.
-    create_isomorphic_effect({
-        let executor = executor.clone();
-        move |prev_query: Option<Query<K, V>>| {
-            let query = query.get();
-            if let Some(prev_query) = prev_query {
-                if prev_query != query {
-                    if query.with_state(|state| matches!(state, QueryState::Created)) {
-                        executor()
-                    }
-                }
-            }
-            query
-        }
-    });
+    new_query_refetch(query, executor.clone());
 
     let data = Signal::derive({
         let executor = executor.clone();
@@ -176,13 +161,13 @@ const LONG_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 async fn sleep(duration: Duration) {
     use cfg_if::cfg_if;
     cfg_if! {
-        if #[cfg(feature = "hydrate")] {
+        if #[cfg(any(feature = "hydrate", feature = "csr"))] {
             gloo_timers::future::sleep(duration).await;
         } else if #[cfg(feature = "ssr")] {
             tokio::time::sleep(duration).await;
         } else {
             let _ = duration;
-            logging::debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr' or 'hydrate'")
+            logging::debug_warn!("You are missing a Cargo feature for leptos_query. Please use one of 'ssr', 'hydrate', or 'csr'.");
         }
     }
 }
@@ -211,7 +196,9 @@ where
     }
 }
 
-fn register_observer_handle_cleanup<K, V>(query: Memo<Query<K, V>>) -> Signal<QueryState<V>>
+pub(crate) fn register_observer_handle_cleanup<K, V>(
+    query: Memo<Query<K, V>>,
+) -> Signal<QueryState<V>>
 where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
@@ -251,18 +238,16 @@ where
 
 // On mount of a new query, ensure it's not stale.
 // Not reactive to individual query state changes.
-fn ensure_fresh<K, V>(
-    query: Memo<Query<K, V>>,
-    stale_time: Option<Duration>,
-    executor: impl Fn() + Clone + 'static,
-) where
+pub(crate) fn ensure_fresh<K, V>(query: Memo<Query<K, V>>, executor: impl Fn() + Clone + 'static)
+where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
 {
-    create_isomorphic_effect(move |_| {
+    create_effect(move |_| {
         let query = query.get();
-
         let last_update = query.with_state(|state| state.updated_at());
+        let stale_time = query.get_stale_time();
+        let stale_time = stale_time.get();
 
         match (last_update, stale_time) {
             (Some(updated_at), Some(stale_time)) => {
@@ -277,7 +262,7 @@ fn ensure_fresh<K, V>(
 
 // Effect for refetching query on interval, if present.
 // This is passing a query explicitly, because this should only apply to the active query.
-fn sync_refetch<K, V>(
+pub(crate) fn sync_refetch<K, V>(
     query: Memo<Query<K, V>>,
     query_state: Signal<QueryState<V>>,
     executor: impl Fn() + Clone + 'static,
@@ -308,13 +293,26 @@ fn sync_refetch<K, V>(
     });
 }
 
-fn ensure_valid<V>(state: Signal<QueryState<V>>, executor: impl Fn() + 'static)
+pub(crate) fn ensure_valid<V>(state: Signal<QueryState<V>>, executor: impl Fn() + 'static)
 where
     V: crate::QueryValue + 'static,
 {
-    create_isomorphic_effect(move |_| {
+    create_effect(move |_| {
         // Refetch query if Invalid.
         if state.with(|s| matches!(s, QueryState::Invalid(_))) {
+            executor()
+        }
+    });
+}
+
+pub(crate) fn new_query_refetch<K, V>(query: Memo<Query<K, V>>, executor: impl Fn() + 'static)
+where
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
+{
+    create_effect(move |_| {
+        let query = query.get();
+        if query.with_state(|state| matches!(state, QueryState::Created)) {
             executor()
         }
     });

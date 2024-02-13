@@ -132,7 +132,6 @@ where
         self.maybe_map_state(|state| {
             if let QueryState::Loaded(data) = state {
                 updated = true;
-                logging::log!("MARKING INVALID {:?}", self.key);
                 Ok(QueryState::Invalid(data))
             } else {
                 Err(state)

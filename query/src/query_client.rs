@@ -84,6 +84,53 @@ impl QueryClient {
         }
     }
 
+    /// Fetch a query and store it in cache. Returns QueryResult.
+    /// Result can be read outside of Transition.
+    ///
+    /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
+    pub fn fetch_query<K, V, Fu>(
+        &self,
+        key: impl Fn() -> K + 'static,
+        fetcher: impl Fn(K) -> Fu + 'static,
+    ) -> QueryResult<V, impl RefetchFn>
+    where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+        Fu: Future<Output = V> + 'static,
+    {
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
+        {
+            let query = self.cache.get_query_signal(key);
+
+            let executor = create_executor(query.into(), fetcher);
+
+            let query_state = register_observer_handle_cleanup(query);
+
+            ensure_fresh(query, executor.clone());
+            ensure_valid(query_state, executor.clone());
+            sync_refetch(query, query_state, executor.clone());
+            new_query_refetch(query, executor.clone());
+
+            let data = Signal::derive(move || query_state.get().data().cloned());
+
+            QueryResult {
+                data,
+                state: query_state,
+                refetch: executor,
+            }
+        }
+        #[cfg(not(any(feature = "hydrate", feature = "csr")))]
+        {
+            let _ = key;
+            let _ = fetcher;
+            QueryResult {
+                data: Signal::derive(|| None),
+                state: Signal::derive(|| QueryState::Created),
+                refetch: || (),
+            }
+        }
+    }
+
     /// Prefetch a query and store it in cache.
     /// If the entry already exists it will still be refetched.
     ///
@@ -92,7 +139,6 @@ impl QueryClient {
         &self,
         key: impl Fn() -> K + 'static,
         fetcher: impl Fn(K) -> Fu + 'static,
-        isomorphic: bool,
     ) where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -102,18 +148,12 @@ impl QueryClient {
 
         let executor = create_executor(query.into(), fetcher);
 
-        let sync = move |_| {
+        create_effect(move |_| {
             let query = query.get();
             if query.with_state(|s| matches!(s, QueryState::Created)) {
                 executor()
             }
-        };
-
-        if isomorphic {
-            create_isomorphic_effect(sync);
-        } else {
-            create_effect(sync);
-        }
+        });
     }
 
     /// Retrieve the current state for an existing query.
@@ -185,6 +225,7 @@ impl QueryClient {
     ///
     /// Example:
     /// ```
+    /// use leptos_query::*;
     /// let client = use_query_client();
     /// let invalidated = client.invalidate_query::<u32, u32>(0);
     /// ```
@@ -432,10 +473,33 @@ impl QueryClient {
     }
 }
 
-#[cfg(test)]
+#[cfg(not(any(feature = "csr", feature = "hydrate")))]
 mod tests {
     use super::*;
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
+    fn prefetch_query_server<K, V, Fu>(
+        key: impl Fn() -> K + 'static,
+        fetcher: impl Fn(K) -> Fu + 'static,
+    ) where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+        Fu: Future<Output = V> + 'static,
+    {
+        let client = use_query_client();
+        let query = client.cache.get_query_signal(key);
+
+        let executor = create_executor(query.into(), fetcher);
+
+        create_effect(move |_| {
+            let query = query.get();
+            if query.with_state(|s| matches!(s, QueryState::Created)) {
+                executor()
+            }
+        });
+    }
+
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn prefetch_loads_data() {
         let _ = create_runtime();
@@ -449,7 +513,7 @@ mod tests {
 
         assert_eq!(None, state.get_untracked());
 
-        client.prefetch_query(|| 0, |num: u32| async move { num.to_string() }, true);
+        prefetch_query_server(|| 0, |num: u32| async move { num.to_string() });
 
         assert_eq!(
             Some("0".to_string()),
@@ -471,6 +535,7 @@ mod tests {
         ));
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn set_query_data() {
         let _ = create_runtime();
@@ -509,6 +574,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_use_same_key_with_different_value_types() {
         let _ = create_runtime();
@@ -523,6 +589,7 @@ mod tests {
         assert_eq!(2, client.size().get_untracked());
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_while_subscribed() {
         let _ = create_runtime();
@@ -547,6 +614,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_multiple() {
         let _ = create_runtime();
@@ -564,6 +632,7 @@ mod tests {
         assert_eq!(keys, invalidated)
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_multiple_strings() {
         let _ = create_runtime();
@@ -585,6 +654,7 @@ mod tests {
         assert_eq!(keys, invalidated)
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn invalidate_all() {
         let _ = create_runtime();
@@ -627,6 +697,7 @@ mod tests {
         ));
     }
 
+    #[cfg(not(any(feature = "csr", feature = "hydrate")))]
     #[test]
     fn can_invalidate_subset() {
         let _ = create_runtime();
