@@ -124,6 +124,7 @@
 //!
 
 mod cache_observer;
+mod create_query;
 mod garbage_collector;
 mod instant;
 mod query;
@@ -137,10 +138,10 @@ mod use_query;
 mod util;
 
 pub use cache_observer::*;
+pub use create_query::*;
 pub use instant::*;
-use query::*;
 pub use query_client::*;
-pub use query_executor::*;
+pub use query_executor::suppress_query_load;
 pub use query_options::*;
 pub use query_result::*;
 pub use query_state::*;

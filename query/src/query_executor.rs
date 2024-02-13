@@ -21,7 +21,6 @@ thread_local! {
 /// // Enable query loading.
 /// leptos_query::suppress_query_load(false);
 /// ```
-
 pub fn suppress_query_load(suppress: bool) {
     SUPPRESS_QUERY_LOAD.with(|w| w.set(suppress));
 }

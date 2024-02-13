@@ -10,7 +10,8 @@ use slotmap::SlotMap;
 
 use crate::{
     cache_observer::{CacheEvent, CacheObserver},
-    Query, QueryKey, QueryValue,
+    query::Query,
+    QueryKey, QueryValue,
 };
 
 #[derive(Clone)]

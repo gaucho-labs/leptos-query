@@ -9,7 +9,12 @@ use std::{
     time::Duration,
 };
 
-use self::{cache_observer::CacheObserver, query_cache::QueryCache};
+use self::{
+    cache_observer::CacheObserver,
+    query::{Query, QueryObserverKind},
+    query_cache::QueryCache,
+    query_executor::create_executor,
+};
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client() {
@@ -40,7 +45,6 @@ pub fn use_query_client() -> QueryClient {
 ///     - Let's you see what the current value is of a query is.
 /// - [Manually updated](Self::set_query_data)
 ///     - Useful when you have updated a value and you want to manually set it in cache instead of waiting for query to refetch.
-#[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct QueryClient {
     pub(crate) cache: QueryCache,

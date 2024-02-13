@@ -282,8 +282,9 @@ where
         }
         // Handle stale time.
         {
+            let stale_time = ensure_valid_stale_time(&options.stale_time, &options.gc_time);
             let curr_stale_time = self.stale_time.get_untracked();
-            let (prev_stale, new_stale) = match (curr_stale_time, options.stale_time) {
+            let (prev_stale, new_stale) = match (curr_stale_time, stale_time) {
                 (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
                 (None, Some(new)) => (None, Some(new)),
                 _ => (None, None),
@@ -321,5 +322,26 @@ where
         );
         self.gc_time.dispose();
         self.refetch_interval.dispose();
+    }
+}
+
+pub(crate) fn ensure_valid_stale_time(
+    stale_time: &Option<Duration>,
+    gc_time: &Option<Duration>,
+) -> Option<Duration> {
+    match (stale_time, gc_time) {
+        (Some(ref stale_time), Some(ref gc_time)) => {
+            if stale_time > gc_time {
+                logging::debug_warn!(
+                    "Stale time is greater than gc time. Using gc time instead. Stale: {}, GC: {}",
+                    stale_time.as_millis(),
+                    gc_time.as_millis()
+                );
+                Some(*gc_time)
+            } else {
+                Some(*stale_time)
+            }
+        }
+        (stale_time, _) => *stale_time,
     }
 }

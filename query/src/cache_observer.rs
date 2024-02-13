@@ -3,8 +3,9 @@ use std::rc::Rc;
 use leptos::*;
 
 use crate::{
+    query::{Query, QueryObserverKind},
     util::{time_until_stale, use_timeout},
-    Query, QueryObserverKind, QueryState,
+    QueryState,
 };
 
 /// Subscribing to cache events

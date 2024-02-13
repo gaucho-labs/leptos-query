@@ -4,7 +4,7 @@ use crate::Instant;
 ///
 /// Each variant in the enum corresponds to a particular state of a query in its lifecycle,
 /// starting from creation and covering all possible transitions up to invalidation.
-#[derive(Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum QueryState<V> {
     /// The initial state of a Query upon its creation.
     ///
@@ -59,7 +59,8 @@ impl<V> QueryState<V> {
         self.query_data().map(|s| s.updated_at)
     }
 
-    pub(crate) fn data_mut(&mut self) -> Option<&mut V> {
+    /// Returns the mutable data contained within the QueryState, if present.
+    pub fn data_mut(&mut self) -> Option<&mut V> {
         match self {
             QueryState::Loading | QueryState::Created => None,
             QueryState::Fetching(data) | QueryState::Loaded(data) | QueryState::Invalid(data) => {
@@ -68,7 +69,8 @@ impl<V> QueryState<V> {
         }
     }
 
-    pub(crate) fn map_data<R>(&self, mapper: impl FnOnce(&V) -> R) -> QueryState<R> {
+    /// Maps the data contained within the QueryState, if present.
+    pub fn map_data<R>(&self, mapper: impl FnOnce(&V) -> R) -> QueryState<R> {
         match self {
             QueryState::Loading => QueryState::Loading,
             QueryState::Created => QueryState::Created,
@@ -88,23 +90,8 @@ impl<V> QueryState<V> {
     }
 }
 
-impl<V> std::fmt::Debug for QueryState<V>
-where
-    V: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Created => write!(f, "Created"),
-            Self::Loading => write!(f, "Loading"),
-            Self::Fetching(arg0) => f.debug_tuple("Fetching").field(arg0).finish(),
-            Self::Loaded(arg0) => f.debug_tuple("Loaded").field(arg0).finish(),
-            Self::Invalid(arg0) => f.debug_tuple("Invalid").field(arg0).finish(),
-        }
-    }
-}
-
 /// The latest data for a Query.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryData<V> {
     /// The Data.
     pub data: V,
@@ -119,17 +106,5 @@ impl<V> QueryData<V> {
             data,
             updated_at: Instant::now(),
         }
-    }
-}
-
-impl<V> std::fmt::Debug for QueryData<V>
-where
-    V: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("QueryData")
-            .field("data", &self.data)
-            .field("updated_at", &self.updated_at)
-            .finish()
     }
 }

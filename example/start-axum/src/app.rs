@@ -7,7 +7,7 @@ use leptos_meta::*;
 use leptos_query::*;
 use leptos_query_devtools::LeptosQueryDevtools;
 use leptos_router::{Outlet, Route, Router, Routes};
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -97,11 +97,11 @@ pub fn App() -> impl IntoView {
 #[component]
 fn HomePage() -> impl IntoView {
     let invalidate_one = move |_| {
-        use_query_client().invalidate_query::<u32, String>(&1);
+        post_query().invalidate_query(PostKey(1));
     };
 
     let prefetch_two = move |_| {
-        use_query_client().prefetch_query(|| PostKey(2), get_post_unwrapped, true);
+        post_query().invalidate_query(PostKey(1));
     };
 
     view! {
@@ -151,12 +151,9 @@ fn HomePage() -> impl IntoView {
     }
 }
 
-fn use_post_query(
-    key: impl Fn() -> PostKey + 'static,
-) -> QueryResult<Option<String>, impl RefetchFn> {
-    use_query(
-        key,
-        get_post_unwrapped,
+fn post_query() -> QueryScope<PostKey, Option<String>, impl Future<Output = Option<String>>> {
+    leptos_query::create_query(
+        |id| async move { get_post(id).await.ok() },
         QueryOptions {
             default_value: None,
             refetch_interval: None,
@@ -165,10 +162,6 @@ fn use_post_query(
             gc_time: Some(Duration::from_secs(60)),
         },
     )
-}
-
-async fn get_post_unwrapped(id: PostKey) -> Option<String> {
-    get_post(id).await.ok()
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Copy, Clone, serde::Serialize, serde::Deserialize)]
@@ -209,7 +202,7 @@ fn Post(#[prop(into)] post_id: MaybeSignal<PostKey>) -> impl IntoView {
         state,
         refetch,
         ..
-    } = use_post_query(post_id);
+    } = post_query().use_query(post_id, OverrideOptions::default());
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
 
@@ -315,14 +308,7 @@ fn RefetchInterval() -> impl IntoView {
         state,
         refetch,
         ..
-    } = use_query(
-        || (),
-        |_| async { get_unique().await.expect("Failed to retrieve unique") },
-        QueryOptions {
-            refetch_interval: Some(Duration::from_secs(5)),
-            ..QueryOptions::once()
-        },
-    );
+    } = post_query().use_query(|| PostKey(1), OverrideOptions::default());
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 /**
  * Options for a query [`crate::use_query::use_query`]
  */
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct QueryOptions<V> {
     /// Placeholder value to use while the query is loading for the first time.
     pub default_value: Option<V>,
@@ -68,31 +68,11 @@ impl<V> Default for QueryOptions<V> {
 }
 
 /// Determines which type of resource to use.
-#[derive(Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum ResourceOption {
     /// Query will use [`create_resource()`](leptos::create_resource)
     #[default]
     NonBlocking,
     /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
     Blocking,
-}
-
-// TODO: USE
-
-// disable warn unused
-#[allow(unused)]
-pub(crate) fn ensure_valid_stale_time(
-    stale_time: &Option<Duration>,
-    cache_time: &Option<Duration>,
-) -> Option<Duration> {
-    match (stale_time, cache_time) {
-        (Some(ref stale_time), Some(ref cache_time)) => {
-            if stale_time > cache_time {
-                Some(*cache_time)
-            } else {
-                Some(*stale_time)
-            }
-        }
-        (stale_time, _) => *stale_time,
-    }
 }

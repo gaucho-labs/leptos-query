@@ -1,9 +1,8 @@
+use crate::query::{Query, QueryObserverKind};
 use crate::query_executor::create_executor;
 use crate::query_result::QueryResult;
 use crate::util::time_until_stale;
-use crate::{
-    use_query_client, Query, QueryObserverKind, QueryOptions, QueryState, RefetchFn, ResourceOption,
-};
+use crate::{use_query_client, QueryOptions, QueryState, RefetchFn, ResourceOption};
 use leptos::*;
 use std::future::Future;
 use std::rc::Rc;
