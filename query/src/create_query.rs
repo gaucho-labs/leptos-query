@@ -9,6 +9,7 @@ use crate::{
     use_query, use_query_client, QueryKey, QueryOptions, QueryResult, QueryState, QueryValue,
     RefetchFn, ResourceOption,
 };
+
 /// Creates a new `QueryScope` for managing queries with specific key and value types.
 ///
 /// # Type Parameters
@@ -31,7 +32,7 @@ use crate::{
 /// ```
 /// use leptos_query::*;
 ///  
-/// fn main() {
+/// fn create_query_test() {
 ///     let query_scope = create_query::<UserId, UserData, _>(fetch_user_data, QueryOptions::default());
 /// }
 ///
@@ -93,7 +94,25 @@ where
     /// # Example
     ///
     /// ```
-    /// let user_data = query_scope.use_query(|| UserId(1));
+    /// use leptos_query::*;
+    ///
+    /// fn test() {
+    ///     provide_query_client();
+    ///     let query_scope = create_query::<UserId, UserData, _>(fetch_user_data, QueryOptions::default());
+    ///     let query = query_scope.use_query(|| UserId(1));
+    /// }
+    ///
+    /// async fn fetch_user_data(id: UserId) -> UserData {
+    ///    todo!()
+    /// }
+    ///
+    /// #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+    /// struct UserId(i32);
+    ///
+    /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    /// struct UserData {
+    ///    name: String,
+    /// }
     /// ```
     pub fn use_query(&self, key: impl Fn() -> K + 'static) -> QueryResult<V, impl RefetchFn> {
         self.use_query_with_options(key, OverrideOptions::default())

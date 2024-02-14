@@ -26,6 +26,7 @@ csr = ["js-sys", "gloo-timers"]
 ssr = ["tokio"]
 
 [dev-dependencies]
+leptos_axum = "0.6.5"
 serde = "1"
 
 [package.metadata.docs.rs]

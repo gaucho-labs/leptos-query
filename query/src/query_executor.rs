@@ -14,12 +14,26 @@ thread_local! {
 ///
 /// Example for `generate_route_list`
 /// ```
-/// // Disable query loading.
-/// leptos_query::suppress_query_load(true);
-/// // Introspect App Routes.
-/// leptos_axum::generate_route_list(|| view! { <App/> }).await;
-/// // Enable query loading.
-/// leptos_query::suppress_query_load(false);
+/// use leptos::*;
+/// use leptos_query::*;
+/// use leptos_axum::*;
+///
+/// fn make_routes()  {
+///     // Disable query loading.
+///     leptos_query::suppress_query_load(true);
+///     // Introspect App Routes.
+///     leptos_axum::generate_route_list(App);
+///     // Enable query loading.
+///     leptos_query::suppress_query_load(false);
+/// }
+///
+/// #[component]
+/// fn App() -> impl IntoView {
+///     ()
+/// }
+///
+///
+///
 /// ```
 pub fn suppress_query_load(suppress: bool) {
     SUPPRESS_QUERY_LOAD.with(|w| w.set(suppress));

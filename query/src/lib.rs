@@ -75,6 +75,9 @@
 //!
 //! ```rust
 //!
+//! use leptos::*;
+//! use leptos_query::*;
+//!
 //! #[component]
 //! fn MonkeyView(id: String) -> impl IntoView {
 //!     let QueryResult {
