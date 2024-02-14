@@ -19,11 +19,11 @@ module.exports = {
   },
    plugins: [
     require("@tailwindcss/forms")({
-      strategy: 'class', // only generate classes
+      strategy: 'class', 
     }),
     scopedPreflightStyles({
-        cssSelector: '.leptos-query-devtools', // or .tailwind-preflight or even [data-twp=true] - any valid CSS selector of your choice
-        mode: 'matched only', // it's the default
+        cssSelector: '.leptos-query-devtools', 
+        mode: 'matched only', 
     }),
 ],
 }
