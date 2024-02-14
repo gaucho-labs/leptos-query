@@ -244,23 +244,23 @@ mod dev_tools {
                     view! {
                         <button
                             on:click=move |_| open.set(true)
-                            class="bg-zinc-200 text-foreground absolute bottom-3 right-3 rounded-full w-12 h-12 hover:-translate-y-1 hover:bg-zinc-300 transition-all duration-200"
+                            class="bg-zinc-200 text-lq-foreground absolute bottom-3 right-3 rounded-full w-12 h-12 hover:-translate-y-1 hover:bg-zinc-300 transition-all duration-200"
                             inner_html=include_str!("../../logo.svg")
                         ></button>
                     }
                 }
             >
 
-                <div class="bg-background text-foreground px-0 fixed bottom-0 left-0 right-0 z-[1000]"
+                <div class="bg-lq-background text-lq-foreground px-0 fixed bottom-0 left-0 right-0 z-[1000]"
                     style:height= move || format!("{}px", height_signal.get())
                     ref=container_ref
                 >
-                    <div  class="w-full py-1 bg-background cursor-ns-resize transition-colors hover:bg-border" on:mousedown=handle_drag_start/>
+                    <div class="w-full py-1 bg-lq-background cursor-ns-resize transition-colors hover:bg-lq-border" on:mousedown=handle_drag_start/>
                     <div class="h-full flex flex-col relative">
                         <div class="flex-1 overflow-hidden flex">
                             <div class="flex flex-col flex-1 overflow-y-auto">
                                 <Header/>
-                                <div class="py-1 px-2 border-border border-b flex items-center w-full gap-2">
+                                <div class="py-1 px-2 border-lq-border border-b flex items-center w-full gap-2">
                                     <SearchInput/>
                                     <SetSort/>
                                     <SetSortOrder/>
@@ -302,7 +302,7 @@ mod dev_tools {
         view! {
             <button
                 on:click=move |_| open.set(false)
-                class="bg-background text-foreground rounded-t-sm w-6 h-6 p-1 transition-colors hover:bg-accent"
+                class="bg-lq-background text-lq-foreground rounded-t-sm w-6 h-6 p-1 transition-colors hover:bg-lq-accent"
             >
                 <svg
                     width="100%"
@@ -357,8 +357,8 @@ mod dev_tools {
 
         let label_class = "hidden lg:inline-block";
         view! {
-            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-border pb-2 px-1">
-                <h3 class="tracking-tighter text-lg italic text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-800 to-orange-400">
+            <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-lq-border pb-2 px-1">
+                <h3 class="pl-2 tracking-tighter text-lg italic text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-800 to-orange-400">
                     Leptos Query
                 </h3>
 
@@ -404,7 +404,7 @@ mod dev_tools {
                 </div>
                 <input
                     id="search"
-                    class="form-input block w-full rounded-md bg-input py-0 pl-10 pr-3 text-input-foreground text-xs leading-6 placeholder-input-foreground border border-border"
+                    class="form-input block w-full rounded-md bg-lq-input py-0 pl-10 pr-3 text-lq-input-foreground text-xs leading-6 placeholder-lq-input-foreground border border-lq-border"
                     placeholder="Search"
                     name="search"
                     autocomplete="off"
@@ -427,7 +427,7 @@ mod dev_tools {
         view! {
             <select
                 id="countries"
-                class="form-select border-border border text-xs rounded-md block w-52 py-1 px-2 bg-input text-input-foreground"
+                class="form-select border-lq-border border text-xs rounded-md block w-52 py-1 px-2 bg-lq-input text-lq-input-foreground"
                 value=move || sort.get().to_string().to_string()
                 on:change=move |ev| {
                     let new_value = event_target_value(&ev);
@@ -448,7 +448,7 @@ mod dev_tools {
 
         view! {
             <button
-                class="bg-input text-input-foreground rounded-md px-2 py-1 text-xs inline-flex items-center gap-1 border border-border"
+                class="bg-lq-input text-lq-input-foreground rounded-md px-2 py-1 text-xs inline-flex items-center gap-1 border border-lq-border"
                 on:click=move |_| {
                     order_asc.set(!order_asc.get());
                 }
@@ -525,7 +525,7 @@ mod dev_tools {
         };
         view! {
             <li
-                class="hover:bg-accent transition-colors flex w-full gap-4 items-center border-border border-b p-1"
+                class="hover:bg-lq-accent transition-colors flex w-full gap-4 items-center border-lq-border border-b p-1"
                 on:click={
                     let key = key.clone();
                     move |_| {
@@ -632,10 +632,10 @@ mod dev_tools {
         let entry_class = "flex items-center justify-between text-xs font-medium w-full";
 
         view! {
-            <div class="w-1/2 border-l-4 overflow-y-scroll max-h-full border-black">
+            <div class="w-1/2 overflow-y-scroll max-h-full border-black border-l-4">
                 <div class="flex flex-col w-full h-full items-center">
                     <div class="w-full">
-                        <div class="text-sm text-foreground p-1 bg-accent">Query Details</div>
+                        <div class="text-sm text-lq-foreground p-1 bg-lq-accent">Query Details</div>
                         <dl class=section_class>
                             <div class=entry_class>
                                 <dt class="text-zinc-100">Status</dt>
@@ -658,7 +658,7 @@ mod dev_tools {
                         </dl>
                     </div>
                     <div class="w-full">
-                        <div class="text-sm text-foreground p-1 bg-accent">Query Actions</div>
+                        <div class="text-sm text-lq-foreground p-1 bg-accent">Query Actions</div>
                         <div class="flex items-center gap-2 p-1">
                             <Button
                                 color=ColorOption::Red
@@ -671,7 +671,7 @@ mod dev_tools {
                             </Button>
                         </div>
                     </div>
-                    <div class="text-sm text-foreground p-1 bg-accent w-full">Query Data</div>
+                    <div class="text-sm text-lq-foreground p-1 bg-lq-accent w-full">Query Data</div>
                     <div class="flex-1 flex p-2 w-full">
                         <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-xs">
                             <pre>{move || value.get().unwrap_or_default()}</pre>

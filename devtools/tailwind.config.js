@@ -7,13 +7,13 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'background': colors.zinc[900],
-        'foreground': colors.zinc[100], 
-        'accent': colors.zinc[800], 
-        'border': colors.zinc[700],     
+        'lq-background': colors.zinc[900],
+        'lq-foreground': colors.zinc[100], 
+        'lq-accent': colors.zinc[800], 
+        'lq-border': colors.zinc[700],     
 
-        'input': colors.zinc[700],      
-        'input-foreground': colors.zinc[300] 
+        'lq-input': colors.zinc[700],      
+        'lq-input-foreground': colors.zinc[300] 
       },
     },
   },
