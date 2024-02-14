@@ -7,6 +7,17 @@ async fn main() {
     use query_demo::app::*;
     use query_demo::fileserv::file_and_error_handler;
 
+    {
+        let mut conn = query_demo::repo::db()
+            .await
+            .expect("couldn't connect to DB");
+
+        sqlx::migrate!("./migrations")
+            .run(&mut conn)
+            .await
+            .expect("To run migrations");
+    }
+
     // Setting get_configuration(None) means we'll be using cargo-leptos's env values
     // For deployment these variables are:
     // <https://github.com/leptos-rs/start-axum#executing-a-server-on-a-remote-machine-without-the-toolchain>
