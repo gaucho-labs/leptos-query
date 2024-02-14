@@ -358,7 +358,7 @@ mod dev_tools {
         let label_class = "hidden lg:inline-block";
         view! {
             <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-border pb-2 px-1">
-                <h3 class="text-lg italic text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-700 to-orange-300">
+                <h3 class="tracking-tighter text-lg italic text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-800 to-orange-400">
                     Leptos Query
                 </h3>
 
@@ -529,7 +529,7 @@ mod dev_tools {
                 on:click={
                     let key = key.clone();
                     move |_| {
-                        if selected_query.get_untracked().map(|q| q.key) == Some(key.clone()) {
+                        if selected_query.get_untracked().map_or(false, |q| q.key == key) {
                             selected_query.set(None);
                         } else {
                             selected_query.set(Some(entry.clone()))
