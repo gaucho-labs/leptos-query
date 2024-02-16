@@ -11,6 +11,7 @@ use leptos::*;
 use crate::{
     garbage_collector::GarbageCollector,
     query_cache::CacheNotification,
+    query_executor::with_query_supressed,
     query_observer::{ObserverKey, QueryObserver},
     use_query_client,
     util::time_until_stale,
@@ -210,51 +211,55 @@ where
             .find_map(|f| f.get_fetcher());
 
         if let Some(fetcher) = fetcher {
-            leptos::spawn_local(async move {
-                match query.new_execution() {
-                    None => {}
-                    Some(cancellation) => {
-                        match query.get_state() {
-                            // Already loading.
-                            QueryState::Loading | QueryState::Created => {
-                                query.set_state(QueryState::Loading);
-                                let fetch = std::pin::pin!(fetcher(query.key.clone()));
-                                match execute_with_cancellation(fetch, cancellation).await {
-                                    Ok(data) => {
-                                        let data = QueryData::now(data);
-                                        query.set_state(QueryState::Loaded(data));
-                                    }
-                                    Err(_) => {
-                                        logging::error!("Initial fetch was cancelled!");
-                                        query.set_state(QueryState::Created);
-                                    }
-                                }
-                            }
-                            // Subsequent loads.
-                            QueryState::Fetching(data)
-                            | QueryState::Loaded(data)
-                            | QueryState::Invalid(data) => {
-                                query.set_state(QueryState::Fetching(data));
-                                let fetch = std::pin::pin!(fetcher(query.key.clone()));
-                                match execute_with_cancellation(fetch, cancellation).await {
-                                    Ok(data) => {
-                                        let data = QueryData::now(data);
-                                        query.set_state(QueryState::Loaded(data));
-                                    }
-                                    Err(_) => {
-                                        query.maybe_map_state(|state| {
-                                            if let QueryState::Fetching(data) = state {
-                                                Ok(QueryState::Loaded(data))
-                                            } else {
-                                                Err(state)
+            with_query_supressed(move |supressed| {
+                if !supressed {
+                    leptos::spawn_local(async move {
+                        match query.new_execution() {
+                            None => {}
+                            Some(cancellation) => {
+                                match query.get_state() {
+                                    // Already loading.
+                                    QueryState::Loading | QueryState::Created => {
+                                        query.set_state(QueryState::Loading);
+                                        let fetch = std::pin::pin!(fetcher(query.key.clone()));
+                                        match execute_with_cancellation(fetch, cancellation).await {
+                                            Ok(data) => {
+                                                let data = QueryData::now(data);
+                                                query.set_state(QueryState::Loaded(data));
                                             }
-                                        });
+                                            Err(_) => {
+                                                logging::error!("Initial fetch was cancelled!");
+                                                query.set_state(QueryState::Created);
+                                            }
+                                        }
+                                    }
+                                    // Subsequent loads.
+                                    QueryState::Fetching(data)
+                                    | QueryState::Loaded(data)
+                                    | QueryState::Invalid(data) => {
+                                        query.set_state(QueryState::Fetching(data));
+                                        let fetch = std::pin::pin!(fetcher(query.key.clone()));
+                                        match execute_with_cancellation(fetch, cancellation).await {
+                                            Ok(data) => {
+                                                let data = QueryData::now(data);
+                                                query.set_state(QueryState::Loaded(data));
+                                            }
+                                            Err(_) => {
+                                                query.maybe_map_state(|state| {
+                                                    if let QueryState::Fetching(data) = state {
+                                                        Ok(QueryState::Loaded(data))
+                                                    } else {
+                                                        Err(state)
+                                                    }
+                                                });
+                                            }
+                                        }
                                     }
                                 }
+                                query.finalize_execution()
                             }
                         }
-                        query.finalize_execution()
-                    }
+                    });
                 }
             });
         }
@@ -341,6 +346,7 @@ where
     }
 }
 
+#[cfg(any(feature = "hydrate", feature = "csr"))]
 async fn execute_with_cancellation<V, Fu>(
     fut: Fu,
     cancellation: oneshot::Receiver<()>,
@@ -348,29 +354,34 @@ async fn execute_with_cancellation<V, Fu>(
 where
     Fu: std::future::Future<Output = V> + Unpin,
 {
-    cfg_if::cfg_if! {
-        if #[cfg(any(feature = "hydrate", feature = "csr"))] {
-            use futures::future::Either;
+    use futures::future::Either;
 
-            let result = futures::future::select(fut, cancellation).await;
+    let result = futures::future::select(fut, cancellation).await;
 
-            match result {
-                Either::Left((result, _)) => Ok(result),
-                Either::Right((cancelled ,_)) => {
-                    if let Err(_) = cancelled {
-                        logging::debug_warn!("Query cancellation was incorrectly dropped.");
-                    }
-
-                    Err(())
-                },
+    match result {
+        Either::Left((result, _)) => Ok(result),
+        Either::Right((cancelled, _)) => {
+            if let Err(_) = cancelled {
+                logging::debug_warn!("Query cancellation was incorrectly dropped.");
             }
-        // No cancellation on server side.
-        } else {
-            let _ = cancellation;
-            let result = fut.await;
-            Ok(result)
+
+            Err(())
         }
     }
+}
+
+// No cancellation on server side.
+#[cfg(not(any(feature = "hydrate", feature = "csr")))]
+async fn execute_with_cancellation<V, Fu>(
+    fut: Fu,
+    cancellation: oneshot::Receiver<()>,
+) -> Result<V, ()>
+where
+    Fu: std::future::Future<Output = V> + Unpin,
+{
+    let _ = cancellation;
+    let result = fut.await;
+    Ok(result)
 }
 
 // TODO: USE THIS?
