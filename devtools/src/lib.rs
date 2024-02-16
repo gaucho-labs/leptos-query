@@ -13,7 +13,7 @@ pub fn LeptosQueryDevtools() -> impl IntoView {
 mod dev_tools {
     use leptos::*;
     use leptos_query::*;
-    use std::collections::HashMap;
+    use std::{cell::Cell, collections::HashMap, rc::Rc};
 
     #[component]
     pub(crate) fn InnerDevtools() -> impl IntoView {
@@ -232,34 +232,46 @@ mod dev_tools {
                 let new_height = (height + val_to_add).max(200.0);
 
                 height_signal.set(new_height as i32);
-            }) as Box<dyn FnMut(_)>);
+            }) as Box<dyn FnMut(_)>)
+            .into_js_value();
 
             // Register the move event listener
             if let Some(window) = web_sys::window() {
-                window
-                    .add_event_listener_with_callback(
-                        "mousemove",
-                        move_closure.as_ref().unchecked_ref(),
-                    )
-                    .unwrap();
-                let end_closure = Closure::once({
+                let end = Rc::new(Cell::new(None::<Closure<dyn FnMut()>>));
+                let end_closure = Closure::wrap({
                     let window = window.clone();
-                    move || {
+                    let move_closure = move_closure.clone();
+                    Box::new(move || {
                         window
                             .remove_event_listener_with_callback(
                                 "mousemove",
                                 move_closure.as_ref().unchecked_ref(),
                             )
                             .unwrap();
-                    }
-                });
+
+                        if let Some(end) = end.take() {
+                            let _ = window.remove_event_listener_with_callback(
+                                "mouseup",
+                                end.as_ref().unchecked_ref(),
+                            );
+                        }
+                    }) as Box<dyn FnMut()>
+                })
+                .into_js_value();
+
+                window
+                    .add_event_listener_with_callback(
+                        "mousemove",
+                        move_closure.as_ref().clone().unchecked_ref(),
+                    )
+                    .unwrap();
+
                 window
                     .add_event_listener_with_callback(
                         "mouseup",
                         end_closure.as_ref().unchecked_ref(),
                     )
                     .unwrap();
-                end_closure.forget();
             }
         };
 
