@@ -13,7 +13,7 @@ pub fn LeptosQueryDevtools() -> impl IntoView {
 mod dev_tools {
     use leptos::*;
     use leptos_query::*;
-    use std::{cell::Cell, collections::HashMap, rc::Rc};
+    use std::collections::HashMap;
 
     #[component]
     pub(crate) fn InnerDevtools() -> impl IntoView {
@@ -237,7 +237,7 @@ mod dev_tools {
 
             // Register the move event listener
             if let Some(window) = web_sys::window() {
-                let end = Rc::new(Cell::new(None::<Closure<dyn FnMut()>>));
+                let end = std::rc::Rc::new(std::cell::Cell::new(None::<Closure<dyn FnMut()>>));
                 let end_closure = Closure::wrap({
                     let window = window.clone();
                     let move_closure = move_closure.clone();

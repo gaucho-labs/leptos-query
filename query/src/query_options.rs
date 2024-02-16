@@ -24,7 +24,7 @@ pub struct QueryOptions<V> {
     /// If no refetch interval, the query will never refetch.
     pub refetch_interval: Option<Duration>,
     /// Determines which type of resource to use.
-    pub resource_option: ResourceOption,
+    pub resource_option: Option<ResourceOption>,
 }
 
 impl<V> QueryOptions<V> {
@@ -35,7 +35,18 @@ impl<V> QueryOptions<V> {
             stale_time: None,
             gc_time: None,
             refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: Some(ResourceOption::NonBlocking),
+        }
+    }
+
+    /// Empty options.
+    pub fn empty() -> Self {
+        Self {
+            default_value: None,
+            stale_time: None,
+            gc_time: None,
+            refetch_interval: None,
+            resource_option: None,
         }
     }
 }
@@ -53,7 +64,7 @@ impl<V> Default for QueryOptions<V> {
                 stale_time: default_options.stale_time,
                 gc_time: default_options.gc_time,
                 refetch_interval: default_options.refetch_interval,
-                resource_option: default_options.resource_option,
+                resource_option: Some(default_options.resource_option),
             }
         } else {
             Self {
@@ -61,7 +72,7 @@ impl<V> Default for QueryOptions<V> {
                 stale_time: Some(DEFAULT_STALE_TIME),
                 gc_time: Some(DEFAULT_GC_TIME),
                 refetch_interval: None,
-                resource_option: ResourceOption::NonBlocking,
+                resource_option: Some(ResourceOption::NonBlocking),
             }
         }
     }

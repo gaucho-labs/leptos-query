@@ -90,7 +90,7 @@ where
 
     let resource: Resource<Query<K, V>, ResourceData<V>> = {
         let default = options.default_value;
-        match options.resource_option {
+        match options.resource_option.unwrap_or_default() {
             ResourceOption::NonBlocking => create_resource_with_initial_value(
                 move || query.get(),
                 resource_fetcher,
@@ -136,7 +136,7 @@ where
     QueryResult {
         data,
         state: query_state,
-        refetch: move || query.get_untracked().execute(),
+        refetch: move || query.with(|q| q.execute()),
     }
 }
 
@@ -191,7 +191,11 @@ where
     Fu: Future<Output = V> + 'static,
 {
     let state_signal = RwSignal::new(query.get_untracked().get_state());
-    let observer = Rc::new(QueryObserver::new(fetcher, options, query.get_untracked()));
+    let observer = Rc::new(QueryObserver::with_fetcher(
+        fetcher,
+        options,
+        query.get_untracked(),
+    ));
     let listener = Rc::new(Cell::new(None::<ListenerKey>));
 
     create_isomorphic_effect({

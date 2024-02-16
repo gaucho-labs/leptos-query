@@ -4,6 +4,7 @@ use leptos::{leptos_dom::helpers::TimeoutHandle, *};
 
 use crate::instant::Instant;
 
+#[allow(unused)]
 pub(crate) fn use_timeout(func: impl Fn() -> Option<TimeoutHandle> + 'static) {
     // Saves last interval to be cleared on cleanup.
     let timeout: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));

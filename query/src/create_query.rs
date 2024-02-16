@@ -1,13 +1,12 @@
 use std::pin::Pin;
 use std::rc::Rc;
-use std::time::Duration;
 use std::{borrow::Borrow, future::Future};
 
 use leptos::Signal;
 
 use crate::{
     use_query, use_query_client, QueryKey, QueryOptions, QueryResult, QueryState, QueryValue,
-    RefetchFn, ResourceOption,
+    RefetchFn,
 };
 
 /// Creates a new `QueryScope` for managing queries with specific key and value types.
@@ -115,7 +114,7 @@ where
     /// }
     /// ```
     pub fn use_query(&self, key: impl Fn() -> K + 'static) -> QueryResult<V, impl RefetchFn> {
-        self.use_query_with_options(key, OverrideOptions::default())
+        self.use_query_with_options(key, QueryOptions::default())
     }
 
     /// Executes a query with additional options that override the default options provided at the scope's creation.
@@ -131,7 +130,7 @@ where
     pub fn use_query_with_options(
         &self,
         key: impl Fn() -> K + 'static,
-        options: OverrideOptions<V>,
+        options: QueryOptions<V>,
     ) -> QueryResult<V, impl RefetchFn> {
         use_query(key, self.make_fetcher(), self.merge_options(options))
     }
@@ -262,60 +261,15 @@ where
         move |key| fetcher(key)
     }
 
-    fn merge_options(&self, options: OverrideOptions<V>) -> QueryOptions<V> {
+    fn merge_options(&self, options: QueryOptions<V>) -> QueryOptions<V> {
         QueryOptions {
             stale_time: options.stale_time.or(self.options.stale_time),
             gc_time: options.gc_time.or(self.options.gc_time),
             refetch_interval: options.refetch_interval.or(self.options.refetch_interval),
-            resource_option: options
-                .resource_option
-                .unwrap_or(self.options.resource_option),
+            resource_option: options.resource_option.or(self.options.resource_option),
             default_value: options
                 .default_value
                 .or_else(|| self.options.default_value.clone()),
-        }
-    }
-}
-
-/// Override options for a query. These options can be used to customize the behavior of individual queries within a `QueryScope`.
-///
-/// # Type Parameters
-///
-/// * `V`: The type of the query value.
-///
-/// # Example
-///
-/// ```
-/// use std::time::Duration;    
-/// use leptos_query::*;
-///
-/// let override_options: OverrideOptions<u32> = OverrideOptions {
-///     stale_time: Some(Duration::from_secs(30)),
-///     ..OverrideOptions::default()
-/// };
-/// ```
-#[derive(Debug, Clone)]
-pub struct OverrideOptions<V> {
-    /// Optional duration before a query is considered stale and needs refetching.
-    pub stale_time: Option<Duration>,
-    /// Optional duration before an inactive query is removed from the cache.
-    pub gc_time: Option<Duration>,
-    ///  Optional interval for periodically refetching the query.
-    pub refetch_interval: Option<Duration>,
-    /// Optional resource option to specify how the query should be executed.
-    pub resource_option: Option<ResourceOption>,
-    /// Optional default value for the query.
-    pub default_value: Option<V>,
-}
-
-impl<V> Default for OverrideOptions<V> {
-    fn default() -> Self {
-        Self {
-            stale_time: None,
-            gc_time: None,
-            refetch_interval: None,
-            resource_option: None,
-            default_value: None,
         }
     }
 }

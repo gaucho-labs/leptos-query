@@ -183,8 +183,7 @@ where
             .try_borrow()
             .expect("execute borrow")
             .values()
-            .next()
-            .map(|o| o.get_fetcher());
+            .find_map(|f| f.get_fetcher());
 
         if let Some(fetcher) = fetcher {
             leptos::spawn_local(async move {
@@ -388,6 +387,8 @@ where
     }
 }
 
+// TODO: USE THIS?
+#[allow(unused)]
 pub(crate) fn ensure_valid_stale_time(
     stale_time: &Option<Duration>,
     gc_time: &Option<Duration>,

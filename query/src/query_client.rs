@@ -4,10 +4,14 @@ use std::{
     borrow::Borrow,
     collections::{hash_map::Entry, HashMap},
     future::Future,
+    rc::Rc,
     time::Duration,
 };
 
-use self::{cache_observer::CacheObserver, query::Query, query_cache::QueryCache};
+use self::{
+    cache_observer::CacheObserver, query::Query, query_cache::QueryCache,
+    query_observer::QueryObserver,
+};
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client() {
@@ -91,37 +95,31 @@ impl QueryClient {
         V: QueryValue + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        // #[cfg(any(feature = "hydrate", feature = "csr"))]
-        // {
-        //     let query = self.cache.get_query_signal(key);
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
+        {
+            let query = self.cache.get_query_signal(key);
 
-        //     let executor = create_executor(query.into(), fetcher);
+            let query_state =
+                register_observer_handle_cleanup(fetcher, query, QueryOptions::empty());
 
-        //     let query_state = register_observer_handle_cleanup(query);
+            let data = Signal::derive(move || query_state.get().data().cloned());
 
-        //     // ensure_fresh(query, executor.clone());
-        //     ensure_valid(query_state, executor.clone());
-        //     // sync_refetch(query, query_state, executor.clone());
-        //     new_query_refetch(query, executor.clone());
-
-        //     let data = Signal::derive(move || query_state.get().data().cloned());
-
-        //     QueryResult {
-        //         data,
-        //         state: query_state,
-        //         refetch: executor,
-        //     }
-        // }
-        // #[cfg(not(any(feature = "hydrate", feature = "csr")))]
-        // {
-        let _ = key;
-        let _ = fetcher;
-        QueryResult {
-            data: Signal::derive(|| None),
-            state: Signal::derive(|| QueryState::Created),
-            refetch: || (),
+            QueryResult {
+                data,
+                state: query_state,
+                refetch: move || query.with(|q| q.execute()),
+            }
         }
-        // }
+        #[cfg(not(any(feature = "hydrate", feature = "csr")))]
+        {
+            let _ = key;
+            let _ = fetcher;
+            QueryResult {
+                data: Signal::derive(|| None),
+                state: Signal::derive(|| QueryState::Created),
+                refetch: || (),
+            }
+        }
     }
 
     /// Prefetch a query and store it in cache.
@@ -137,24 +135,30 @@ impl QueryClient {
         V: QueryValue + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        todo!()
-        // let query = self.cache.get_query_signal(key);
+        let query = self.cache.get_query_signal::<K, V>(key);
 
-        // let executor = create_executor(query.into(), fetcher);
+        let observer = Rc::new(QueryObserver::with_fetcher(
+            fetcher,
+            QueryOptions::empty(),
+            query.get_untracked(),
+        ));
 
-        // create_effect(move |_| {
-        //     let query = query.get();
-        //     if query.with_state(|s| matches!(s, QueryState::Created)) {
-        //         executor()
-        //     }
-        // });
+        create_isomorphic_effect({
+            let observer = observer.clone();
+            move |_| {
+                let query = query.get();
+                observer.update_query(query);
+            }
+        });
+
+        on_cleanup(move || observer.cleanup());
     }
 
     /// Retrieve the current state for an existing query.
     /// If the query does not exist, [`None`](Option::None) will be returned.
     pub fn get_query_state<K, V>(
         &self,
-        key: impl Fn() -> K + 'static,
+        _: impl Fn() -> K + 'static,
     ) -> Signal<Option<QueryState<V>>>
     where
         K: QueryKey + 'static,

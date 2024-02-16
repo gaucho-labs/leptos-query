@@ -13,7 +13,7 @@ use crate::{QueryKey, QueryOptions, QueryState, QueryValue};
 pub struct QueryObserver<K, V> {
     id: ObserverKey,
     query: Rc<Cell<Option<Query<K, V>>>>,
-    fetcher: Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>,
+    fetcher: Option<Fetcher<K, V>>,
     options: QueryOptions<V>,
     listeners: Rc<RefCell<SlotMap<ListenerKey, Box<dyn Fn(&QueryState<V>)>>>>,
 }
@@ -34,17 +34,23 @@ new_key_type! {
     pub (crate) struct ListenerKey;
 }
 
+type Fetcher<K, V> = Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>;
+
 impl<K, V> QueryObserver<K, V>
 where
     K: QueryKey + 'static,
     V: QueryValue + 'static,
 {
-    pub fn new<F, Fu>(fetcher: F, options: QueryOptions<V>, query: Query<K, V>) -> Self
+    pub fn with_fetcher<F, Fu>(fetcher: F, options: QueryOptions<V>, query: Query<K, V>) -> Self
     where
         F: Fn(K) -> Fu + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let fetcher = Rc::new(move |s| Box::pin(fetcher(s)) as Pin<Box<dyn Future<Output = V>>>);
+        let fetcher =
+            Some(
+                Rc::new(move |s| Box::pin(fetcher(s)) as Pin<Box<dyn Future<Output = V>>>)
+                    as Fetcher<K, V>,
+            );
         let query = Rc::new(Cell::new(Some(query)));
         let id = next_id();
 
@@ -57,7 +63,20 @@ where
         }
     }
 
-    pub fn get_fetcher(&self) -> Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>> {
+    // pub fn empty() -> Self {
+    //     let query = Rc::new(Cell::new(None));
+    //     let id = next_id();
+
+    //     Self {
+    //         id,
+    //         query,
+    //         fetcher: None,
+    //         options: QueryOptions::empty(),
+    //         listeners: Rc::new(RefCell::new(SlotMap::with_key())),
+    //     }
+    // }
+
+    pub fn get_fetcher(&self) -> Option<Fetcher<K, V>> {
         self.fetcher.clone()
     }
 
@@ -70,13 +89,6 @@ where
         for listener in listeners.values() {
             listener(&state);
         }
-
-        // If the query is invalid, execute it again.
-        // self.with_query(|query| {
-        //     if query.with_state(|state| matches!(state, QueryState::Invalid(_))) {
-        //         query.execute();
-        //     }
-        // });
     }
 
     pub fn add_listener(&self, listener: impl Fn(&QueryState<V>) + 'static) -> ListenerKey {
@@ -149,13 +161,6 @@ where
         let result = f(&query);
         self.query.set(Some(query));
         result
-    }
-
-    fn get_query(&self) -> Query<K, V> {
-        let query = self.query.take().expect("Query To Exist");
-        let cloned = query.clone();
-        self.query.set(Some(query));
-        cloned
     }
 }
 
