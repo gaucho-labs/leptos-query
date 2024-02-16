@@ -29,7 +29,7 @@ pub(crate) struct Query<K, V> {
 
     // Synchronization
     observers: Rc<RefCell<HashMap<ObserverKey, QueryObserver<K, V>>>>,
-    garbage_collector: Rc<GarbageCollector<K, V>>,
+    garbage_collector: Rc<Cell<Option<GarbageCollector<K, V>>>>,
 }
 
 impl<K: PartialEq, V> PartialEq for Query<K, V> {
@@ -46,13 +46,12 @@ where
     V: crate::QueryValue + 'static,
 {
     pub(crate) fn new(key: K) -> Self {
-        let gc_time = RwSignal::new(None);
         Query {
             key: key.clone(),
             current_request: Rc::new(Cell::new(None)),
             observers: Rc::new(RefCell::new(HashMap::new())),
             state: Rc::new(Cell::new(QueryState::Created)),
-            garbage_collector: Rc::new(GarbageCollector::new(key, gc_time.clone().into())),
+            garbage_collector: Rc::new(Cell::new(None)),
         }
     }
 }
@@ -67,10 +66,6 @@ where
         let observers = self.observers.try_borrow().expect("set state borrow");
         for observer in observers.values() {
             observer.notify(state.clone())
-        }
-
-        if let Some(updated_at) = state.updated_at() {
-            self.garbage_collector.new_update(updated_at);
         }
 
         let invalid = matches!(state, QueryState::Invalid(_));
@@ -136,7 +131,12 @@ where
             .try_borrow_mut()
             .expect("subscribe borrow_mut");
         observers.insert(observer_id, observer.clone());
-        self.garbage_collector.disable_gc();
+
+        // Disable GC.
+        self.disable_gc();
+        self.update_gc_time(observer.get_options().gc_time);
+
+        // Notify cache.
         use_query_client()
             .cache
             .notify::<K, V>(CacheNotification::NewObserver(self.key.clone()))
@@ -152,9 +152,33 @@ where
                 .cache
                 .notify::<K, V>(CacheNotification::ObserverRemoved(self.key.clone()))
         }
+
         if observers.is_empty() {
-            self.garbage_collector.enable_gc();
+            drop(observers);
+            self.enable_gc();
         }
+    }
+
+    pub fn update_gc_time(&self, gc_time: Option<Duration>) {
+        self.with_gc(|gc| gc.update_gc_time(gc_time));
+    }
+
+    pub fn enable_gc(&self) {
+        self.with_gc(|gc| gc.enable_gc());
+    }
+
+    pub fn disable_gc(&self) {
+        self.with_gc(|gc| gc.disable_gc());
+    }
+
+    pub fn with_gc(&self, func: impl FnOnce(&GarbageCollector<K, V>)) {
+        let garbage_collector = self
+            .garbage_collector
+            .take()
+            .unwrap_or_else(|| GarbageCollector::new(self.clone()));
+        func(&garbage_collector);
+
+        self.garbage_collector.set(Some(garbage_collector));
     }
 
     pub(crate) fn get_state(&self) -> QueryState<V> {
@@ -265,73 +289,43 @@ where
         }
     }
 
-    pub(crate) fn is_stale(&self, stale_time: Option<Duration>) -> bool {
-        let last_update = self.with_state(|state| state.updated_at());
+    pub(crate) fn needs_execute(&self) -> bool {
+        // TODO: How to handle SSR Hydration case?
+        self.with_state(|s| matches!(s, QueryState::Created))
+            || self.with_state(|s| matches!(s, QueryState::Invalid(_)))
+            || self.is_stale()
+    }
 
-        match (last_update, stale_time) {
+    pub(crate) fn ensure_execute(&self) {
+        if self.needs_execute() {
+            self.execute();
+        }
+    }
+
+    pub(crate) fn is_stale(&self) -> bool {
+        let stale_time = self
+            .observers
+            .borrow()
+            .iter()
+            .flat_map(|(_, o)| o.get_options().stale_time)
+            .min();
+        let updated_at = self.with_state(|s| s.updated_at());
+
+        match (updated_at, stale_time) {
             (Some(updated_at), Some(stale_time)) => {
                 time_until_stale(updated_at, stale_time).is_zero()
             }
-
             _ => false,
         }
     }
 
-    // Enables having different stale times & refetch intervals for the same query.
-    // The lowest stale time & refetch interval will be used.
-    // When the scope is dropped, the stale time & refetch interval will be reset to the previous value (if they existed).
-    // Cache time behaves differently. It will only use the minimum cache time found.
-    // pub(crate) fn update_options(&self, options: crate::QueryOptions<V>) {
-    //     // Use the minimum cache time.
-    //     match (self.gc_time.get_untracked(), options.gc_time) {
-    //         (Some(current), Some(new)) if new < current => self.gc_time.set(Some(new)),
-    //         (None, Some(new)) => self.gc_time.set(Some(new)),
-    //         _ => (),
-    //     }
+    pub(crate) fn get_updated_at(&self) -> Option<crate::Instant> {
+        self.with_state(|s| s.updated_at())
+    }
 
-    //     // Handle refetch interval.
-    //     {
-    //         let curr_refetch_interval = self.refetch_interval.get_untracked();
-    //         let (prev_refetch, new_refetch) =
-    //             match (curr_refetch_interval, options.refetch_interval) {
-    //                 (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
-    //                 (None, Some(new)) => (None, Some(new)),
-    //                 _ => (None, None),
-    //             };
-
-    //         if let Some(new_refetch) = new_refetch {
-    //             self.refetch_interval.set(Some(new_refetch));
-    //         }
-
-    //         let refetch_interval = self.refetch_interval;
-    //         on_cleanup(move || {
-    //             if let Some(prev_refetch) = prev_refetch {
-    //                 refetch_interval.set(Some(prev_refetch));
-    //             }
-    //         });
-    //     }
-    //     // Handle stale time.
-    //     {
-    //         let stale_time = ensure_valid_stale_time(&options.stale_time, &options.gc_time);
-    //         let curr_stale_time = self.stale_time.get_untracked();
-    //         let (prev_stale, new_stale) = match (curr_stale_time, stale_time) {
-    //             (Some(current), Some(new)) if new < current => (Some(current), Some(new)),
-    //             (None, Some(new)) => (None, Some(new)),
-    //             _ => (None, None),
-    //         };
-
-    //         if let Some(stale_time) = new_stale {
-    //             self.stale_time.set(Some(stale_time))
-    //         }
-
-    //         let stale_time = self.stale_time;
-    //         on_cleanup(move || {
-    //             if let Some(prev_stale) = prev_stale {
-    //                 stale_time.set(Some(prev_stale));
-    //             }
-    //         })
-    //     }
-    // }
+    pub(crate) fn get_key(&self) -> &K {
+        &self.key
+    }
 }
 
 impl<K, V> Query<K, V>
@@ -340,18 +334,10 @@ where
     V: crate::QueryValue + 'static,
 {
     pub(crate) fn dispose(&self) {
-        // debug_assert!(
-        //     {
-        //         self.observers
-        //             .borrow()
-        //             .values()
-        //             .map(|o| o.kind)
-        //             .all(|k| matches!(k, QueryObserverKind::Passive))
-        //     },
-        //     "Query has active observers"
-        // );
-        // self.gc_time.dispose();
-        // self.refetch_interval.dispose();
+        debug_assert!(
+            { self.observers.borrow().is_empty() },
+            "Query has active observers"
+        );
     }
 }
 

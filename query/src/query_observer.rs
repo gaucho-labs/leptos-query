@@ -18,6 +18,12 @@ pub struct QueryObserver<K, V> {
     listeners: Rc<RefCell<SlotMap<ListenerKey, Box<dyn Fn(&QueryState<V>)>>>>,
 }
 
+type Fetcher<K, V> = Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>;
+
+new_key_type! {
+    pub (crate) struct ListenerKey;
+}
+
 impl<K, V> std::fmt::Debug for QueryObserver<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QueryObserver")
@@ -29,12 +35,6 @@ impl<K, V> std::fmt::Debug for QueryObserver<K, V> {
             .finish()
     }
 }
-
-new_key_type! {
-    pub (crate) struct ListenerKey;
-}
-
-type Fetcher<K, V> = Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>;
 
 impl<K, V> QueryObserver<K, V>
 where
@@ -63,25 +63,16 @@ where
         }
     }
 
-    // pub fn empty() -> Self {
-    //     let query = Rc::new(Cell::new(None));
-    //     let id = next_id();
-
-    //     Self {
-    //         id,
-    //         query,
-    //         fetcher: None,
-    //         options: QueryOptions::empty(),
-    //         listeners: Rc::new(RefCell::new(SlotMap::with_key())),
-    //     }
-    // }
-
     pub fn get_fetcher(&self) -> Option<Fetcher<K, V>> {
         self.fetcher.clone()
     }
 
     pub fn get_id(&self) -> ObserverKey {
         self.id
+    }
+
+    pub fn get_options(&self) -> &QueryOptions<V> {
+        &self.options
     }
 
     pub fn notify(&self, state: QueryState<V>) {
@@ -122,17 +113,7 @@ where
 
         self.query.set(Some(query));
 
-        self.with_query(|q| {
-            if q.is_stale(self.options.stale_time) {
-                q.execute()
-            }
-        });
-
-        self.with_query(|q| {
-            if q.with_state(|state| matches!(state, QueryState::Created)) {
-                q.execute()
-            }
-        });
+        self.with_query(|q| q.ensure_execute());
     }
 
     pub fn cleanup(&self) {

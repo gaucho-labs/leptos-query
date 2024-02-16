@@ -114,7 +114,8 @@ where
     /// }
     /// ```
     pub fn use_query(&self, key: impl Fn() -> K + 'static) -> QueryResult<V, impl RefetchFn> {
-        self.use_query_with_options(key, QueryOptions::default())
+        // TODO: REVIEW MERGING OPTIONS
+        use_query(key, self.make_fetcher(), self.options.clone())
     }
 
     /// Executes a query with additional options that override the default options provided at the scope's creation.

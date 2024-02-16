@@ -49,7 +49,7 @@ pub struct QueryClient {
 }
 
 /// Default options for all queries under this client.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct DefaultQueryOptions {
     /// Time before a query is considered stale.
     pub stale_time: Option<Duration>,

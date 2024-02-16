@@ -113,10 +113,10 @@ fn TodoListItem(todo: Todo) -> impl IntoView {
 
     let delete_todo = create_server_action_with_callbacks::<DeleteTodo>(
         {
-            let todo_query = todo_query();
-            let all_todos = all_todos_query();
-
             move |input| {
+                let todo_query = todo_query();
+                let all_todos = all_todos_query();
+
                 let id = input.id;
                 all_todos.cancel_query(AllTodos);
                 todo_query.set_query_data(TodoId(id), Ok(None));
@@ -229,7 +229,13 @@ fn all_todos_query() -> QueryScope<AllTodos, Result<Vec<Todo>, ServerFnError>> {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 struct TodoId(u16);
 fn todo_query() -> QueryScope<TodoId, Result<Option<Todo>, ServerFnError>> {
-    create_query(|id: TodoId| get_todo(id.0), QueryOptions::default())
+    create_query(
+        |id: TodoId| get_todo(id.0),
+        QueryOptions {
+            gc_time: Some(std::time::Duration::from_secs(15)),
+            ..QueryOptions::default()
+        },
+    )
 }
 
 pub fn create_server_action_with_callbacks<S>(
