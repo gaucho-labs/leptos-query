@@ -1,9 +1,9 @@
-use crate::query::{Query, QueryObserverKind};
-use crate::query_executor::create_executor;
+use crate::query::Query;
+use crate::query_observer::{ListenerKey, QueryObserver};
 use crate::query_result::QueryResult;
-use crate::util::time_until_stale;
 use crate::{use_query_client, QueryOptions, QueryState, RefetchFn, ResourceOption};
 use leptos::*;
+use std::cell::Cell;
 use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
@@ -69,15 +69,7 @@ where
     // Find relevant state.
     let query = use_query_client().cache.get_query_signal(key);
 
-    // Update options.
-    create_isomorphic_effect({
-        let options = options.clone();
-        move |_| {
-            query.get().update_options(options.clone());
-        }
-    });
-
-    let query_state = register_observer_handle_cleanup(query);
+    let query_state = register_observer_handle_cleanup(fetcher, query, options.clone());
 
     let resource_fetcher = move |query: Query<K, V>| {
         async move {
@@ -112,19 +104,11 @@ where
 
     // Ensure latest data in resource.
     create_isomorphic_effect(move |_| {
-        let _ = query_state.with(|_| ());
+        query_state.track();
         resource.refetch();
     });
 
-    let executor = create_executor(query.into(), fetcher);
-
-    ensure_fresh(query, executor.clone());
-    ensure_valid(query_state, executor.clone());
-    sync_refetch(query, query_state, executor.clone());
-    new_query_refetch(query, executor.clone());
-
     let data = Signal::derive({
-        let executor = executor.clone();
         move || {
             let read = resource.get().and_then(|r| r.0);
             let query = query.get_untracked();
@@ -132,7 +116,7 @@ where
             // First Read.
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
             if read.is_none() && query.with_state(|state| matches!(state, QueryState::Created)) {
-                executor()
+                query.execute()
             }
 
             // SSR edge case.
@@ -152,7 +136,7 @@ where
     QueryResult {
         data,
         state: query_state,
-        refetch: executor,
+        refetch: move || query.get_untracked().execute(),
     }
 }
 
@@ -196,124 +180,82 @@ where
     }
 }
 
-pub(crate) fn register_observer_handle_cleanup<K, V>(
+pub(crate) fn register_observer_handle_cleanup<K, V, Fu>(
+    fetcher: impl Fn(K) -> Fu + 'static,
     query: Memo<Query<K, V>>,
+    options: QueryOptions<V>,
 ) -> Signal<QueryState<V>>
 where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
+    Fu: Future<Output = V> + 'static,
 {
     let state_signal = RwSignal::new(query.get_untracked().get_state());
-
-    let ensure_cleanup = Rc::new(std::cell::Cell::<Option<Box<dyn Fn()>>>::new(None));
+    let observer = Rc::new(QueryObserver::new(fetcher, options, query.get_untracked()));
+    let listener = Rc::new(Cell::new(None::<ListenerKey>));
 
     create_isomorphic_effect({
-        let ensure_cleanup = ensure_cleanup.clone();
+        let observer = observer.clone();
+        let listener = listener.clone();
         move |_| {
-            if let Some(remove) = ensure_cleanup.take() {
-                remove();
+            // Ensure listener is set.
+            if let Some(curr_listener) = listener.take() {
+                listener.set(Some(curr_listener));
+            } else {
+                let listener_id = observer.add_listener(move |state| {
+                    state_signal.set(state.clone());
+                });
+                listener.set(Some(listener_id));
             }
 
+            // Update
             let query = query.get();
-            let (observer_signal, unsubscribe) = query.register_observer(QueryObserverKind::Active);
-
-            // Forward state changes to the signal.
-            create_isomorphic_effect(move |_| {
-                let latest_state = observer_signal.get();
-                state_signal.set(latest_state);
-            });
-
-            ensure_cleanup.set(Some(Box::new(unsubscribe)));
+            state_signal.set(query.get_state());
+            observer.update_query(query);
         }
     });
 
     on_cleanup(move || {
-        if let Some(remove) = ensure_cleanup.take() {
-            remove();
+        if let Some(listener_id) = listener.take() {
+            if !observer.remove_listener(listener_id) {
+                logging::debug_warn!("Failed to remove listener.");
+            }
         }
+        observer.cleanup()
     });
 
     state_signal.into()
 }
 
-// On mount of a new query, ensure it's not stale.
-// Not reactive to individual query state changes.
-pub(crate) fn ensure_fresh<K, V>(query: Memo<Query<K, V>>, executor: impl Fn() + Clone + 'static)
-where
-    K: crate::QueryKey + 'static,
-    V: crate::QueryValue + 'static,
-{
-    create_effect(move |_| {
-        let query = query.get();
-        let last_update = query.with_state(|state| state.updated_at());
-        let stale_time = query.get_stale_time();
-        let stale_time = stale_time.get();
+// // Effect for refetching query on interval, if present.
+// // This is passing a query explicitly, because this should only apply to the active query.
+// pub(crate) fn sync_refetch<K, V>(
+//     query: Memo<Query<K, V>>,
+//     query_state: Signal<QueryState<V>>,
+//     executor: impl Fn() + Clone + 'static,
+// ) where
+//     K: crate::QueryKey + 'static,
+//     V: crate::QueryValue + 'static,
+// {
+//     let updated_at = create_memo(move |_| query_state.with(|state| state.updated_at()));
 
-        match (last_update, stale_time) {
-            (Some(updated_at), Some(stale_time)) => {
-                if time_until_stale(updated_at, stale_time).is_zero() {
-                    executor();
-                }
-            }
-            _ => {}
-        }
-    });
-}
+//     let _ = crate::util::use_timeout(move || {
+//         let refetch_interval = query.with(|q| q.get_refetch_interval().get());
+//         let updated_at = updated_at.get();
 
-// Effect for refetching query on interval, if present.
-// This is passing a query explicitly, because this should only apply to the active query.
-pub(crate) fn sync_refetch<K, V>(
-    query: Memo<Query<K, V>>,
-    query_state: Signal<QueryState<V>>,
-    executor: impl Fn() + Clone + 'static,
-) where
-    K: crate::QueryKey + 'static,
-    V: crate::QueryValue + 'static,
-{
-    let updated_at = create_memo(move |_| query_state.with(|state| state.updated_at()));
-
-    let _ = crate::util::use_timeout(move || {
-        let refetch_interval = query.with(|q| q.get_refetch_interval().get());
-        let updated_at = updated_at.get();
-
-        match (updated_at, refetch_interval) {
-            (Some(updated_at), Some(refetch_interval)) => {
-                let executor = executor.clone();
-                let timeout = time_until_stale(updated_at, refetch_interval);
-                set_timeout_with_handle(
-                    move || {
-                        executor();
-                    },
-                    timeout,
-                )
-                .ok()
-            }
-            _ => None,
-        }
-    });
-}
-
-pub(crate) fn ensure_valid<V>(state: Signal<QueryState<V>>, executor: impl Fn() + 'static)
-where
-    V: crate::QueryValue + 'static,
-{
-    create_effect(move |_| {
-        // Refetch query if Invalid.
-        if state.with(|s| matches!(s, QueryState::Invalid(_))) {
-            executor()
-        }
-    });
-}
-
-pub(crate) fn new_query_refetch<K, V>(query: Memo<Query<K, V>>, executor: impl Fn() + 'static)
-where
-    K: crate::QueryKey + 'static,
-    V: crate::QueryValue + 'static,
-{
-    create_effect(move |_| {
-        let query = query.get();
-        if query.with_state(|state| matches!(state, QueryState::Created)) {
-            executor()
-        }
-    });
-}
+//         match (updated_at, refetch_interval) {
+//             (Some(updated_at), Some(refetch_interval)) => {
+//                 let executor = executor.clone();
+//                 let timeout = time_until_stale(updated_at, refetch_interval);
+//                 set_timeout_with_handle(
+//                     move || {
+//                         executor();
+//                     },
+//                     timeout,
+//                 )
+//                 .ok()
+//             }
+//             _ => None,
+//         }
+//     });
+// }

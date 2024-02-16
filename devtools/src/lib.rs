@@ -52,6 +52,7 @@ mod dev_tools {
 
     #[derive(Clone)]
     struct DevtoolsContext {
+        owner: Owner,
         query_state: RwSignal<HashMap<QueryCacheKey, QueryCacheEntry>>,
         open: RwSignal<bool>,
         filter: RwSignal<String>,
@@ -85,9 +86,9 @@ mod dev_tools {
     #[derive(Clone)]
     struct QueryCacheEntry {
         key: QueryCacheKey,
-        state: Signal<QueryState<String>>,
-        is_stale: Signal<bool>,
-        observer_count: Signal<usize>,
+        state: RwSignal<QueryState<String>>,
+        is_stale: RwSignal<bool>,
+        observer_count: RwSignal<usize>,
         mark_invalid: std::rc::Rc<dyn Fn() -> bool>,
     }
 
@@ -98,6 +99,7 @@ mod dev_tools {
     impl DevtoolsContext {
         fn new() -> Self {
             DevtoolsContext {
+                owner: Owner::current().expect("Owner to be present"),
                 query_state: create_rw_signal(HashMap::new()),
                 open: create_rw_signal(false),
                 filter: create_rw_signal("".to_string()),
@@ -114,22 +116,46 @@ mod dev_tools {
                 CacheEvent::Created(CreatedQuery {
                     key,
                     state,
-                    observer_count,
-                    is_stale,
                     mark_invalid,
-                }) => self.query_state.update(|map| {
-                    let entry = QueryCacheEntry {
+                }) => {
+                    // Need to create signals with root owner, or else they will be disposed of.
+                    let entry = with_owner(self.owner, || QueryCacheEntry {
                         key: key.clone(),
-                        state,
-                        observer_count,
-                        is_stale,
+                        state: create_rw_signal(state),
+                        observer_count: create_rw_signal(0),
+                        is_stale: create_rw_signal(false),
                         mark_invalid,
-                    };
-                    map.insert(key, entry);
-                }),
+                    });
+
+                    self.query_state.update(|map| {
+                        map.insert(key, entry);
+                    })
+                }
                 CacheEvent::Removed(key) => self.query_state.update(|map| {
                     map.remove(&key);
                 }),
+                // TODO: Fix this borrow error.
+                CacheEvent::Updated(SerializedQuery { key, state }) => {
+                    let map = self.query_state.get_untracked();
+                    if let Some(entry) = map.get(&key) {
+                        entry.state.set(state);
+                    }
+                    self.query_state.set(map);
+                }
+                CacheEvent::ObserverAdded(key) => {
+                    self.query_state.update(|map| {
+                        if let Some(entry) = map.get_mut(&key) {
+                            entry.observer_count.update(|c| *c += 1);
+                        }
+                    });
+                }
+                CacheEvent::ObserverRemoved(key) => {
+                    self.query_state.update(|map| {
+                        if let Some(entry) = map.get_mut(&key) {
+                            entry.observer_count.update(|c| *c -= 1);
+                        }
+                    });
+                }
             }
         }
     }
@@ -143,22 +169,22 @@ mod dev_tools {
             filter,
             sort,
             order_asc,
+            ..
         } = use_devtools_context();
 
         let query_state = Signal::derive(move || {
             let filter = filter.get().to_ascii_lowercase();
 
             // Filtered
-            let mut query_state = query_state
-                .get()
-                .into_iter()
-                .filter(|(key, _)| key.0.to_ascii_lowercase().contains(&filter))
-                .map(|(_, q)| q)
-                .collect::<Vec<_>>();
+            let mut query_state = query_state.with(|map| {
+                map.iter()
+                    .filter(|(key, _)| key.0.to_ascii_lowercase().contains(&filter))
+                    .map(|(_, q)| q)
+                    .cloned()
+                    .collect::<Vec<_>>()
+            });
 
-            let sort = sort.get();
-
-            match sort {
+            match sort.get() {
                 SortOption::Ascii => query_state.sort_by(|a, b| a.key.0.cmp(&b.key.0)),
                 SortOption::Time => {
                     query_state.sort_by(|a, b| {
@@ -540,7 +566,7 @@ mod dev_tools {
 
                 {observer}
                 <span class="w-[4.5rem]">
-                    <RowStateLabel state is_stale/>
+                    <RowStateLabel state={state.into()} is_stale={is_stale.into()}/>
                 </span>
                 <span class="text-sm">{key.0}</span>
             </li>
@@ -640,7 +666,7 @@ mod dev_tools {
                             <div class=entry_class>
                                 <dt class="text-zinc-100">Status</dt>
                                 <dd class="text-zinc-200">
-                                    <RowStateLabel state=query_state is_stale/>
+                                    <RowStateLabel state={query_state.into()} is_stale={is_stale.into()}/>
                                 </dd>
                             </div>
                             <div class=entry_class>

@@ -26,7 +26,7 @@ slotmap::new_key_type! {
     struct CacheObserverKey;
 }
 
-pub(crate) struct CacheEntry<K: 'static, V: 'static>(HashMap<K, Query<K, V>>);
+pub(crate) struct CacheEntry<K, V>(HashMap<K, Query<K, V>>);
 
 // Trait to enable cache introspection among distinct cache entry maps.
 pub(crate) trait CacheEntryTrait: CacheSize + CacheInvalidate {
@@ -272,7 +272,23 @@ impl QueryCache {
     }
 
     pub(crate) fn register_query_observer(&self, observer: impl CacheObserver + 'static) {
-        self.observers.borrow_mut().insert(Box::new(observer));
+        self.observers
+            .try_borrow_mut()
+            .expect("register_query_observer borrow mut")
+            .insert(Box::new(observer));
+    }
+
+    pub(crate) fn notify<K, V>(&self, notification: CacheNotification<K, V>)
+    where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+    {
+        let event = match notification {
+            CacheNotification::UpdatedState(query) => CacheEvent::updated(query.into()),
+            CacheNotification::NewObserver(key) => CacheEvent::observer_added(&key),
+            CacheNotification::ObserverRemoved(key) => CacheEvent::observer_removed(&key),
+        };
+        self.notify_observers(event);
     }
 
     pub(crate) fn notify_new_query<K, V>(&self, query: Query<K, V>)
@@ -280,24 +296,35 @@ impl QueryCache {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        let observers = self.observers.borrow();
+        // TODO: CHECK THIS.
         // this is crucial to avoid the signal going out of scope once the use_query instance unmounts.
-        let event = with_owner(self.owner, || CacheEvent::created(query));
-        for observer in observers.values() {
-            observer.process_cache_event(event.clone())
-        }
+        let event = CacheEvent::created(query);
+        self.notify_observers(event);
     }
 
     pub(crate) fn notify_query_eviction<K>(&self, key: &K)
     where
         K: QueryKey + 'static,
     {
-        let observers = self.observers.borrow();
         let event = CacheEvent::removed(key);
+        self.notify_observers(event);
+    }
+
+    pub(crate) fn notify_observers(&self, notification: CacheEvent) {
+        let observers = self
+            .observers
+            .try_borrow()
+            .expect("notify_observers borrow");
         for observer in observers.values() {
-            observer.process_cache_event(event.clone())
+            observer.process_cache_event(notification.clone())
         }
     }
+}
+
+pub(crate) enum CacheNotification<K, V> {
+    UpdatedState(Query<K, V>),
+    NewObserver(K),
+    ObserverRemoved(K),
 }
 
 const EXPECT_CACHE_ERROR: &str =

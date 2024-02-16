@@ -2,19 +2,12 @@ use crate::*;
 use leptos::*;
 use std::{
     borrow::Borrow,
-    cell::Cell,
     collections::{hash_map::Entry, HashMap},
     future::Future,
-    rc::Rc,
     time::Duration,
 };
 
-use self::{
-    cache_observer::CacheObserver,
-    query::{Query, QueryObserverKind},
-    query_cache::QueryCache,
-    query_executor::create_executor,
-};
+use self::{cache_observer::CacheObserver, query::Query, query_cache::QueryCache};
 
 /// Provides a Query Client to the current scope.
 pub fn provide_query_client() {
@@ -98,37 +91,37 @@ impl QueryClient {
         V: QueryValue + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        #[cfg(any(feature = "hydrate", feature = "csr"))]
-        {
-            let query = self.cache.get_query_signal(key);
+        // #[cfg(any(feature = "hydrate", feature = "csr"))]
+        // {
+        //     let query = self.cache.get_query_signal(key);
 
-            let executor = create_executor(query.into(), fetcher);
+        //     let executor = create_executor(query.into(), fetcher);
 
-            let query_state = register_observer_handle_cleanup(query);
+        //     let query_state = register_observer_handle_cleanup(query);
 
-            ensure_fresh(query, executor.clone());
-            ensure_valid(query_state, executor.clone());
-            sync_refetch(query, query_state, executor.clone());
-            new_query_refetch(query, executor.clone());
+        //     // ensure_fresh(query, executor.clone());
+        //     ensure_valid(query_state, executor.clone());
+        //     // sync_refetch(query, query_state, executor.clone());
+        //     new_query_refetch(query, executor.clone());
 
-            let data = Signal::derive(move || query_state.get().data().cloned());
+        //     let data = Signal::derive(move || query_state.get().data().cloned());
 
-            QueryResult {
-                data,
-                state: query_state,
-                refetch: executor,
-            }
+        //     QueryResult {
+        //         data,
+        //         state: query_state,
+        //         refetch: executor,
+        //     }
+        // }
+        // #[cfg(not(any(feature = "hydrate", feature = "csr")))]
+        // {
+        let _ = key;
+        let _ = fetcher;
+        QueryResult {
+            data: Signal::derive(|| None),
+            state: Signal::derive(|| QueryState::Created),
+            refetch: || (),
         }
-        #[cfg(not(any(feature = "hydrate", feature = "csr")))]
-        {
-            let _ = key;
-            let _ = fetcher;
-            QueryResult {
-                data: Signal::derive(|| None),
-                state: Signal::derive(|| QueryState::Created),
-                refetch: || (),
-            }
-        }
+        // }
     }
 
     /// Prefetch a query and store it in cache.
@@ -144,16 +137,17 @@ impl QueryClient {
         V: QueryValue + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let query = self.cache.get_query_signal(key);
+        todo!()
+        // let query = self.cache.get_query_signal(key);
 
-        let executor = create_executor(query.into(), fetcher);
+        // let executor = create_executor(query.into(), fetcher);
 
-        create_effect(move |_| {
-            let query = query.get();
-            if query.with_state(|s| matches!(s, QueryState::Created)) {
-                executor()
-            }
-        });
+        // create_effect(move |_| {
+        //     let query = query.get();
+        //     if query.with_state(|s| matches!(s, QueryState::Created)) {
+        //         executor()
+        //     }
+        // });
     }
 
     /// Retrieve the current state for an existing query.
@@ -166,56 +160,57 @@ impl QueryClient {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        let cache = self.cache.clone();
-        let size = self.size();
+        // let cache = self.cache.clone();
+        // let size = self.size();
 
-        // Memoize state to avoid unnecessary hashmap lookups.
-        let maybe_query = create_memo(move |_| {
-            let key = key();
-            // Subscribe to inserts/deletions.
-            size.get();
-            cache.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
-        });
+        // // Memoize state to avoid unnecessary hashmap lookups.
+        // let maybe_query = create_memo(move |_| {
+        //     let key = key();
+        //     // Subscribe to inserts/deletions.
+        //     size.get();
+        //     cache.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
+        // });
 
-        let state_signal = RwSignal::new(maybe_query.get_untracked().map(|q| q.get_state()));
+        // let state_signal = RwSignal::new(maybe_query.get_untracked().map(|q| q.get_state()));
 
-        let ensure_cleanup = Rc::new(Cell::<Option<Box<dyn Fn()>>>::new(None));
+        // let ensure_cleanup = Rc::new(Cell::<Option<Box<dyn Fn()>>>::new(None));
 
-        on_cleanup({
-            let ensure_cleanup = ensure_cleanup.clone();
-            move || {
-                if let Some(cleanup) = ensure_cleanup.take() {
-                    cleanup();
-                }
-            }
-        });
+        // on_cleanup({
+        //     let ensure_cleanup = ensure_cleanup.clone();
+        //     move || {
+        //         if let Some(cleanup) = ensure_cleanup.take() {
+        //             cleanup();
+        //         }
+        //     }
+        // });
 
-        create_isomorphic_effect({
-            let ensure_cleanup = ensure_cleanup.clone();
-            move |_| {
-                if let Some(remove) = ensure_cleanup.take() {
-                    remove();
-                }
+        // create_isomorphic_effect({
+        //     let ensure_cleanup = ensure_cleanup.clone();
+        //     move |_| {
+        //         if let Some(remove) = ensure_cleanup.take() {
+        //             remove();
+        //         }
 
-                if let Some(query) = maybe_query.get() {
-                    let (observer_signal, unsubscribe) =
-                        query.register_observer(QueryObserverKind::Active);
+        //         if let Some(query) = maybe_query.get() {
+        //             let (observer_signal, unsubscribe) =
+        //                 query.register_observer(QueryObserverKind::Active);
 
-                    // Forward state changes to the signal.
-                    // TODO: confirm that this is "closed" when outer effect changes.
-                    create_isomorphic_effect(move |_| {
-                        let latest_state = observer_signal.get();
-                        state_signal.set(Some(latest_state));
-                    });
+        //             // Forward state changes to the signal.
+        //             // TODO: confirm that this is "closed" when outer effect changes.
+        //             create_isomorphic_effect(move |_| {
+        //                 let latest_state = observer_signal.get();
+        //                 state_signal.set(Some(latest_state));
+        //             });
 
-                    ensure_cleanup.set(Some(Box::new(unsubscribe)));
-                } else {
-                    state_signal.set(None);
-                }
-            }
-        });
+        //             ensure_cleanup.set(Some(Box::new(unsubscribe)));
+        //         } else {
+        //             state_signal.set(None);
+        //         }
+        //     }
+        // });
 
-        state_signal.into()
+        // state_signal.into()
+        todo!()
     }
 
     /// Attempts to invalidate an entry in the Query Cache.

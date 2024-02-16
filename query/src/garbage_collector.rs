@@ -7,8 +7,8 @@ use crate::Instant;
 #[derive(Clone)]
 pub(crate) struct GarbageCollector<K, V> {
     key: K,
-    enabled: RwSignal<bool>,
     _value: PhantomData<V>,
+    enabled: RwSignal<bool>,
     last_update: RwSignal<crate::Instant>,
     gc_time: Signal<Option<Duration>>,
 }
@@ -21,8 +21,8 @@ where
     pub(crate) fn new(key: K, gc_time: Signal<Option<Duration>>) -> Self {
         let gc = Self {
             key,
-            enabled: RwSignal::new(true),
             _value: PhantomData,
+            enabled: RwSignal::new(true),
             gc_time,
             last_update: RwSignal::new(crate::Instant::now()),
         };

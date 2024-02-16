@@ -134,6 +134,7 @@ mod query;
 mod query_cache;
 mod query_client;
 mod query_executor;
+mod query_observer;
 mod query_options;
 mod query_result;
 mod query_state;

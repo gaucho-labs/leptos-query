@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use leptos::*;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "ssr")]
@@ -50,7 +48,7 @@ pub async fn add_todo(create: CreateTodo) -> Result<Todo, ServerFnError> {
 #[server(GetTodos, "/api")]
 pub async fn get_todos() -> Result<Vec<Todo>, ServerFnError> {
     let mut conn = db().await?;
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let todos = sqlx::query_as::<_, Todo>("SELECT * FROM todos")
         .fetch_all(&mut conn)
         .await?;

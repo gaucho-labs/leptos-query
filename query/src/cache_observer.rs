@@ -1,12 +1,6 @@
-use std::rc::Rc;
+use std::{fmt::Debug, rc::Rc};
 
-use leptos::*;
-
-use crate::{
-    query::{Query, QueryObserverKind},
-    util::{time_until_stale, use_timeout},
-    QueryState,
-};
+use crate::{query::Query, QueryState};
 
 /// Subscribing to cache events
 pub trait CacheObserver {
@@ -15,12 +9,18 @@ pub trait CacheObserver {
 }
 
 /// The events that can be observed from the query cache.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum CacheEvent {
     /// A new query that has become active in the cache.
     Created(CreatedQuery),
+    /// A query that has been updated in the cache.
+    Updated(SerializedQuery),
     /// A query that has been removed from the cache.
     Removed(QueryCacheKey),
+    /// A new observer has been added to the query.
+    ObserverAdded(QueryCacheKey),
+    /// A observer has been removed from the query.
+    ObserverRemoved(QueryCacheKey),
 }
 
 impl CacheEvent {
@@ -33,28 +33,64 @@ impl CacheEvent {
         CacheEvent::Created(payload)
     }
 
+    pub(crate) fn updated<K, V>(query: Query<K, V>) -> Self
+    where
+        K: crate::QueryKey + 'static,
+        V: crate::QueryValue + 'static,
+    {
+        let payload = query.into();
+        CacheEvent::Updated(payload)
+    }
+
     pub(crate) fn removed<K>(key: &K) -> Self
     where
         K: crate::QueryKey + 'static,
     {
         CacheEvent::Removed(key.into())
     }
+
+    pub(crate) fn observer_added<K>(key: &K) -> Self
+    where
+        K: crate::QueryKey + 'static,
+    {
+        CacheEvent::ObserverAdded(key.into())
+    }
+
+    pub(crate) fn observer_removed<K>(key: &K) -> Self
+    where
+        K: crate::QueryKey + 'static,
+    {
+        CacheEvent::ObserverRemoved(key.into())
+    }
 }
 
 /// A new query that has become active in the cache.
 #[derive(Clone)]
 pub struct CreatedQuery {
+    /// Serialized query key.
+    pub key: QueryCacheKey,
+    /// Serialized query state.
+    pub state: QueryState<String>,
+    /// Mark invalid
+    pub mark_invalid: Rc<dyn Fn() -> bool>,
+}
+
+impl Debug for CreatedQuery {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CreatedQuery")
+            .field("key", &self.key)
+            .field("state", &self.state)
+            .finish()
+    }
+}
+
+/// A query that has been updated in the cache.
+#[derive(Clone, Debug)]
+pub struct SerializedQuery {
     /// The key of the query.
     pub key: QueryCacheKey,
     /// The serialized state of the query.
-    pub state: Signal<QueryState<String>>,
-    /// Whether the query is currently considered stale.
-    pub is_stale: Signal<bool>,
-    /// The number of active observers for this query.
-    pub observer_count: Signal<usize>,
-
-    /// Mark invalid
-    pub mark_invalid: Rc<dyn Fn() -> bool>,
+    pub state: QueryState<String>,
 }
 
 /// A serialized key for a query in the cache.
@@ -67,64 +103,36 @@ where
     V: crate::QueryValue + 'static,
 {
     fn from(query: Query<K, V>) -> Self {
-        let state = {
-            let (state, unsub) = query.register_observer(QueryObserverKind::Passive);
-
-            // TODO: is this sufficient?
-            on_cleanup(move || unsub());
-
-            Signal::derive(move || {
-                state.get().map_data(|data| {
-                    leptos::Serializable::ser(data).expect("Serialize Query Value")
-                })
-            })
-        };
-
-        let is_stale = {
-            let (stale, set_stale) = create_signal(false);
-
-            let updated_at = Signal::derive(move || state.with(|s| s.updated_at()));
-            let stale_time = query.get_stale_time();
-
-            let _ = use_timeout(move || match (updated_at.get(), stale_time.get()) {
-                (Some(updated_at), Some(stale_time)) => {
-                    let duration = time_until_stale(updated_at, stale_time);
-                    if duration.is_zero() {
-                        set_stale.set(true);
-                        None
-                    } else {
-                        set_stale.set(false);
-                        set_timeout_with_handle(
-                            move || {
-                                set_stale.set(true);
-                            },
-                            duration,
-                        )
-                        .ok()
-                    }
-                }
-                _ => None,
-            });
-
-            stale.into()
-        };
+        let key: QueryCacheKey = (&query.key).into();
+        let state = query.with_state(|state| {
+            state.map_data(|data| leptos::Serializable::ser(data).expect("Serialize Query State"))
+        });
 
         let mark_invalid = {
             let query = query.clone();
             Rc::new(move || query.mark_invalid())
         };
 
-        let observer_count = query.get_active_observer_count();
-
-        let key: QueryCacheKey = (&query.key).into();
-
         CreatedQuery {
             key,
             state,
-            is_stale,
-            observer_count,
             mark_invalid,
         }
+    }
+}
+
+impl<K, V> From<Query<K, V>> for SerializedQuery
+where
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
+{
+    fn from(query: Query<K, V>) -> Self {
+        let key: QueryCacheKey = (&query.key).into();
+        let state = query.with_state(|state| {
+            state.map_data(|data| leptos::Serializable::ser(data).expect("Serialize Query State"))
+        });
+
+        SerializedQuery { key, state }
     }
 }
 
