@@ -147,7 +147,6 @@ mod dev_tools {
                     self.query_state.set(map);
                 }
                 CacheEvent::ObserverAdded(observer) => {
-                    logging::log!("Observer Added: {:?}", observer);
                     let leptos_query::ObserverAdded { key, options } = observer;
                     let QueryOptions {
                         stale_time,

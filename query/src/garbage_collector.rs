@@ -53,7 +53,6 @@ where
                     move || {
                         let client = crate::use_query_client();
                         let key = query.get_key();
-                        logging::log!("Evicting query from cache {key:?}");
                         client.cache.evict_query::<K, V>(&key);
                     },
                     time_until_gc,
