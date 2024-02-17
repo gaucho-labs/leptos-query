@@ -163,7 +163,7 @@ impl QueryCache {
         let result = self.use_cache_option_mut::<K, V, _, _>(move |cache| cache.remove(key));
 
         if let Some(query) = result {
-            self.notify_query_eviction(&query.key);
+            self.notify_query_eviction(query.get_key());
             self.size.set(self.size.get_untracked() - 1);
             query.dispose();
             true

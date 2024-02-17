@@ -117,7 +117,7 @@ where
     V: crate::QueryValue + 'static,
 {
     fn from(query: Query<K, V>) -> Self {
-        let key: QueryCacheKey = (&query.key).into();
+        let key: QueryCacheKey = query.get_key().into();
         let state = query.with_state(|state| {
             state.map_data(|data| leptos::Serializable::ser(data).expect("Serialize Query State"))
         });
@@ -141,7 +141,7 @@ where
     V: crate::QueryValue + 'static,
 {
     fn from(query: Query<K, V>) -> Self {
-        let key: QueryCacheKey = (&query.key).into();
+        let key: QueryCacheKey = query.get_key().into();
         let state = query.with_state(|state| {
             state.map_data(|data| leptos::Serializable::ser(data).expect("Serialize Query State"))
         });

@@ -20,17 +20,17 @@ use crate::{
 
 #[derive(Clone)]
 pub(crate) struct Query<K, V> {
-    pub(crate) key: K,
+    key: K,
 
     // Cancellation
     current_request: Rc<Cell<Option<oneshot::Sender<()>>>>,
 
     // State
-    state: Rc<Cell<QueryState<V>>>,
+    state: Rc<RefCell<QueryState<V>>>,
 
     // Synchronization
     observers: Rc<RefCell<HashMap<ObserverKey, QueryObserver<K, V>>>>,
-    garbage_collector: Rc<Cell<Option<GarbageCollector<K, V>>>>,
+    garbage_collector: Rc<RefCell<Option<GarbageCollector<K, V>>>>,
 }
 
 impl<K: PartialEq, V> PartialEq for Query<K, V> {
@@ -47,21 +47,21 @@ where
     V: crate::QueryValue + 'static,
 {
     pub(crate) fn new(key: K) -> Self {
-        Query {
+        let query = Query {
             key: key.clone(),
             current_request: Rc::new(Cell::new(None)),
             observers: Rc::new(RefCell::new(HashMap::new())),
-            state: Rc::new(Cell::new(QueryState::Created)),
-            garbage_collector: Rc::new(Cell::new(None)),
-        }
-    }
-}
+            state: Rc::new(RefCell::new(QueryState::Created)),
+            garbage_collector: Rc::new(RefCell::new(None)),
+        };
 
-impl<K, V> Query<K, V>
-where
-    K: crate::QueryKey + 'static,
-    V: crate::QueryValue + 'static,
-{
+        let gc = GarbageCollector::new(query.clone());
+
+        *query.garbage_collector.borrow_mut() = Some(gc);
+
+        query
+    }
+
     pub(crate) fn set_state(&self, state: QueryState<V>) {
         // Notify observers.
         let observers = self.observers.try_borrow().expect("set state borrow");
@@ -71,7 +71,7 @@ where
 
         let invalid = matches!(state, QueryState::Invalid(_));
 
-        self.state.set(state);
+        *self.state.borrow_mut() = state;
 
         // Notify cache. This has to be at the end due to sending the entire query in the notif.
         use_query_client()
@@ -105,7 +105,7 @@ where
                 true
             }
             Err(old_state) => {
-                self.state.set(old_state);
+                *self.state.borrow_mut() = old_state;
                 false
             }
         }
@@ -166,39 +166,37 @@ where
     }
 
     pub fn update_gc_time(&self, gc_time: Option<Duration>) {
-        self.with_gc(|gc| gc.update_gc_time(gc_time));
+        self.garbage_collector
+            .borrow()
+            .as_ref()
+            .expect("update_gc_time borrow")
+            .update_gc_time(gc_time);
     }
 
     pub fn enable_gc(&self) {
-        self.with_gc(|gc| gc.enable_gc());
+        self.garbage_collector
+            .borrow()
+            .as_ref()
+            .expect("enable_gc borrow")
+            .enable_gc();
     }
 
     pub fn disable_gc(&self) {
-        self.with_gc(|gc| gc.disable_gc());
-    }
-
-    pub fn with_gc(&self, func: impl FnOnce(&GarbageCollector<K, V>)) {
-        let garbage_collector = self
-            .garbage_collector
-            .take()
-            .unwrap_or_else(|| GarbageCollector::new(self.clone()));
-        func(&garbage_collector);
-
-        self.garbage_collector.set(Some(garbage_collector));
+        self.garbage_collector
+            .borrow()
+            .as_ref()
+            .expect("disable_gc borrow")
+            .disable_gc();
     }
 
     pub(crate) fn get_state(&self) -> QueryState<V> {
-        let state = self.state.take();
-        let state_clone = state.clone();
-        self.state.set(state);
-        state_clone
+        self.state.borrow().clone()
     }
 
     // Useful to avoid clones.
     pub(crate) fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
-        let state = self.state.take();
+        let state = self.state.borrow();
         let result = func(&state);
-        self.state.set(state);
         result
     }
 

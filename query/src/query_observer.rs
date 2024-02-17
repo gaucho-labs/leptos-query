@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::future::Future;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{pin::Pin, rc::Rc};
@@ -12,7 +12,7 @@ use crate::{QueryKey, QueryOptions, QueryState, QueryValue};
 #[derive(Clone)]
 pub struct QueryObserver<K, V> {
     id: ObserverKey,
-    query: Rc<Cell<Option<Query<K, V>>>>,
+    query: Rc<RefCell<Option<Query<K, V>>>>,
     fetcher: Option<Fetcher<K, V>>,
     options: QueryOptions<V>,
     listeners: Rc<RefCell<SlotMap<ListenerKey, Box<dyn Fn(&QueryState<V>)>>>>,
@@ -24,14 +24,18 @@ new_key_type! {
     pub (crate) struct ListenerKey;
 }
 
-impl<K, V> std::fmt::Debug for QueryObserver<K, V> {
+impl<K, V> std::fmt::Debug for QueryObserver<K, V>
+where
+    K: QueryKey + 'static,
+    V: QueryValue + 'static,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QueryObserver")
             .field("id", &self.id)
             // .field("query", &self.query)
             .field("fetcher", &"...")
-            // .field("options", &self.options)
-            .field("listeners", &"...")
+            .field("options", &self.options)
+            .field("listeners", &self.listeners.borrow().len())
             .finish()
     }
 }
@@ -51,7 +55,7 @@ where
                 Rc::new(move |s| Box::pin(fetcher(s)) as Pin<Box<dyn Future<Output = V>>>)
                     as Fetcher<K, V>,
             );
-        let query = Rc::new(Cell::new(Some(query)));
+        let query = Rc::new(RefCell::new(Some(query)));
         let id = next_id();
 
         Self {
@@ -111,9 +115,13 @@ where
 
         query.subscribe(self);
 
-        self.query.set(Some(query));
+        *self.query.borrow_mut() = Some(query);
 
-        self.with_query(|q| q.ensure_execute());
+        self.query
+            .borrow()
+            .as_ref()
+            .expect("update_query borrow")
+            .ensure_execute();
     }
 
     pub fn cleanup(&self) {
@@ -122,6 +130,7 @@ where
         } else {
             logging::debug_warn!("QueryObserver::cleanup: QueryObserver::query is None")
         }
+
         if !self
             .listeners
             .try_borrow()
@@ -132,16 +141,6 @@ where
                 "QueryObserver::cleanup: QueryObserver::listeners is not empty"
             );
         }
-    }
-
-    pub fn with_query<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&Query<K, V>) -> R,
-    {
-        let query = self.query.take().expect("Query To Exist");
-        let result = f(&query);
-        self.query.set(Some(query));
-        result
     }
 }
 
