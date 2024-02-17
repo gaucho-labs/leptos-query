@@ -13,7 +13,7 @@ pub fn LeptosQueryDevtools() -> impl IntoView {
 mod dev_tools {
     use leptos::*;
     use leptos_query::*;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, time::Duration};
 
     #[component]
     pub(crate) fn InnerDevtools() -> impl IntoView {
@@ -89,6 +89,8 @@ mod dev_tools {
         state: RwSignal<QueryState<String>>,
         is_stale: RwSignal<bool>,
         observer_count: RwSignal<usize>,
+        gc_time: RwSignal<Option<Duration>>,
+        stale_time: RwSignal<Option<Duration>>,
         mark_invalid: std::rc::Rc<dyn Fn() -> bool>,
     }
 
@@ -122,6 +124,8 @@ mod dev_tools {
                     let entry = with_owner(self.owner, || QueryCacheEntry {
                         key: key.clone(),
                         state: create_rw_signal(state),
+                        stale_time: create_rw_signal(None),
+                        gc_time: create_rw_signal(None),
                         observer_count: create_rw_signal(0),
                         is_stale: create_rw_signal(false),
                         mark_invalid,
@@ -142,10 +146,43 @@ mod dev_tools {
                     }
                     self.query_state.set(map);
                 }
-                CacheEvent::ObserverAdded(key) => {
+                CacheEvent::ObserverAdded(observer) => {
+                    logging::log!("Observer Added: {:?}", observer);
+                    let leptos_query::ObserverAdded { key, options } = observer;
+                    let QueryOptions {
+                        stale_time,
+                        gc_time,
+                        ..
+                    } = options;
                     self.query_state.update(|map| {
                         if let Some(entry) = map.get_mut(&key) {
                             entry.observer_count.update(|c| *c += 1);
+                            {
+                                let current_gc = entry.gc_time.get_untracked();
+
+                                match (current_gc, gc_time) {
+                                    (Some(current), Some(gc_time)) if gc_time > current => {
+                                        entry.gc_time.set(Some(gc_time));
+                                    }
+                                    (None, Some(gc_time)) => {
+                                        entry.gc_time.set(Some(gc_time));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            {
+                                let current_stale = entry.stale_time.get_untracked();
+
+                                match (current_stale, stale_time) {
+                                    (Some(current), Some(stale_time)) if stale_time < current => {
+                                        entry.stale_time.set(Some(stale_time));
+                                    }
+                                    (None, Some(stale_time)) => {
+                                        entry.stale_time.set(Some(stale_time));
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                     });
                 }
@@ -624,6 +661,8 @@ mod dev_tools {
             is_stale,
             observer_count,
             mark_invalid,
+            stale_time,
+            gc_time,
         } = query;
 
         #[cfg(feature = "csr")]
@@ -669,6 +708,22 @@ mod dev_tools {
         let section_class = "px-2 py-1 flex flex-col items-center gap-1 w-full";
         let entry_class = "flex items-center justify-between text-xs font-medium w-full";
 
+        let stale_time = Signal::derive(move || {
+            stale_time
+                .get()
+                .map(|d| d.as_millis())
+                .map(|d| format!("Some({}ms)", d))
+                .unwrap_or("None".into())
+        });
+
+        let gc_time = Signal::derive(move || {
+            gc_time
+                .get()
+                .map(|d| d.as_millis())
+                .map(|d| format!("Some({}ms)", d))
+                .unwrap_or("None".into())
+        });
+
         view! {
             <div class="w-1/2 overflow-y-scroll max-h-full border-black border-l-4">
                 <div class="flex flex-col w-full h-full items-center">
@@ -693,10 +748,19 @@ mod dev_tools {
                                 <dt class="text-zinc-100">Active Observers</dt>
                                 <dd class="text-zinc-200">{observer_count}</dd>
                             </div>
+
+                            <div class=entry_class>
+                                <dt class="text-zinc-100">Stale Time</dt>
+                                <dd class="text-zinc-200">{stale_time}</dd>
+                            </div>
+                            <div class=entry_class>
+                                <dt class="text-zinc-100">GC Time</dt>
+                                <dd class="text-zinc-200">{gc_time}</dd>
+                            </div>
                         </dl>
                     </div>
                     <div class="w-full">
-                        <div class="text-sm text-lq-foreground p-1 bg-accent">Query Actions</div>
+                        <div class="text-sm text-lq-foreground p-1 bg-lq-accent">Query Actions</div>
                         <div class="flex items-center gap-2 p-1">
                             <Button
                                 color=ColorOption::Red

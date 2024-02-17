@@ -140,7 +140,12 @@ where
         // Notify cache.
         use_query_client()
             .cache
-            .notify::<K, V>(CacheNotification::NewObserver(self.key.clone()))
+            .notify::<K, V>(CacheNotification::NewObserver(
+                crate::query_cache::NewObserver {
+                    key: self.key.clone(),
+                    options: observer.get_options().clone(),
+                },
+            ));
     }
 
     pub fn unsubscribe(&self, observer: &QueryObserver<K, V>) {

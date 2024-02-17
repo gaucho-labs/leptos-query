@@ -49,6 +49,17 @@ impl<V> QueryOptions<V> {
             resource_option: None,
         }
     }
+
+    /// Transform the default value.
+    pub fn map_value<R>(self, func: impl FnOnce(V) -> R) -> QueryOptions<R> {
+        QueryOptions {
+            default_value: self.default_value.map(func),
+            stale_time: self.stale_time,
+            gc_time: self.gc_time,
+            refetch_interval: self.refetch_interval,
+            resource_option: self.resource_option,
+        }
+    }
 }
 
 const DEFAULT_STALE_TIME: Duration = Duration::from_secs(10);

@@ -18,7 +18,7 @@ pub enum CacheEvent {
     /// A query that has been removed from the cache.
     Removed(QueryCacheKey),
     /// A new observer has been added to the query.
-    ObserverAdded(QueryCacheKey),
+    ObserverAdded(ObserverAdded),
     /// A observer has been removed from the query.
     ObserverRemoved(QueryCacheKey),
 }
@@ -49,11 +49,16 @@ impl CacheEvent {
         CacheEvent::Removed(key.into())
     }
 
-    pub(crate) fn observer_added<K>(key: &K) -> Self
+    pub(crate) fn observer_added<K, V>(key: &K, options: crate::QueryOptions<V>) -> Self
     where
         K: crate::QueryKey + 'static,
+        V: crate::QueryValue + 'static,
     {
-        CacheEvent::ObserverAdded(key.into())
+        CacheEvent::ObserverAdded(ObserverAdded {
+            key: key.into(),
+            options: options
+                .map_value(|v| leptos::Serializable::ser(&v).expect("Serialize Query Options")),
+        })
     }
 
     pub(crate) fn observer_removed<K>(key: &K) -> Self
@@ -96,6 +101,15 @@ pub struct SerializedQuery {
 /// A serialized key for a query in the cache.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct QueryCacheKey(pub String);
+
+/// A new observer has been added to the query.
+#[derive(Clone, Debug)]
+pub struct ObserverAdded {
+    /// The key of the query.
+    pub key: QueryCacheKey,
+    /// The observers options.
+    pub options: crate::QueryOptions<String>,
+}
 
 impl<K, V> From<Query<K, V>> for CreatedQuery
 where

@@ -11,7 +11,7 @@ use slotmap::SlotMap;
 use crate::{
     cache_observer::{CacheEvent, CacheObserver},
     query::Query,
-    QueryKey, QueryValue,
+    QueryKey, QueryOptions, QueryValue,
 };
 
 #[derive(Clone)]
@@ -285,7 +285,9 @@ impl QueryCache {
     {
         let event = match notification {
             CacheNotification::UpdatedState(query) => CacheEvent::updated(query.into()),
-            CacheNotification::NewObserver(key) => CacheEvent::observer_added(&key),
+            CacheNotification::NewObserver(observer) => {
+                CacheEvent::observer_added(&observer.key, observer.options)
+            }
             CacheNotification::ObserverRemoved(key) => CacheEvent::observer_removed(&key),
         };
         self.notify_observers(event);
@@ -323,8 +325,13 @@ impl QueryCache {
 
 pub(crate) enum CacheNotification<K, V> {
     UpdatedState(Query<K, V>),
-    NewObserver(K),
+    NewObserver(NewObserver<K, V>),
     ObserverRemoved(K),
+}
+
+pub(crate) struct NewObserver<K, V> {
+    pub(crate) key: K,
+    pub(crate) options: QueryOptions<V>,
 }
 
 const EXPECT_CACHE_ERROR: &str =
