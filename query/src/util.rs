@@ -1,35 +1,6 @@
-use std::{cell::Cell, rc::Rc, time::Duration};
-
-use leptos::{leptos_dom::helpers::TimeoutHandle, *};
+use std::time::Duration;
 
 use crate::instant::Instant;
-
-#[allow(unused)]
-pub(crate) fn use_timeout(func: impl Fn() -> Option<TimeoutHandle> + 'static) {
-    // Saves last interval to be cleared on cleanup.
-    let timeout: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));
-    let clean_up = {
-        let interval = timeout.clone();
-        move || {
-            if let Some(handle) = interval.take() {
-                handle.clear();
-            }
-        }
-    };
-
-    on_cleanup(clean_up);
-
-    create_effect(move |_| {
-        if let Some(handle) = timeout.take() {
-            handle.clear();
-        }
-
-        let result = func();
-        timeout.set(result);
-
-        result
-    });
-}
 
 pub(crate) fn time_until_stale(updated_at: Instant, stale_time: Duration) -> Duration {
     let updated_at = updated_at.0.as_millis() as i64;
