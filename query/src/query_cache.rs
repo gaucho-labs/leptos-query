@@ -89,27 +89,31 @@ impl QueryCache {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        let query_cache = self.clone();
-        let (query, created) = self.use_cache(move |cache| {
+        let query_cache = self;
+
+        let mut created = false;
+
+        let query = self.use_cache(|cache| {
             let entry = cache.entry(key.clone());
 
-            let (query, new) = match entry {
+            let query = match entry {
                 Entry::Occupied(entry) => {
                     let entry = entry.into_mut();
-                    (entry, false)
+                    entry
                 }
                 Entry::Vacant(entry) => {
                     let query = with_owner(query_cache.owner, || Query::new(key));
                     query_cache.notify_new_query(query.clone());
-                    (entry.insert(query), true)
+                    created = true;
+                    entry.insert(query)
                 }
             };
-            (query.clone(), new)
+            query.clone()
         });
 
-        // Notify on insert.
+        // It's necessary to delay the size update until we are out of the borrow, to avoid borrow errors.
         if created {
-            self.size.set(self.size.get_untracked() + 1);
+            self.size.update(|size| *size = *size + 1);
         }
 
         query
@@ -120,7 +124,7 @@ impl QueryCache {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        self.use_cache_option_mut(move |cache| cache.get(key).cloned())
+        self.use_cache_option(move |cache| cache.get(key).cloned())
     }
 
     pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
@@ -252,12 +256,15 @@ impl QueryCache {
         V: QueryValue + 'static,
     {
         let query_cache = self;
+
+        let mut created = false;
+
         self.use_cache(|cache| match cache.entry(key) {
             Entry::Vacant(entry) => {
                 if let Some(query) = func((query_cache.owner, None)) {
                     entry.insert(query.clone());
                     // Report insert.
-                    query_cache.size.set(self.size.get_untracked() + 1);
+                    created = true;
                     self.notify_new_query(query)
                 }
             }
@@ -267,7 +274,12 @@ impl QueryCache {
                     entry.insert(query);
                 }
             }
-        })
+        });
+
+        // It's necessary to delay the size update until we are out of the borrow, to avoid borrow errors.
+        if created {
+            self.size.update(|size| *size = *size + 1);
+        }
     }
 
     pub(crate) fn register_query_observer(&self, observer: impl CacheObserver + 'static) {

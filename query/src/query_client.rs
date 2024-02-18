@@ -476,61 +476,6 @@ impl QueryClient {
 mod tests {
     use super::*;
 
-    // fn prefetch_query_server<K, V, Fu>(
-    //     key: impl Fn() -> K + 'static,
-    //     fetcher: impl Fn(K) -> Fu + 'static,
-    // ) where
-    //     K: QueryKey + 'static,
-    //     V: QueryValue + 'static,
-    //     Fu: Future<Output = V> + 'static,
-    // {
-    //     let client = use_query_client();
-    //     let query = client.cache.get_query_signal(key);
-
-    //     let executor = create_executor(query.into(), fetcher);
-
-    //     create_isomorphic_effect(move |_| {
-    //         let query = query.get();
-    //         if query.with_state(|s| matches!(s, QueryState::Created)) {
-    //             executor()
-    //         }
-    //     });
-    // }
-    // #[test]
-    // fn prefetch_loads_data() {
-    //     let _ = create_runtime();
-
-    //     provide_query_client();
-    //     let client = use_query_client();
-
-    //     assert_eq!(0, client.size().get_untracked());
-
-    //     let state = client.get_query_state::<u32, String>(|| 0);
-
-    //     assert_eq!(None, state.get_untracked());
-
-    //     prefetch_query_server(|| 0, |num: u32| async move { num.to_string() });
-
-    //     assert_eq!(
-    //         Some("0".to_string()),
-    //         state.get_untracked().and_then(|q| q.data().cloned())
-    //     );
-
-    //     assert!(matches!(
-    //         state.get_untracked(),
-    //         Some(QueryState::Loaded { .. })
-    //     ));
-
-    //     assert_eq!(1, client.size().get_untracked());
-
-    //     client.invalidate_query::<u32, String>(0);
-
-    //     assert!(matches!(
-    //         state.get_untracked(),
-    //         Some(QueryState::Invalid { .. })
-    //     ));
-    // }
-
     #[test]
     fn set_query_data() {
         let _ = create_runtime();
@@ -538,13 +483,19 @@ mod tests {
         provide_query_client();
         let client = use_query_client();
 
-        let state = client.get_query_state::<u32, String>(|| 0);
-        assert_eq!(None, state.get_untracked());
+        let state = || {
+            use_query_client()
+                .cache
+                .get_query::<u32, String>(&0)
+                .map(|q| q.get_state())
+        };
+
+        assert_eq!(None, state());
         assert_eq!(0, client.size().get_untracked());
 
         client.update_query_data::<u32, String>(0, |_| None);
 
-        assert_eq!(None, state.get_untracked());
+        assert_eq!(None, state());
         assert_eq!(0, client.size().get_untracked());
 
         client.update_query_data::<u32, String>(0, |_| Some("0".to_string()));
@@ -553,19 +504,16 @@ mod tests {
 
         assert_eq!(
             Some("0".to_string()),
-            state.get_untracked().and_then(|q| q.data().cloned())
+            state().and_then(|q| q.data().cloned())
         );
 
-        assert!(matches!(
-            state.get_untracked(),
-            Some(QueryState::Loaded { .. })
-        ));
+        assert!(matches!(state(), Some(QueryState::Loaded { .. })));
 
         client.update_query_data::<u32, String>(0, |_| Some("1".to_string()));
 
         assert_eq!(
             Some("1".to_string()),
-            state.get_untracked().and_then(|q| q.data().cloned())
+            state().and_then(|q| q.data().cloned())
         );
     }
 
@@ -593,7 +541,7 @@ mod tests {
         let subscription = client.get_query_state::<u32, u32>(|| 0_u32);
 
         create_isomorphic_effect(move |_| {
-            subscription.get();
+            subscription.track();
         });
 
         client.update_query_data::<u32, u32>(0_u32, |_| Some(1234));
