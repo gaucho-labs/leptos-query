@@ -157,7 +157,7 @@ fn post_query() -> QueryScope<PostKey, Option<String>> {
         QueryOptions {
             default_value: None,
             refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
+            resource_option: Some(ResourceOption::NonBlocking),
             stale_time: Some(Duration::from_secs(5)),
             gc_time: Some(Duration::from_secs(60)),
         },
@@ -308,7 +308,10 @@ fn RefetchInterval() -> impl IntoView {
         state,
         refetch,
         ..
-    } = post_query().use_query(|| PostKey(1));
+    } = post_query().use_query_with_options(|| PostKey(1), QueryOptions {
+        refetch_interval: Some(Duration::from_secs(5)),
+        ..Default::default()
+    });
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
 
