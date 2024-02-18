@@ -20,7 +20,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub(crate) struct Query<K, V> {
+pub struct Query<K, V> {
     key: K,
 
     // Cancellation
@@ -47,7 +47,7 @@ where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
 {
-    pub(crate) fn new(key: K) -> Self {
+    pub fn new(key: K) -> Self {
         let query = Query {
             key: key.clone(),
             current_request: Rc::new(Cell::new(None)),
@@ -63,7 +63,7 @@ where
         query
     }
 
-    pub(crate) fn set_state(&self, state: QueryState<V>) {
+    pub fn set_state(&self, state: QueryState<V>) {
         // Notify observers.
         let observers = self.observers.try_borrow().expect("set state borrow");
         for observer in observers.values() {
@@ -84,7 +84,7 @@ where
         }
     }
 
-    pub(crate) fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
+    pub fn update_state(&self, update_fn: impl FnOnce(&mut QueryState<V>)) {
         let mut state = self.state.take();
         update_fn(&mut state);
         self.set_state(state);
@@ -94,7 +94,7 @@ where
     /// If update returns Ok(_) the state will be updated and subscribers will be notified.
     /// If update returns Err(_) the state will not be updated and subscribers will not be notified.
     /// Err(_) should always contain the previous state.
-    pub(crate) fn maybe_map_state(
+    pub fn maybe_map_state(
         &self,
         update_fn: impl FnOnce(QueryState<V>) -> Result<QueryState<V>, QueryState<V>>,
     ) -> bool {
@@ -113,7 +113,7 @@ where
     }
 
     /// Marks the resource as invalid, which will cause it to be refetched on next read.
-    pub(crate) fn mark_invalid(&self) -> bool {
+    pub fn mark_invalid(&self) -> bool {
         let mut updated = false;
         self.maybe_map_state(|state| {
             if let QueryState::Loaded(data) = state {
@@ -190,12 +190,12 @@ where
             .disable_gc();
     }
 
-    pub(crate) fn get_state(&self) -> QueryState<V> {
+    pub fn get_state(&self) -> QueryState<V> {
         self.state.borrow().clone()
     }
 
     // Useful to avoid clones.
-    pub(crate) fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
+    pub fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
         let state = self.state.borrow();
         let result = func(&state);
         result
@@ -205,7 +205,7 @@ where
      * Execution and Cancellation.
      */
 
-    pub(crate) fn execute(&self) {
+    pub fn execute(&self) {
         let fetcher = self
             .observers
             .try_borrow()
@@ -219,7 +219,7 @@ where
     }
 
     // Only scenario where two requests can exist at the same time is the first is cancelled.
-    pub(crate) fn new_execution(&self) -> Option<oneshot::Receiver<()>> {
+    pub fn new_execution(&self) -> Option<oneshot::Receiver<()>> {
         let current_request = self.current_request.take();
         if current_request.is_none() {
             let (sender, receiver) = oneshot::channel();
@@ -231,11 +231,11 @@ where
         }
     }
 
-    pub(crate) fn finalize_execution(&self) {
+    pub fn finalize_execution(&self) {
         self.current_request.set(None);
     }
 
-    pub(crate) fn cancel(&self) -> bool {
+    pub fn cancel(&self) -> bool {
         if let Some(current_request) = self.current_request.take() {
             let cancellation = current_request.send(());
             if cancellation.is_err() {
@@ -247,20 +247,20 @@ where
         }
     }
 
-    pub(crate) fn needs_execute(&self) -> bool {
+    pub fn needs_execute(&self) -> bool {
         // TODO: How to handle SSR Hydration case?
         self.with_state(|s| matches!(s, QueryState::Created))
             || self.with_state(|s| matches!(s, QueryState::Invalid(_)))
             || self.is_stale()
     }
 
-    pub(crate) fn ensure_execute(&self) {
+    pub fn ensure_execute(&self) {
         if self.needs_execute() {
             self.execute();
         }
     }
 
-    pub(crate) fn is_stale(&self) -> bool {
+    pub fn is_stale(&self) -> bool {
         let stale_time = self
             .observers
             .borrow()
@@ -277,11 +277,11 @@ where
         }
     }
 
-    pub(crate) fn get_updated_at(&self) -> Option<crate::Instant> {
+    pub fn get_updated_at(&self) -> Option<crate::Instant> {
         self.with_state(|s| s.updated_at())
     }
 
-    pub(crate) fn get_key(&self) -> &K {
+    pub fn get_key(&self) -> &K {
         &self.key
     }
 }
@@ -291,7 +291,7 @@ where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
 {
-    pub(crate) fn dispose(&self) {
+    pub fn dispose(&self) {
         debug_assert!(
             { self.observers.borrow().is_empty() },
             "Query has active observers"
@@ -299,7 +299,7 @@ where
     }
 }
 
-pub(crate) async fn execute_query<K, V, Fu>(query: Query<K, V>, fetcher: impl Fn(K) -> Fu)
+pub async fn execute_query<K, V, Fu>(query: Query<K, V>, fetcher: impl Fn(K) -> Fu)
 where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
@@ -411,7 +411,7 @@ where
 
 // TODO: USE THIS?
 #[allow(unused)]
-pub(crate) fn ensure_valid_stale_time(
+pub fn ensure_valid_stale_time(
     stale_time: &Option<Duration>,
     gc_time: &Option<Duration>,
 ) -> Option<Duration> {

@@ -30,6 +30,7 @@ use std::cell::Cell;
 pub fn suppress_query_load(suppress: bool) {
     SUPPRESS_QUERY_LOAD.with(|w| w.set(suppress));
 }
+
 pub(crate) fn with_query_supressed<T>(func: impl FnOnce(bool) -> T) -> T {
     SUPPRESS_QUERY_LOAD.with(|w| func(w.get()))
 }

@@ -22,7 +22,7 @@ pub struct QueryObserver<K, V> {
 type Fetcher<K, V> = Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>;
 
 new_key_type! {
-    pub (crate) struct ListenerKey;
+    pub struct ListenerKey;
 }
 
 impl<K, V> std::fmt::Debug for QueryObserver<K, V>
@@ -196,7 +196,7 @@ where
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ObserverKey(u32);
+pub struct ObserverKey(u32);
 
 fn next_id() -> ObserverKey {
     ObserverKey(NEXT_ID.fetch_add(1, Ordering::Relaxed))
