@@ -1,12 +1,6 @@
 use crate::*;
 use leptos::*;
-use std::{
-    borrow::Borrow,
-    collections::{hash_map::Entry, HashMap},
-    future::Future,
-    rc::Rc,
-    time::Duration,
-};
+use std::{borrow::Borrow, collections::HashMap, future::Future, rc::Rc, time::Duration};
 
 use self::{
     cache_observer::CacheObserver, query::Query, query_cache::QueryCache,
@@ -403,10 +397,8 @@ impl QueryClient {
     {
         self.cache
             .use_cache_entry(key.clone(), move |(owner, entry)| match entry {
-                Entry::Occupied(entry) => {
-                    let query = entry.get();
-
-                    let _ = query.maybe_map_state(|state| match state {
+                Some(query) => {
+                    query.maybe_map_state(|state| match state {
                         QueryState::Created | QueryState::Loading => {
                             if let Some(result) = updater(None) {
                                 Ok(QueryState::Loaded(QueryData::now(result)))
@@ -436,16 +428,15 @@ impl QueryClient {
                             }
                         }
                     });
-                    false
+                    None
                 }
-                Entry::Vacant(entry) => {
+                None => {
                     if let Some(result) = updater(None) {
                         let query = with_owner(owner, || Query::new(key));
                         query.set_state(QueryState::Loaded(QueryData::now(result)));
-                        entry.insert(query);
-                        true
+                        Some(query)
                     } else {
-                        false
+                        None
                     }
                 }
             });

@@ -246,29 +246,28 @@ impl QueryCache {
     pub(crate) fn use_cache_entry<K, V>(
         &self,
         key: K,
-        // Return true if the entry was added.
-        func: impl FnOnce((Owner, Entry<'_, K, Query<K, V>>)) -> bool,
+        func: impl FnOnce((Owner, Option<&Query<K, V>>)) -> Option<Query<K, V>>,
     ) where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
         let query_cache = self;
-
-        let inserted = {
-            let key = key.clone();
-            self.use_cache(|cache| {
-                let entry = cache.entry(key);
-                let inserted = func((query_cache.owner, entry));
-                inserted
-            })
-        };
-
-        if inserted {
-            query_cache.size.set(self.size.get_untracked() + 1);
-            if let Some(query) = self.get_query::<K, V>(key) {
-                self.notify_new_query(query)
+        self.use_cache(|cache| match cache.entry(key) {
+            Entry::Vacant(entry) => {
+                if let Some(query) = func((query_cache.owner, None)) {
+                    entry.insert(query.clone());
+                    // Report insert.
+                    query_cache.size.set(self.size.get_untracked() + 1);
+                    self.notify_new_query(query)
+                }
             }
-        }
+            Entry::Occupied(mut entry) => {
+                let query = entry.get();
+                if let Some(query) = func((query_cache.owner, Some(query))) {
+                    entry.insert(query);
+                }
+            }
+        })
     }
 
     pub(crate) fn register_query_observer(&self, observer: impl CacheObserver + 'static) {
