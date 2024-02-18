@@ -312,8 +312,8 @@ where
                     None => {}
                     Some(cancellation) => {
                         match query.get_state() {
-                            // Already loading.
-                            QueryState::Loading | QueryState::Created => {
+                            // First load.
+                            QueryState::Created => {
                                 query.set_state(QueryState::Loading);
                                 let fetch = std::pin::pin!(fetcher(query.key.clone()));
                                 match execute_with_cancellation(fetch, cancellation).await {
@@ -322,15 +322,12 @@ where
                                         query.set_state(QueryState::Loaded(data));
                                     }
                                     Err(_) => {
-                                        logging::error!("Initial fetch was cancelled!");
                                         query.set_state(QueryState::Created);
                                     }
                                 }
                             }
                             // Subsequent loads.
-                            QueryState::Fetching(data)
-                            | QueryState::Loaded(data)
-                            | QueryState::Invalid(data) => {
+                            QueryState::Loaded(data) | QueryState::Invalid(data) => {
                                 query.set_state(QueryState::Fetching(data));
                                 let fetch = std::pin::pin!(fetcher(query.key.clone()));
                                 match execute_with_cancellation(fetch, cancellation).await {
@@ -348,6 +345,15 @@ where
                                         });
                                     }
                                 }
+                            }
+                            QueryState::Loading | QueryState::Fetching(_) => {
+                                logging::debug_warn!(
+                                    "Query is already loading, this is likely a bug."
+                                );
+                                debug_assert!(
+                                    false,
+                                    "Query is already loading, this is likely a bug."
+                                );
                             }
                         }
                         query.finalize_execution();
