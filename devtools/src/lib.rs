@@ -1,3 +1,5 @@
+mod timeout;
+
 use leptos::*;
 
 #[component]
@@ -14,6 +16,8 @@ mod dev_tools {
     use leptos::*;
     use leptos_query::*;
     use std::{collections::HashMap, time::Duration};
+
+    use crate::timeout::{time_until_stale, use_timeout};
 
     #[component]
     pub(crate) fn InnerDevtools() -> impl IntoView {
@@ -87,10 +91,10 @@ mod dev_tools {
     struct QueryCacheEntry {
         key: QueryCacheKey,
         state: RwSignal<QueryState<String>>,
-        is_stale: RwSignal<bool>,
         observer_count: RwSignal<usize>,
         gc_time: RwSignal<Option<Duration>>,
         stale_time: RwSignal<Option<Duration>>,
+        is_stale: Signal<bool>,
         mark_invalid: std::rc::Rc<dyn Fn() -> bool>,
     }
 
@@ -121,14 +125,47 @@ mod dev_tools {
                     mark_invalid,
                 }) => {
                     // Need to create signals with root owner, or else they will be disposed of.
-                    let entry = with_owner(self.owner, || QueryCacheEntry {
-                        key: key.clone(),
-                        state: create_rw_signal(state),
-                        stale_time: create_rw_signal(None),
-                        gc_time: create_rw_signal(None),
-                        observer_count: create_rw_signal(0),
-                        is_stale: create_rw_signal(false),
-                        mark_invalid,
+                    let entry = with_owner(self.owner, || {
+                        let stale_time = create_rw_signal(None);
+                        let state = create_rw_signal(state);
+
+                        let is_stale = {
+                            let (stale, set_stale) = create_signal(false);
+
+                            let updated_at = Signal::derive(move || state.with(|s| s.updated_at()));
+
+                            use_timeout(move || match (updated_at.get(), stale_time.get()) {
+                                (Some(updated_at), Some(stale_time)) => {
+                                    let duration = time_until_stale(updated_at, stale_time);
+                                    if duration.is_zero() {
+                                        set_stale.set(true);
+                                        None
+                                    } else {
+                                        set_stale.set(false);
+                                        set_timeout_with_handle(
+                                            move || {
+                                                set_stale.set(true);
+                                            },
+                                            duration,
+                                        )
+                                        .ok()
+                                    }
+                                }
+                                _ => None,
+                            });
+
+                            stale.into()
+                        };
+
+                        QueryCacheEntry {
+                            key: key.clone(),
+                            state,
+                            stale_time,
+                            gc_time: create_rw_signal(None),
+                            observer_count: create_rw_signal(0),
+                            is_stale,
+                            mark_invalid,
+                        }
                     });
 
                     self.query_state.update(|map| {
