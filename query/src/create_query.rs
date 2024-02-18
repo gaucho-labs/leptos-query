@@ -30,7 +30,7 @@ use crate::{
 ///
 /// ```
 /// use leptos_query::*;
-///  
+///
 /// fn create_query_test() {
 ///     let query_scope = create_query::<UserId, UserData, _>(fetch_user_data, QueryOptions::default());
 /// }
@@ -142,16 +142,20 @@ where
     ///
     /// * `key`: A function that returns the query key of type `K`.
     /// * `isomorphic`: A boolean indicating whether the prefetch should be performed isomorphically (both on server and client in SSR environments).
-    pub fn prefetch_query(&self, key: impl Fn() -> K + 'static) {
-        use_query_client().prefetch_query(key, self.make_fetcher())
+    pub async fn prefetch_query(&self, key: K) {
+        use_query_client()
+            .prefetch_query(key, self.make_fetcher())
+            .await
     }
 
     /// Fetch a query and store it in cache.
     /// Result can be read outside of Transition.
     ///
     /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
-    pub fn fetch_query(&self, key: impl Fn() -> K + 'static) -> QueryResult<V, impl RefetchFn> {
-        use_query_client().fetch_query(key, self.make_fetcher())
+    pub async fn fetch_query(&self, key: K) -> QueryState<V> {
+        use_query_client()
+            .fetch_query(key, self.make_fetcher())
+            .await
     }
 
     /// Retrieves the current state of a query identified by the given key function.

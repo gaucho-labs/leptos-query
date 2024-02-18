@@ -1,6 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
+    future::Future,
     rc::Rc,
     time::Duration,
 };
@@ -205,7 +206,6 @@ where
      */
 
     pub(crate) fn execute(&self) {
-        let query = self.clone();
         let fetcher = self
             .observers
             .try_borrow()
@@ -214,57 +214,7 @@ where
             .find_map(|f| f.get_fetcher());
 
         if let Some(fetcher) = fetcher {
-            with_query_supressed(move |supressed| {
-                if !supressed {
-                    leptos::spawn_local(async move {
-                        match query.new_execution() {
-                            None => {}
-                            Some(cancellation) => {
-                                match query.get_state() {
-                                    // Already loading.
-                                    QueryState::Loading | QueryState::Created => {
-                                        query.set_state(QueryState::Loading);
-                                        let fetch = std::pin::pin!(fetcher(query.key.clone()));
-                                        match execute_with_cancellation(fetch, cancellation).await {
-                                            Ok(data) => {
-                                                let data = QueryData::now(data);
-                                                query.set_state(QueryState::Loaded(data));
-                                            }
-                                            Err(_) => {
-                                                logging::error!("Initial fetch was cancelled!");
-                                                query.set_state(QueryState::Created);
-                                            }
-                                        }
-                                    }
-                                    // Subsequent loads.
-                                    QueryState::Fetching(data)
-                                    | QueryState::Loaded(data)
-                                    | QueryState::Invalid(data) => {
-                                        query.set_state(QueryState::Fetching(data));
-                                        let fetch = std::pin::pin!(fetcher(query.key.clone()));
-                                        match execute_with_cancellation(fetch, cancellation).await {
-                                            Ok(data) => {
-                                                let data = QueryData::now(data);
-                                                query.set_state(QueryState::Loaded(data));
-                                            }
-                                            Err(_) => {
-                                                query.maybe_map_state(|state| {
-                                                    if let QueryState::Fetching(data) = state {
-                                                        Ok(QueryState::Loaded(data))
-                                                    } else {
-                                                        Err(state)
-                                                    }
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                                query.finalize_execution()
-                            }
-                        }
-                    });
-                }
-            });
+            spawn_local(execute_query(self.clone(), move |k| fetcher(k)));
         }
     }
 
@@ -346,6 +296,72 @@ where
             { self.observers.borrow().is_empty() },
             "Query has active observers"
         );
+    }
+}
+
+pub(crate) async fn execute_query<K, V, Fu>(query: Query<K, V>, fetcher: impl Fn(K) -> Fu)
+where
+    K: crate::QueryKey + 'static,
+    V: crate::QueryValue + 'static,
+    Fu: Future<Output = V>,
+{
+    let result = with_query_supressed(move |supressed| {
+        if !supressed {
+            let future = async move {
+                match query.new_execution() {
+                    None => {}
+                    Some(cancellation) => {
+                        match query.get_state() {
+                            // Already loading.
+                            QueryState::Loading | QueryState::Created => {
+                                query.set_state(QueryState::Loading);
+                                let fetch = std::pin::pin!(fetcher(query.key.clone()));
+                                match execute_with_cancellation(fetch, cancellation).await {
+                                    Ok(data) => {
+                                        let data = QueryData::now(data);
+                                        query.set_state(QueryState::Loaded(data));
+                                    }
+                                    Err(_) => {
+                                        logging::error!("Initial fetch was cancelled!");
+                                        query.set_state(QueryState::Created);
+                                    }
+                                }
+                            }
+                            // Subsequent loads.
+                            QueryState::Fetching(data)
+                            | QueryState::Loaded(data)
+                            | QueryState::Invalid(data) => {
+                                query.set_state(QueryState::Fetching(data));
+                                let fetch = std::pin::pin!(fetcher(query.key.clone()));
+                                match execute_with_cancellation(fetch, cancellation).await {
+                                    Ok(data) => {
+                                        let data = QueryData::now(data);
+                                        query.set_state(QueryState::Loaded(data));
+                                    }
+                                    Err(_) => {
+                                        query.maybe_map_state(|state| {
+                                            if let QueryState::Fetching(data) = state {
+                                                Ok(QueryState::Loaded(data))
+                                            } else {
+                                                Err(state)
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        query.finalize_execution();
+                    }
+                }
+            };
+            Some(future)
+        } else {
+            None
+        }
+    });
+
+    if let Some(fut) = result {
+        fut.await;
     }
 }
 

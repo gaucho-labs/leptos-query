@@ -81,11 +81,11 @@ impl QueryClient {
     /// Result can be read outside of Transition.
     ///
     /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
-    pub fn fetch_query<K, V, Fu>(
+    pub async fn fetch_query<K, V, Fu>(
         &self,
-        key: impl Fn() -> K + 'static,
+        key: K,
         fetcher: impl Fn(K) -> Fu + 'static,
-    ) -> QueryResult<V, impl RefetchFn>
+    ) -> QueryState<V>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -93,28 +93,17 @@ impl QueryClient {
     {
         #[cfg(any(feature = "hydrate", feature = "csr"))]
         {
-            let query = self.cache.get_query_signal(key);
+            let query = self.cache.get_or_create_query::<K, V>(key);
 
-            let query_state =
-                register_observer_handle_cleanup(fetcher, query, QueryOptions::empty());
+            query::execute_query(query.clone(), fetcher).await;
 
-            let data = Signal::derive(move || query_state.get().data().cloned());
-
-            QueryResult {
-                data,
-                state: query_state,
-                refetch: move || query.with(|q| q.execute()),
-            }
+            query.get_state()
         }
         #[cfg(not(any(feature = "hydrate", feature = "csr")))]
         {
             let _ = key;
             let _ = fetcher;
-            QueryResult {
-                data: Signal::derive(|| None),
-                state: Signal::derive(|| QueryState::Created),
-                refetch: || (),
-            }
+            QueryState::Created
         }
     }
 
@@ -122,32 +111,23 @@ impl QueryClient {
     /// If the entry already exists it will still be refetched.
     ///
     /// If you need the result opt for [`fetch_query()`](Self::fetch_query)
-    pub fn prefetch_query<K, V, Fu>(
-        &self,
-        key: impl Fn() -> K + 'static,
-        fetcher: impl Fn(K) -> Fu + 'static,
-    ) where
+    pub async fn prefetch_query<K, V, Fu>(&self, key: K, fetcher: impl Fn(K) -> Fu + 'static)
+    where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
         Fu: Future<Output = V> + 'static,
     {
-        let query = self.cache.get_query_signal::<K, V>(key);
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
+        {
+            let query = self.cache.get_or_create_query::<K, V>(key);
 
-        let observer = Rc::new(QueryObserver::with_fetcher(
-            fetcher,
-            QueryOptions::empty(),
-            query.get_untracked(),
-        ));
-
-        create_isomorphic_effect({
-            let observer = observer.clone();
-            move |_| {
-                let query = query.get();
-                observer.update_query(Some(query));
-            }
-        });
-
-        on_cleanup(move || observer.cleanup());
+            query::execute_query(query.clone(), fetcher).await;
+        }
+        #[cfg(not(any(feature = "hydrate", feature = "csr")))]
+        {
+            let _ = key;
+            let _ = fetcher;
+        }
     }
 
     /// Retrieve the current state for an existing query.

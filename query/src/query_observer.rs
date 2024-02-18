@@ -61,6 +61,8 @@ where
 
         #[cfg(any(feature = "csr", feature = "hydrate"))]
         let refetch = {
+            use leptos::logging;
+
             let interval = {
                 if let Some(refetch_interval) = options.refetch_interval {
                     let query = query.clone();
