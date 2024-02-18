@@ -101,7 +101,7 @@ fn HomePage() -> impl IntoView {
     };
 
     let prefetch_two = move |_| {
-        post_query().prefetch_query(|| PostKey(1));
+        post_query().prefetch_query(|| PostKey(2));
     };
 
     view! {

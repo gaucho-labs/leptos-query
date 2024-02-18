@@ -115,12 +115,12 @@ impl QueryCache {
         query
     }
 
-    pub(crate) fn get_query<K, V>(&self, key: K) -> Option<Query<K, V>>
+    pub(crate) fn get_query<K, V>(&self, key: &K) -> Option<Query<K, V>>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        self.use_cache_option_mut(move |cache| cache.get(&key).cloned())
+        self.use_cache_option_mut(move |cache| cache.get(key).cloned())
     }
 
     pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>

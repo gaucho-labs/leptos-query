@@ -1,6 +1,8 @@
-use crate::*;
+use crate::{query_observer::ListenerKey, *};
 use leptos::*;
-use std::{borrow::Borrow, collections::HashMap, future::Future, rc::Rc, time::Duration};
+use std::{
+    borrow::Borrow, cell::Cell, collections::HashMap, future::Future, rc::Rc, time::Duration,
+};
 
 use self::{
     cache_observer::CacheObserver, query::Query, query_cache::QueryCache,
@@ -141,7 +143,7 @@ impl QueryClient {
             let observer = observer.clone();
             move |_| {
                 let query = query.get();
-                observer.update_query(query);
+                observer.update_query(Some(query));
             }
         });
 
@@ -152,63 +154,55 @@ impl QueryClient {
     /// If the query does not exist, [`None`](Option::None) will be returned.
     pub fn get_query_state<K, V>(
         &self,
-        _: impl Fn() -> K + 'static,
+        key: impl Fn() -> K + 'static,
     ) -> Signal<Option<QueryState<V>>>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        // let cache = self.cache.clone();
-        // let size = self.size();
+        let cache = self.cache.clone();
+        let size = self.size();
 
         // // Memoize state to avoid unnecessary hashmap lookups.
-        // let maybe_query = create_memo(move |_| {
-        //     let key = key();
-        //     // Subscribe to inserts/deletions.
-        //     size.get();
-        //     cache.use_cache_option(|cache: &HashMap<K, Query<K, V>>| cache.get(&key).cloned())
-        // });
+        let maybe_query = create_memo(move |_| {
+            let key = key();
+            // Subscribe to inserts/deletions.
+            size.track();
+            cache.get_query::<K, V>(&key)
+        });
 
-        // let state_signal = RwSignal::new(maybe_query.get_untracked().map(|q| q.get_state()));
+        let observer = Rc::new(QueryObserver::no_fetcher(
+            QueryOptions::empty(),
+            maybe_query.get_untracked(),
+        ));
 
-        // let ensure_cleanup = Rc::new(Cell::<Option<Box<dyn Fn()>>>::new(None));
+        let state_signal = RwSignal::new(maybe_query.get_untracked().map(|q| q.get_state()));
 
-        // on_cleanup({
-        //     let ensure_cleanup = ensure_cleanup.clone();
-        //     move || {
-        //         if let Some(cleanup) = ensure_cleanup.take() {
-        //             cleanup();
-        //         }
-        //     }
-        // });
+        let listener = Rc::new(Cell::new(None::<ListenerKey>));
 
-        // create_isomorphic_effect({
-        //     let ensure_cleanup = ensure_cleanup.clone();
-        //     move |_| {
-        //         if let Some(remove) = ensure_cleanup.take() {
-        //             remove();
-        //         }
+        create_isomorphic_effect({
+            let observer = observer.clone();
+            let listener = listener.clone();
+            move |_| {
+                // Ensure listener is set.
+                if let Some(curr_listener) = listener.take() {
+                    listener.set(Some(curr_listener));
+                } else {
+                    let listener_id = observer.add_listener(move |state| {
+                        state_signal.set(Some(state.clone()));
+                    });
+                    listener.set(Some(listener_id));
+                }
 
-        //         if let Some(query) = maybe_query.get() {
-        //             let (observer_signal, unsubscribe) =
-        //                 query.register_observer(QueryObserverKind::Active);
+                // Update
+                let query = maybe_query.get();
+                let current_state = query.as_ref().map(|q| q.get_state());
+                observer.update_query(query);
+                state_signal.set(current_state);
+            }
+        });
 
-        //             // Forward state changes to the signal.
-        //             // TODO: confirm that this is "closed" when outer effect changes.
-        //             create_isomorphic_effect(move |_| {
-        //                 let latest_state = observer_signal.get();
-        //                 state_signal.set(Some(latest_state));
-        //             });
-
-        //             ensure_cleanup.set(Some(Box::new(unsubscribe)));
-        //         } else {
-        //             state_signal.set(None);
-        //         }
-        //     }
-        // });
-
-        // state_signal.into()
-        todo!()
+        state_signal.into()
     }
 
     /// Attempts to invalidate an entry in the Query Cache.
@@ -258,6 +252,7 @@ impl QueryClient {
     pub fn invalidate_queries<K, V, Q>(&self, keys: impl IntoIterator<Item = Q>) -> Option<Vec<Q>>
     where
         K: crate::QueryKey + 'static,
+
         V: crate::QueryValue + 'static,
         Q: Borrow<K> + 'static,
     {
@@ -384,7 +379,7 @@ impl QueryClient {
     ///        }
     ///        Some(Monkey { name: "Luffy".to_string() })
     ///     });
-    ///     
+    ///
     /// }
     /// ```
     pub fn update_query_data<K, V>(

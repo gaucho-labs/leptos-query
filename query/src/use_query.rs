@@ -215,7 +215,7 @@ where
             // Update
             let query = query.get();
             state_signal.set(query.get_state());
-            observer.update_query(query);
+            observer.update_query(Some(query));
         }
     });
 
