@@ -161,8 +161,6 @@ impl QueryClient {
         let listener = Rc::new(Cell::new(None::<ListenerKey>));
 
         create_isomorphic_effect({
-            let observer = observer.clone();
-            let listener = listener.clone();
             move |_| {
                 // Ensure listener is set.
                 if let Some(curr_listener) = listener.take() {
@@ -658,5 +656,49 @@ mod tests {
             state1.get_untracked(),
             Some(QueryState::Invalid { .. })
         ));
+    }
+
+    #[test]
+    fn update_query_data_mut() {
+        let _ = create_runtime();
+
+        provide_query_client();
+        let client = use_query_client();
+
+        let state = |key: u32| {
+            use_query_client()
+                .cache
+                .get_query::<u32, u32>(&key)
+                .map(|q| q.get_state())
+                .and_then(|s| s.data().cloned())
+        };
+
+        // Setup: Create initial query data
+        let initial_value = 100_u32;
+        client.update_query_data::<u32, u32>(0, move |_| Some(initial_value));
+
+        assert_eq!(state(0), Some(100));
+
+        // Action: Update the data using `update_query_data_mut`
+        let update_result = client.update_query_data_mut::<u32, u32>(0, |data| *data += 50);
+
+        // Verification: Check that the data was updated and the method returned `true`
+        assert!(update_result, "Expected data to be updated");
+        assert_eq!(
+            state(0),
+            Some(initial_value + 50),
+            "Data was not updated correctly"
+        );
+
+        // Negative Case: Attempt to update a non-existent query
+        let non_existent_update_result =
+            client.update_query_data_mut::<u32, u32>(1, |data| *data += 50);
+
+        assert!(
+            !non_existent_update_result,
+            "Expected no data to be updated for a non-existent query"
+        );
+
+        assert_eq!(state(1), None, "Data was updated for a non-existent query")
     }
 }
