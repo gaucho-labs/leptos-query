@@ -309,8 +309,6 @@ impl QueryCache {
         K: QueryKey + 'static,
         V: QueryValue + 'static,
     {
-        // TODO: CHECK THIS.
-        // this is crucial to avoid the signal going out of scope once the use_query instance unmounts.
         let event = CacheEvent::created(query);
         self.notify_observers(event);
     }

@@ -114,7 +114,6 @@ where
     /// }
     /// ```
     pub fn use_query(&self, key: impl Fn() -> K + 'static) -> QueryResult<V, impl RefetchFn> {
-        // TODO: REVIEW MERGING OPTIONS
         use_query(key, self.make_fetcher(), self.options.clone())
     }
 
@@ -133,15 +132,15 @@ where
         key: impl Fn() -> K + 'static,
         options: QueryOptions<V>,
     ) -> QueryResult<V, impl RefetchFn> {
-        use_query(key, self.make_fetcher(), self.merge_options(options))
+        use_query(
+            key,
+            self.make_fetcher(),
+            options.merge(self.options.clone()),
+        )
     }
 
     /// Prefetches a query and stores it in the cache. Useful for preloading data before it is needed.
-    ///
-    /// # Parameters
-    ///
-    /// * `key`: A function that returns the query key of type `K`.
-    /// * `isomorphic`: A boolean indicating whether the prefetch should be performed isomorphically (both on server and client in SSR environments).
+    /// If you don't need the result opt for [`fetch_query()`](Self::fetch_query)
     pub async fn prefetch_query(&self, key: K) {
         use_query_client()
             .prefetch_query(key, self.make_fetcher())
@@ -264,17 +263,5 @@ where
     fn make_fetcher(&self) -> impl Fn(K) -> Pin<Box<dyn Future<Output = V>>> {
         let fetcher = self.fetcher.clone();
         move |key| fetcher(key)
-    }
-
-    fn merge_options(&self, options: QueryOptions<V>) -> QueryOptions<V> {
-        QueryOptions {
-            stale_time: options.stale_time.or(self.options.stale_time),
-            gc_time: options.gc_time.or(self.options.gc_time),
-            refetch_interval: options.refetch_interval.or(self.options.refetch_interval),
-            resource_option: options.resource_option.or(self.options.resource_option),
-            default_value: options
-                .default_value
-                .or_else(|| self.options.default_value.clone()),
-        }
     }
 }

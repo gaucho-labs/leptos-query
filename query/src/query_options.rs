@@ -60,6 +60,23 @@ impl<V> QueryOptions<V> {
             resource_option: self.resource_option,
         }
     }
+
+    /// Merge with default options.
+    pub fn merge_with_default(self) -> Self {
+        let default = Self::default();
+        self.merge(default)
+    }
+
+    /// Merge two sets of options. Self takes preference.
+    pub fn merge(self, other: Self) -> Self {
+        QueryOptions {
+            default_value: self.default_value.or(other.default_value),
+            stale_time: self.stale_time.or(other.stale_time),
+            gc_time: self.gc_time.or(other.gc_time),
+            refetch_interval: self.refetch_interval.or(other.refetch_interval),
+            resource_option: self.resource_option.or(other.resource_option),
+        }
+    }
 }
 
 const DEFAULT_STALE_TIME: Duration = Duration::from_secs(10);
