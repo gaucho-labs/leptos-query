@@ -145,6 +145,7 @@ where
 
     /// Prefetches a query and stores it in the cache. Useful for preloading data before it is needed.
     /// If you don't need the result opt for [`fetch_query()`](Self::fetch_query)
+    /// This should usually be called in a [`create_effect`](leptos::create_effect) or on an event (e.g. on:click).
     pub async fn prefetch_query(&self, key: K) {
         use_query_client()
             .prefetch_query(key, self.make_fetcher())
@@ -155,6 +156,7 @@ where
     /// Result can be read outside of Transition.
     ///
     /// If you don't need the result opt for [`prefetch_query()`](Self::prefetch_query)
+    /// This should usually be called in a [`create_effect`](leptos::create_effect) or on an event (e.g. on:click).
     pub async fn fetch_query(&self, key: K) -> QueryState<V> {
         use_query_client()
             .fetch_query(key, self.make_fetcher())
