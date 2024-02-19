@@ -162,7 +162,7 @@ fn post_query() -> QueryScope<PostKey, Option<String>> {
         QueryOptions {
             default_value: None,
             refetch_interval: None,
-            resource_option: Some(ResourceOption::Local),
+            resource_option: Some(ResourceOption::NonBlocking),
             stale_time: Some(Duration::from_secs(5)),
             gc_time: Some(Duration::from_secs(60)),
         },

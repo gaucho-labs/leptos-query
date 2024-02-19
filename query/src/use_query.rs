@@ -100,6 +100,11 @@ where
             ResourceOption::Blocking => {
                 create_blocking_resource(move || query.get(), resource_fetcher)
             }
+            ResourceOption::Local => create_local_resource_with_initial_value(
+                move || query.get(),
+                resource_fetcher,
+                default.map(|default| ResourceData(Some(default))),
+            ),
         }
     };
 

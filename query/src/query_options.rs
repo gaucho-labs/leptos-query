@@ -158,6 +158,9 @@ pub enum ResourceOption {
     NonBlocking,
     /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
     Blocking,
+
+    /// Query will use [`create_local_resource()`](leptos::create_local_resource)
+    Local,
 }
 
 fn ensure_valid_stale_time(
