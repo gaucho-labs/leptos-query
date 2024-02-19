@@ -204,7 +204,7 @@ csr = [
 
 Then in your app, render the devtools component. Make sure you also provide the query client. 
 
-It will by default only show in development mode. It will not be shown, or included in binary when you build your app in release mode. If you want to override this behaviour, you can enable the `force` feature.
+Devtools will by default only show in development mode. It will not be shown, or included in binary, when you build your app in release mode. If you want to override this behaviour, you can enable the `force` feature.
 
 ```rust
 
