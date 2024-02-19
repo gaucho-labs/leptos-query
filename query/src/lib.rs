@@ -17,10 +17,13 @@
 //! - background refetching
 //! - refetch intervals
 //! - memory management with cache lifetimes
+//! - cancellation
+//! - debugging tools
+//! - optimistic updates
 //!
 //! # A Simple Example
 //!
-//! In the root of your App, provide a query client:
+//! In the root of your App, provide a query client with [provide_query_client] or [provide_query_client_with_options] if you want to override the default options.
 //!
 //! ```rust
 //! use leptos_query::*;
@@ -35,37 +38,33 @@
 //! }
 //! ```
 //!
-//! Then make a query funciton:
+//! Then make a query function with [`use_query`][crate::use_query::use_query]
 //!
 //! ```
 //! use leptos::*;
 //! use leptos_query::*;
-//! use std::time::Duration;
-//! use serde::*;
 //!
-//! // Data type.
-//! #[derive(Clone, Deserialize, Serialize)]
-//! struct Monkey {
-//!     name: String,
+//! // Make a key type.
+//! #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+//! struct TrackId(i32);
+//!
+//! // The result of the query fetcher.
+//! #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+//! struct TrackData {
+//!    name: String,
 //! }
 //!
-//! // Monkey fetcher.
-//! async fn get_monkey(id: String) -> Monkey {
+//! // Query fetcher.
+//! async fn get_user(id: TrackId) -> TrackData {
 //!     todo!()
 //! }
 //!
-//! // Query for a Monkey.
-//! fn use_monkey_query(id: impl Fn() -> String + 'static) -> QueryResult<Monkey, impl RefetchFn> {
+//! // Query for a user.
+//! fn use_track_query(id: impl Fn() -> TrackId + 'static) -> QueryResult<TrackData, impl RefetchFn> {
 //!     leptos_query::use_query(
 //!         id,
-//!         get_monkey,
-//!         QueryOptions {
-//!             default_value: None,
-//!             refetch_interval: None,
-//!             resource_option: ResourceOption::NonBlocking,
-//!             stale_time: Some(Duration::from_secs(5)),
-//!             cache_time: Some(Duration::from_secs(60)),
-//!         },
+//!         get_user,
+//!         QueryOptions::default(),
 //!     )
 //! }
 //!
@@ -74,50 +73,44 @@
 //! Now you can use the query in any component in your app.
 //!
 //! ```rust
-//!
+//! # use serde::*;
+//! #
+//! # // Make a key type.
+//! # #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+//! # struct TrackId(i32);
+//! #
+//! # // The result of the query fetcher.
+//! # #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+//! # struct TrackData {
+//! #    name: String,
+//! # }
+//! #
+//! # fn use_track_query(id: impl Fn() -> TrackId + 'static) -> QueryResult<TrackData, impl RefetchFn>  {
+//! #     QueryResult {data: todo!(), state: todo!(), refetch: || () }
+//! # }
 //! use leptos::*;
 //! use leptos_query::*;
 //!
 //! #[component]
-//! fn MonkeyView(id: String) -> impl IntoView {
+//! fn TrackView(id: TrackId) -> impl IntoView {
 //!     let QueryResult {
 //!         data,
-//!         is_loading,
-//!         is_fetching,
-//!         is_stale,
 //!         ..
-//!     } = use_monkey_query(move || id.clone());
+//!     } = use_track_query(move || id.clone());
 //!
 //!     view! {
-//!       // You can use the query result data here.
-//!       // Everything is reactive.
 //!        <div>
-//!            <div>
-//!                <span>"Loading Status: "</span>
-//!                <span>{move || { if is_loading.get() { "Loading..." } else { "Loaded" } }}</span>
-//!            </div>
-//!            <div>
-//!                <span>"Fetching Status: "</span>
-//!                <span>
-//!                    {move || { if is_fetching.get() { "Fetching..." } else { "Idle" } }}
-//!                </span>
-//!            </div>
-//!            <div>
-//!                <span>"Stale Status: "</span>
-//!                <span>
-//!                    {move || { if is_stale.get() { "Stale" } else { "Fresh" } }}
-//!                </span>
-//!            </div>
 //!            // Query data should be read inside a Transition/Suspense component.
 //!            <Transition
 //!                fallback=move || {
 //!                    view! { <h2>"Loading..."</h2> }
 //!                }>
 //!                {move || {
-//!                    data()
-//!                        .map(|monkey| {
-//!                            view! { <h2>{monkey.name}</h2> }
-//!                        })
+//!                     data
+//!                         .get()
+//!                         .map(|track| {
+//!                            view! { <h2>{track.name}</h2> }
+//!                         })
 //!                }}
 //!            </Transition>
 //!        </div>
