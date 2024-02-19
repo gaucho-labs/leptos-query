@@ -121,12 +121,13 @@ pub mod local_storage_persister {
         async fn persist(&self, key: &str, query: PersistQueryData) {
             cfg_if! {
                 if #[cfg(any(feature = "hydrate", feature = "csr"))] {
-                    let value = miniserde::json::to_string(&query.value);
                     if let Some(storage) = local_storage() {
+                        let value = miniserde::json::to_string(&query);
                         let _ = storage.set(&key, &value);
                     }
                 } else {
                     let _ = query;
+                    let _ = key;
                     ()
                 }
             }
