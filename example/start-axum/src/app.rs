@@ -16,6 +16,9 @@ pub fn App() -> impl IntoView {
     // Provides Query Client for entire app.
     provide_query_client();
 
+    let client = use_query_client();
+    client.add_persister(local_storage_persister::LocalStoragePersister);
+
     view! {
         <Stylesheet id="leptos" href="/pkg/start-axum.css"/>
         <Title text="Welcome to Leptos"/>
@@ -310,10 +313,13 @@ fn RefetchInterval() -> impl IntoView {
         state,
         refetch,
         ..
-    } = post_query().use_query_with_options(|| PostKey(1), QueryOptions {
-        refetch_interval: Some(Duration::from_secs(5)),
-        ..Default::default()
-    });
+    } = post_query().use_query_with_options(
+        || PostKey(1),
+        QueryOptions {
+            refetch_interval: Some(Duration::from_secs(5)),
+            ..Default::default()
+        },
+    );
 
     create_effect(move |_| logging::log!("State: {:#?}", state.get()));
 

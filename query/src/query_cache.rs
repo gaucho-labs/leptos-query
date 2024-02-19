@@ -11,6 +11,7 @@ use slotmap::SlotMap;
 use crate::{
     cache_observer::{CacheEvent, CacheObserver},
     query::Query,
+    query_persister::QueryPersister,
     QueryKey, QueryOptions, QueryValue,
 };
 
@@ -19,11 +20,12 @@ pub(crate) struct QueryCache {
     owner: Owner,
     cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
     observers: Rc<RefCell<SlotMap<CacheObserverKey, Box<dyn CacheObserver>>>>,
+    persister: Rc<RefCell<Option<Rc<dyn QueryPersister>>>>,
     size: RwSignal<usize>,
 }
 
 slotmap::new_key_type! {
-    struct CacheObserverKey;
+    pub(crate) struct CacheObserverKey;
 }
 
 pub(crate) struct CacheEntry<K, V>(HashMap<K, Query<K, V>>);
@@ -81,6 +83,7 @@ impl QueryCache {
             cache: Rc::new(RefCell::new(HashMap::new())),
             observers: Rc::new(RefCell::new(SlotMap::with_key())),
             size: RwSignal::new(0),
+            persister: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -110,6 +113,33 @@ impl QueryCache {
             };
             query.clone()
         });
+
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
+        if created {
+            if let Some(persister) = self.persister.borrow().clone() {
+                let query = query.clone();
+                spawn_local({
+                    async move {
+                        let key = crate::make_cache_key(query.get_key());
+                        let result = persister.retrieve(key.as_str()).await;
+
+                        // ensure query is not already loaded.
+                        if query.with_state(|s| matches!(s, crate::QueryState::Loaded(_))) {
+                            return;
+                        }
+
+                        if let Some(serialized) = result {
+                            match serialized.try_into() {
+                                Ok(state) => query.set_state(state),
+                                Err(e) => {
+                                    logging::error!("Error deserializing query state: {:?}", e);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
 
         // It's necessary to delay the size update until we are out of the borrow, to avoid borrow errors.
         if created {
@@ -282,11 +312,33 @@ impl QueryCache {
         }
     }
 
-    pub(crate) fn register_query_observer(&self, observer: impl CacheObserver + 'static) {
+    pub(crate) fn register_observer(
+        &self,
+        observer: impl CacheObserver + 'static,
+    ) -> CacheObserverKey {
         self.observers
             .try_borrow_mut()
             .expect("register_query_observer borrow mut")
-            .insert(Box::new(observer));
+            .insert(Box::new(observer))
+    }
+
+    pub(crate) fn unregister_observer(
+        &self,
+        key: CacheObserverKey,
+    ) -> Option<Box<dyn CacheObserver>> {
+        self.observers
+            .try_borrow_mut()
+            .expect("unregister_query_observer borrow mut")
+            .remove(key)
+    }
+
+    pub(crate) fn add_persister(&self, persister: impl QueryPersister + 'static) {
+        let persister = Rc::new(persister) as Rc<dyn QueryPersister>;
+        *self.persister.borrow_mut() = Some(persister);
+    }
+
+    pub(crate) fn remove_persister(&self) -> Option<Rc<dyn QueryPersister>> {
+        self.persister.borrow_mut().take()
     }
 
     pub(crate) fn notify<K, V>(&self, notification: CacheNotification<K, V>)

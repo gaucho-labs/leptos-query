@@ -14,15 +14,18 @@ repository = "https://github.com/nicoburniske/leptos_query"
 leptos = { workspace = true }
 cfg-if = { workspace = true }
 js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = ["Storage"]}
+miniserde = { version = "0.1" }
 gloo-timers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 slotmap = { workspace = true }
 futures-channel = { workspace = true }
 futures = { workspace = true }
+async-trait = { version = "0.1" }
 
 [features]
-hydrate = ["js-sys", "gloo-timers"]
-csr = ["js-sys", "gloo-timers"]
+hydrate = ["js-sys", "web-sys", "gloo-timers"]
+csr = ["js-sys", "web-sys", "gloo-timers"]
 ssr = ["tokio"]
 
 [dev-dependencies]

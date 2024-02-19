@@ -4,7 +4,7 @@ use std::{borrow::Borrow, cell::Cell, collections::HashMap, future::Future, rc::
 
 use self::{
     cache_observer::CacheObserver, query::Query, query_cache::QueryCache,
-    query_observer::QueryObserver,
+    query_observer::QueryObserver, query_persister::QueryPersister,
 };
 
 /// Provides a Query Client to the current scope.
@@ -451,7 +451,23 @@ impl QueryClient {
 
     /// Registers the cache observer.
     pub fn register_cache_observer(&self, observer: impl CacheObserver + 'static) {
-        self.cache.register_query_observer(observer);
+        let key = self.cache.register_observer(observer);
+        let cache = self.cache.clone();
+
+        on_cleanup(move || {
+            cache.unregister_observer(key);
+        })
+    }
+
+    /// Adds a persister to the cache.
+    pub fn add_persister(&self, persister: impl QueryPersister + Clone + 'static) {
+        self.register_cache_observer(persister.clone());
+        self.cache.add_persister(persister);
+    }
+
+    /// Removes the persister from the cache.
+    pub fn remove_persister(&self) -> bool {
+        self.cache.remove_persister().is_some()
     }
 }
 

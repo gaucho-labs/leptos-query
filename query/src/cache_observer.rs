@@ -54,10 +54,11 @@ impl CacheEvent {
         K: crate::QueryKey + 'static,
         V: crate::QueryValue + 'static,
     {
+        let options =
+            options.map_value(|v| leptos::Serializable::ser(&v).expect("Serialize Query Options"));
         CacheEvent::ObserverAdded(ObserverAdded {
             key: key.into(),
-            options: options
-                .map_value(|v| leptos::Serializable::ser(&v).expect("Serialize Query Options")),
+            options,
         })
     }
 
@@ -122,10 +123,7 @@ where
             state.map_data(|data| leptos::Serializable::ser(data).expect("Serialize Query State"))
         });
 
-        let mark_invalid = {
-            let query = query.clone();
-            Rc::new(move || query.mark_invalid())
-        };
+        let mark_invalid = Rc::new(move || query.mark_invalid());
 
         CreatedQuery {
             key,
@@ -155,6 +153,13 @@ where
     K: crate::QueryKey + 'static,
 {
     fn from(key: &K) -> Self {
-        QueryCacheKey(format!("{:?}", key))
+        QueryCacheKey(make_cache_key(key))
     }
+}
+
+pub(crate) fn make_cache_key<K>(key: &K) -> String
+where
+    K: crate::QueryKey + 'static,
+{
+    format!("{key:?}")
 }

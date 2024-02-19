@@ -134,6 +134,7 @@ mod query_client;
 mod query_executor;
 mod query_observer;
 mod query_options;
+mod query_persister;
 mod query_result;
 mod query_state;
 mod use_query;
@@ -145,6 +146,7 @@ pub use instant::*;
 pub use query_client::*;
 pub use query_executor::*;
 pub use query_options::*;
+pub use query_persister::*;
 pub use query_result::*;
 pub use query_state::*;
 pub use use_query::*;
@@ -152,6 +154,9 @@ pub use use_query::*;
 /// Convenience trait for query key requirements.
 pub trait QueryKey: std::fmt::Debug + std::hash::Hash + Eq + Clone {}
 impl<K> QueryKey for K where K: std::fmt::Debug + std::hash::Hash + Eq + Clone {}
+// pub trait QueryKey: std::fmt::Debug + Clone + std::hash::Hash + Eq + leptos::Serializable {}
+// impl<K> QueryKey for K where K: std::fmt::Debug + Clone + std::hash::Hash + Eq + leptos::Serializable
+// {}
 
 /// Convenience trait for query value requirements.
 pub trait QueryValue: std::fmt::Debug + Clone + leptos::Serializable {}
