@@ -11,6 +11,8 @@ use crate::{
 
 /// Creates a new `QueryScope` for managing queries with specific key and value types.
 ///
+/// Useful for having typed invalidation, setting, and updating of queries.
+///
 /// # Type Parameters
 ///
 /// * `K`: The type of the query key.
@@ -69,6 +71,7 @@ where
 ///
 /// * `K`: The type of the query key.
 /// * `V`: The type of the query value.
+#[derive(Clone)]
 pub struct QueryScope<K, V> {
     fetcher: Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>,
     options: QueryOptions<V>,
@@ -97,7 +100,7 @@ where
     ///
     /// fn test() {
     ///     provide_query_client();
-    ///     let query_scope = create_query::<UserId, UserData, _>(fetch_user_data, QueryOptions::default());
+    ///     let query_scope = create_query(fetch_user_data, QueryOptions::default());
     ///     let query = query_scope.use_query(|| UserId(1));
     /// }
     ///
@@ -168,6 +171,13 @@ where
     /// A `Signal` containing an `Option` with the current `QueryState` of the query. If the query does not exist, the `Signal` will contain `None`.
     pub fn get_query_state(&self, key: impl Fn() -> K + 'static) -> Signal<Option<QueryState<V>>> {
         use_query_client().get_query_state(key)
+    }
+
+    /// Retrieve the current state for an existing query.
+    /// If the query does not exist, [`None`](Option::None) will be returned.
+    /// Useful for when you want to introspect the state of a query without subscribing to it.
+    pub fn peek_query_state(&self, key: &K) -> Option<QueryState<V>> {
+        use_query_client().peek_query_state(key)
     }
 
     /// Invalidates a query in the cache, identified by a specific key, marking it as needing a refetch.

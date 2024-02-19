@@ -21,6 +21,11 @@
 //! - debugging tools
 //! - optimistic updates
 //!
+//!
+//! ## The main entry points to using Queries are:
+//! - [`use_query`][crate::use_query::use_query()] - A query primitive for reading, caching, and refetching data.
+//! - [`create_query`](crate::create_query::create_query) - A wrapper with useful methods for managing queries.
+//!
 //! # A Simple Example
 //!
 //! In the root of your App, provide a query client with [provide_query_client] or [provide_query_client_with_options] if you want to override the default options.
@@ -45,7 +50,7 @@
 //! use leptos_query::*;
 //!
 //! // Make a key type.
-//! #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+//! #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 //! struct TrackId(i32);
 //!
 //! // The result of the query fetcher.
@@ -76,7 +81,7 @@
 //! # use serde::*;
 //! #
 //! # // Make a key type.
-//! # #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+//! # #[derive(Debug, Clone,  Hash, Eq, PartialEq)]
 //! # struct TrackId(i32);
 //! #
 //! # // The result of the query fetcher.

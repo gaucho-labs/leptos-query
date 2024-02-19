@@ -29,7 +29,7 @@ pub fn use_query_client() -> QueryClient {
 ///
 /// Queries can be:
 /// - [Prefetched](Self::prefetch_query)
-///     - Query will start loading before you invoke [use_query](use_query::use_query).
+///     - Query will start loading before you invoke [use_query](use_query::use_query()).
 /// - [Invalidated](Self::invalidate_query)
 ///     - Query will refetch on next usage. Active queries are immediately refetched in the background.
 /// - [Introspected](Self::get_query_state)
@@ -155,6 +155,17 @@ impl QueryClient {
         });
 
         state_signal.into()
+    }
+
+    /// Retrieve the current state for an existing query.
+    /// If the query does not exist, [`None`](Option::None) will be returned.
+    /// Useful for when you want to introspect the state of a query without subscribing to it.
+    pub fn peek_query_state<K, V>(&self, key: &K) -> Option<QueryState<V>>
+    where
+        K: QueryKey + 'static,
+        V: QueryValue + 'static,
+    {
+        self.cache.get_query::<K, V>(key).map(|q| q.get_state())
     }
 
     /// Attempts to invalidate an entry in the Query Cache.
@@ -390,6 +401,7 @@ impl QueryClient {
     }
 
     /// Update the query's data.
+    /// If the query does not exist, it will be created.
     pub fn set_query_data<K, V>(&self, key: K, data: V)
     where
         K: QueryKey + 'static,
@@ -399,6 +411,7 @@ impl QueryClient {
     }
 
     /// Mutate the existing data if it exists.
+    /// All listeners will be notified, regardless of whether the data was updated or not.
     pub fn update_query_data_mut<K, V>(
         &self,
         key: impl Borrow<K>,
@@ -449,7 +462,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn set_query_data() {
+    fn update_query_data() {
         let _ = create_runtime();
 
         provide_query_client();
@@ -487,6 +500,61 @@ mod tests {
             Some("1".to_string()),
             state().and_then(|q| q.data().cloned())
         );
+    }
+
+    #[test]
+    fn set_query_data_new_query() {
+        let _ = create_runtime();
+
+        provide_query_client();
+        let client = use_query_client();
+
+        // Closure to get the current state of a query
+        let state = || {
+            use_query_client()
+                .cache
+                .get_query::<u32, String>(&0)
+                .map(|q| q.get_state())
+                .and_then(|s| s.data().cloned())
+        };
+
+        // Verify initial state: Query does not exist
+        assert_eq!(None, state());
+
+        // Set data for a new query
+        client.set_query_data::<u32, String>(0, "New Data".to_string());
+
+        // Verify the query now exists with the correct data
+        assert_eq!(Some("New Data".to_string()), state());
+    }
+
+    #[test]
+    fn set_query_data_existing_query() {
+        let _ = create_runtime();
+
+        provide_query_client();
+        let client = use_query_client();
+
+        // Closure to get the current state of a query
+        let state = |key: u32| {
+            use_query_client()
+                .cache
+                .get_query::<u32, String>(&key)
+                .map(|q| q.get_state())
+                .and_then(|s| s.data().cloned())
+        };
+
+        // Setup: Create an initial query with some data
+        client.set_query_data::<u32, String>(1, "Initial Data".to_string());
+
+        // Verify initial state: Query exists with initial data
+        assert_eq!(Some("Initial Data".to_string()), state(1));
+
+        // Set new data for the existing query
+        client.set_query_data::<u32, String>(1, "Updated Data".to_string());
+
+        // Verify the query data has been updated
+        assert_eq!(Some("Updated Data".to_string()), state(1));
     }
 
     #[test]
