@@ -175,7 +175,7 @@ mod dev_tools {
                 CacheEvent::Removed(key) => self.query_state.update(|map| {
                     map.remove(&key);
                 }),
-                // TODO: Fix this borrow error.
+                // TODO: Fix this borrow error when using signal update.
                 CacheEvent::Updated(SerializedQuery { key, state }) => {
                     let map = self.query_state.get_untracked();
                     if let Some(entry) = map.get(&key) {
@@ -362,19 +362,28 @@ mod dev_tools {
                 }
             >
 
-                <div class="bg-lq-background text-lq-foreground px-0 fixed bottom-0 left-0 right-0 z-[1000]"
-                    style:height= move || format!("{}px", height_signal.get())
+                <div
+                    class="bg-lq-background text-lq-foreground px-0 fixed bottom-0 left-0 right-0 z-[1000]"
+                    style:height=move || format!("{}px", height_signal.get())
                     ref=container_ref
                 >
-                    <div class="w-full py-1 bg-lq-background cursor-ns-resize transition-colors hover:bg-lq-border" on:mousedown=handle_drag_start/>
+                    <div
+                        class="w-full py-1 bg-lq-background cursor-ns-resize transition-colors hover:bg-lq-border"
+                        on:mousedown=handle_drag_start
+                    ></div>
                     <div class="h-full flex flex-col relative">
                         <div class="flex-1 overflow-hidden flex">
                             <div class="flex flex-col flex-1 overflow-y-auto">
                                 <Header/>
-                                <div class="py-1 px-2 border-lq-border border-b flex items-center w-full gap-2">
-                                    <SearchInput/>
-                                    <SetSort/>
-                                    <SetSortOrder/>
+                                <div class="py-1 px-2 border-lq-border border-b flex items-center w-full justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <SearchInput/>
+                                        <SetSort/>
+                                        <SetSortOrder/>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <ClearCache/>
+                                    </div>
                                 </div>
 
                                 <ul class="flex flex-col gap-1">
@@ -609,6 +618,35 @@ mod dev_tools {
     }
 
     #[component]
+    fn ClearCache() -> impl IntoView {
+        let cache = leptos_query::use_query_client();
+
+        view! {
+            <button
+                class="bg-lq-input text-lq-input-foreground rounded-md px-2 py-1 text-xs inline-flex items-center gap-1 border border-lq-border"
+                on:click=move |_| {
+                    cache.clear();
+                }
+            >
+                <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 15 15"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <path
+                        d="M5.5 1C5.22386 1 5 1.22386 5 1.5C5 1.77614 5.22386 2 5.5 2H9.5C9.77614 2 10 1.77614 10 1.5C10 1.22386 9.77614 1 9.5 1H5.5ZM3 3.5C3 3.22386 3.22386 3 3.5 3H5H10H11.5C11.7761 3 12 3.22386 12 3.5C12 3.77614 11.7761 4 11.5 4H11V12C11 12.5523 10.5523 13 10 13H5C4.44772 13 4 12.5523 4 12V4L3.5 4C3.22386 4 3 3.77614 3 3.5ZM5 4H10V12H5V4Z"
+                        fill="currentColor"
+                        fill-rule="evenodd"
+                        clip-rule="evenodd"
+                    ></path>
+                </svg>
+            </button>
+        }
+    }
+
+    #[component]
     fn QueryRow(entry: QueryCacheEntry) -> impl IntoView {
         let selected_query = use_devtools_context().selected_query;
         let QueryCacheEntry {
@@ -651,7 +689,7 @@ mod dev_tools {
 
                 {observer}
                 <span class="w-[4.5rem]">
-                    <RowStateLabel state={state.into()} is_stale={is_stale.into()}/>
+                    <RowStateLabel state=state.into() is_stale=is_stale.into()/>
                 </span>
                 <span class="text-sm">{key.0}</span>
             </li>
@@ -685,7 +723,11 @@ mod dev_tools {
         });
 
         move || {
-            view! { <DotBadge color=badge.get() dot=false>{state_label}</DotBadge> }
+            view! {
+                <DotBadge color=badge.get() dot=false>
+                    {state_label}
+                </DotBadge>
+            }
         }
     }
 
@@ -769,7 +811,10 @@ mod dev_tools {
                             <div class=entry_class>
                                 <dt class="text-zinc-100">Status</dt>
                                 <dd class="text-zinc-200">
-                                    <RowStateLabel state={query_state.into()} is_stale={is_stale.into()}/>
+                                    <RowStateLabel
+                                        state=query_state.into()
+                                        is_stale=is_stale.into()
+                                    />
                                 </dd>
                             </div>
                             <div class=entry_class>
