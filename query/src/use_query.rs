@@ -142,6 +142,15 @@ where
     QueryResult {
         data,
         state: query_state,
+        is_loading: Signal::derive(move || {
+            query_state.with(|state| matches!(state, QueryState::Loading))
+        }),
+        is_fetching: Signal::derive(move || {
+            query_state.with(|state| matches!(state, QueryState::Loading | QueryState::Fetching(_)))
+        }),
+        is_invalid: Signal::derive(move || {
+            query_state.with(|state| matches!(state, QueryState::Invalid(_)))
+        }),
         refetch: move || query.with_untracked(|q| q.execute()),
     }
 }

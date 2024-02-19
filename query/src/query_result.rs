@@ -13,6 +13,12 @@ where
     pub data: Signal<Option<V>>,
     /// The current state of the data.
     pub state: Signal<QueryState<V>>,
+    /// If the query is fetching for the first time.
+    pub is_loading: Signal<bool>,
+    /// If the query is actively fetching.
+    pub is_fetching: Signal<bool>,
+    /// If the query data has been marked as invalid.
+    pub is_invalid: Signal<bool>,
 
     /// Refetch the query.
     pub refetch: R,
