@@ -1,5 +1,29 @@
 use std::time::Duration;
 
+/// Default options for all queries under this client.
+#[derive(Debug, Clone, Copy)]
+pub struct DefaultQueryOptions {
+    /// Time before a query is considered stale.
+    pub stale_time: Option<Duration>,
+    /// Time before an inactive query is removed from cache.
+    pub gc_time: Option<Duration>,
+    /// Time before a query is refetched.
+    pub refetch_interval: Option<Duration>,
+    /// Determines which type of resource to use.
+    pub resource_option: ResourceOption,
+}
+
+impl Default for DefaultQueryOptions {
+    fn default() -> Self {
+        Self {
+            stale_time: Some(DEFAULT_STALE_TIME),
+            gc_time: Some(DEFAULT_GC_TIME),
+            refetch_interval: None,
+            resource_option: ResourceOption::default(),
+        }
+    }
+}
+
 /**
  * Options for a query [`crate::use_query::use_query`]
  */
@@ -76,6 +100,23 @@ impl<V> QueryOptions<V> {
             refetch_interval: self.refetch_interval.or(other.refetch_interval),
             resource_option: self.resource_option.or(other.resource_option),
         }
+        .validate()
+    }
+
+    /// Ensures that gc_time is >= than stale_time.
+    pub fn validate(self) -> Self {
+        let stale_time = self.stale_time;
+        let gc_time = self.gc_time;
+
+        let stale_time = ensure_valid_stale_time(&stale_time, &gc_time);
+
+        QueryOptions {
+            default_value: self.default_value,
+            stale_time,
+            gc_time: self.gc_time,
+            refetch_interval: self.refetch_interval,
+            resource_option: self.resource_option,
+        }
     }
 }
 
@@ -94,6 +135,7 @@ impl<V> Default for QueryOptions<V> {
                 refetch_interval: default_options.refetch_interval,
                 resource_option: Some(default_options.resource_option),
             }
+            .validate()
         } else {
             Self {
                 default_value: None,
@@ -102,16 +144,188 @@ impl<V> Default for QueryOptions<V> {
                 refetch_interval: None,
                 resource_option: Some(ResourceOption::NonBlocking),
             }
+            .validate()
         }
     }
 }
 
 /// Determines which type of resource to use.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ResourceOption {
     /// Query will use [`create_resource()`](leptos::create_resource)
     #[default]
     NonBlocking,
     /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
     Blocking,
+}
+
+fn ensure_valid_stale_time(
+    stale_time: &Option<Duration>,
+    gc_time: &Option<Duration>,
+) -> Option<Duration> {
+    match (stale_time, gc_time) {
+        (Some(ref stale_time), Some(ref gc_time)) => {
+            if stale_time > gc_time {
+                leptos::logging::debug_warn!(
+                    "Stale time is greater than gc time. Using gc time instead. Stale: {}, GC: {}",
+                    stale_time.as_millis(),
+                    gc_time.as_millis()
+                );
+                Some(*gc_time)
+            } else {
+                Some(*stale_time)
+            }
+        }
+        (stale_time, _) => *stale_time,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::provide_query_client_with_options;
+
+    use super::*;
+
+    #[test]
+    fn validate_stale_time_less_than_gc_time() {
+        let options = QueryOptions::<i32> {
+            default_value: None,
+            stale_time: Some(Duration::from_secs(5)),
+            gc_time: Some(Duration::from_secs(10)),
+            refetch_interval: None,
+            resource_option: None,
+        }
+        .validate();
+
+        assert_eq!(
+            options.stale_time,
+            Some(Duration::from_secs(5)),
+            "Stale time should remain unchanged"
+        );
+        assert_eq!(
+            options.gc_time,
+            Some(Duration::from_secs(10)),
+            "GC time should remain unchanged"
+        );
+    }
+
+    #[test]
+    fn validate_stale_time_greater_than_gc_time() {
+        let options = QueryOptions::<i32> {
+            default_value: None,
+            stale_time: Some(Duration::from_secs(15)),
+            gc_time: Some(Duration::from_secs(10)),
+            refetch_interval: None,
+            resource_option: None,
+        }
+        .validate();
+
+        assert_eq!(
+            options.stale_time,
+            Some(Duration::from_secs(10)),
+            "Stale time should be adjusted to GC time"
+        );
+        assert_eq!(
+            options.gc_time,
+            Some(Duration::from_secs(10)),
+            "GC time should remain unchanged"
+        );
+    }
+
+    #[test]
+    fn validate_stale_time_without_gc_time() {
+        let options = QueryOptions::<i32> {
+            default_value: None,
+            stale_time: Some(Duration::from_secs(5)),
+            gc_time: None,
+            refetch_interval: None,
+            resource_option: None,
+        }
+        .validate();
+
+        assert_eq!(
+            options.stale_time,
+            Some(Duration::from_secs(5)),
+            "Stale time should remain unchanged"
+        );
+        assert_eq!(options.gc_time, None, "GC time should remain None");
+    }
+
+    #[test]
+    fn validate_gc_time_without_stale_time() {
+        let options = QueryOptions::<i32> {
+            default_value: None,
+            stale_time: None,
+            gc_time: Some(Duration::from_secs(10)),
+            refetch_interval: None,
+            resource_option: None,
+        }
+        .validate();
+
+        assert_eq!(options.stale_time, None, "Stale time should remain None");
+        assert_eq!(
+            options.gc_time,
+            Some(Duration::from_secs(10)),
+            "GC time should remain unchanged"
+        );
+    }
+
+    #[test]
+    fn validate_none_stale_and_gc_time() {
+        let options = QueryOptions::<i32> {
+            default_value: None,
+            stale_time: None,
+            gc_time: None,
+            refetch_interval: None,
+            resource_option: None,
+        }
+        .validate();
+
+        assert_eq!(options.stale_time, None, "Stale time should remain None");
+        assert_eq!(options.gc_time, None, "GC time should remain None");
+    }
+
+    #[test]
+    fn test_default() {
+        let _ = leptos::create_runtime();
+
+        provide_query_client_with_options(DefaultQueryOptions {
+            stale_time: Some(Duration::from_secs(1)),
+            gc_time: Some(Duration::from_secs(2)),
+            refetch_interval: Some(Duration::from_secs(3)),
+            resource_option: ResourceOption::NonBlocking,
+        });
+
+        // Action: Create a QueryOptions instance using Default::default()
+        let default_options: QueryOptions<()> = Default::default();
+
+        // Verification: Assert that QueryOptions has the expected default values
+        assert_eq!(
+            default_options.stale_time,
+            Some(Duration::from_secs(1)),
+            "Default stale_time should match the provided QueryClient's default"
+        );
+        assert_eq!(
+            default_options.gc_time,
+            Some(Duration::from_secs(2)),
+            "Default gc_time should match the provided QueryClient's default"
+        );
+        assert_eq!(
+            default_options.refetch_interval,
+            Some(Duration::from_secs(3)),
+            "Default refetch_interval should match the provided QueryClient's default"
+        );
+        assert_eq!(
+            default_options.resource_option,
+            Some(ResourceOption::NonBlocking),
+            "Default resource_option should match the provided QueryClient's default"
+        );
+
+        // Additional check: Ensure the default options are validated
+        // This ensures gc_time is not less than stale_time after validation
+        assert!(
+            default_options.gc_time.unwrap() >= default_options.stale_time.unwrap(),
+            "After validation, gc_time should not be less than stale_time"
+        );
+    }
 }

@@ -137,7 +137,7 @@ where
     QueryResult {
         data,
         state: query_state,
-        refetch: move || query.with(|q| q.execute()),
+        refetch: move || query.with_untracked(|q| q.execute()),
     }
 }
 
@@ -231,36 +231,3 @@ where
 
     state_signal.into()
 }
-
-// // Effect for refetching query on interval, if present.
-// // This is passing a query explicitly, because this should only apply to the active query.
-// pub(crate) fn sync_refetch<K, V>(
-//     query: Memo<Query<K, V>>,
-//     query_state: Signal<QueryState<V>>,
-//     executor: impl Fn() + Clone + 'static,
-// ) where
-//     K: crate::QueryKey + 'static,
-//     V: crate::QueryValue + 'static,
-// {
-//     let updated_at = create_memo(move |_| query_state.with(|state| state.updated_at()));
-
-//     let _ = crate::util::use_timeout(move || {
-//         let refetch_interval = query.with(|q| q.get_refetch_interval().get());
-//         let updated_at = updated_at.get();
-
-//         match (updated_at, refetch_interval) {
-//             (Some(updated_at), Some(refetch_interval)) => {
-//                 let executor = executor.clone();
-//                 let timeout = time_until_stale(updated_at, refetch_interval);
-//                 set_timeout_with_handle(
-//                     move || {
-//                         executor();
-//                     },
-//                     timeout,
-//                 )
-//                 .ok()
-//             }
-//             _ => None,
-//         }
-//     });
-// }

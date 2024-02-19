@@ -1,8 +1,6 @@
 use crate::{query_observer::ListenerKey, *};
 use leptos::*;
-use std::{
-    borrow::Borrow, cell::Cell, collections::HashMap, future::Future, rc::Rc, time::Duration,
-};
+use std::{borrow::Borrow, cell::Cell, collections::HashMap, future::Future, rc::Rc};
 
 use self::{
     cache_observer::CacheObserver, query::Query, query_cache::QueryCache,
@@ -42,30 +40,6 @@ pub fn use_query_client() -> QueryClient {
 pub struct QueryClient {
     pub(crate) cache: QueryCache,
     pub(crate) default_options: DefaultQueryOptions,
-}
-
-/// Default options for all queries under this client.
-#[derive(Debug, Clone, Copy)]
-pub struct DefaultQueryOptions {
-    /// Time before a query is considered stale.
-    pub stale_time: Option<Duration>,
-    /// Time before an inactive query is removed from cache.
-    pub gc_time: Option<Duration>,
-    /// Time before a query is refetched.
-    pub refetch_interval: Option<Duration>,
-    /// Determines which type of resource to use.
-    pub resource_option: ResourceOption,
-}
-
-impl Default for DefaultQueryOptions {
-    fn default() -> Self {
-        Self {
-            stale_time: Some(Duration::from_secs(10)),
-            gc_time: Some(Duration::from_secs(60 * 5)),
-            refetch_interval: None,
-            resource_option: ResourceOption::NonBlocking,
-        }
-    }
 }
 
 impl QueryClient {

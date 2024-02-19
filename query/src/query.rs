@@ -408,26 +408,3 @@ where
     let result = fut.await;
     Ok(result)
 }
-
-// TODO: USE THIS?
-#[allow(unused)]
-pub fn ensure_valid_stale_time(
-    stale_time: &Option<Duration>,
-    gc_time: &Option<Duration>,
-) -> Option<Duration> {
-    match (stale_time, gc_time) {
-        (Some(ref stale_time), Some(ref gc_time)) => {
-            if stale_time > gc_time {
-                logging::debug_warn!(
-                    "Stale time is greater than gc time. Using gc time instead. Stale: {}, GC: {}",
-                    stale_time.as_millis(),
-                    gc_time.as_millis()
-                );
-                Some(*gc_time)
-            } else {
-                Some(*stale_time)
-            }
-        }
-        (stale_time, _) => *stale_time,
-    }
-}
