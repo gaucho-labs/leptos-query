@@ -1,6 +1,5 @@
 use std::cell::{Cell, RefCell};
 use std::future::Future;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::{pin::Pin, rc::Rc};
 
 use leptos::leptos_dom::helpers::IntervalHandle;
@@ -193,11 +192,17 @@ where
     }
 }
 
-static NEXT_ID: AtomicU32 = AtomicU32::new(1);
+thread_local! {
+    static NEXT_ID: Cell<u32> = Cell::new(1);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ObserverKey(u32);
 
 fn next_id() -> ObserverKey {
-    ObserverKey(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+    NEXT_ID.with(|id| {
+        let current_id = id.get();
+        id.set(current_id + 1);
+        ObserverKey(current_id)
+    })
 }
