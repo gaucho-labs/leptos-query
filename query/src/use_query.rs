@@ -117,10 +117,7 @@ where
             // First Read.
             // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
             if read.is_none() && query.with_state(|state| matches!(state, QueryState::Created)) {
-                logging::log!("First Read");
                 query.execute()
-            } else {
-                logging::log!("NOT FIRST READ");
             }
 
             // SSR edge case.
