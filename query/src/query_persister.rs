@@ -1,5 +1,6 @@
-use crate::{CacheEvent, CacheObserver};
 use async_trait::async_trait;
+
+use crate::cache_observer::{CacheEvent, CacheObserver};
 
 /// A utility for client side query persistance
 #[async_trait]

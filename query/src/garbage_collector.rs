@@ -5,7 +5,7 @@ use leptos::{leptos_dom::helpers::TimeoutHandle, *};
 use crate::query::Query;
 
 #[derive(Clone)]
-pub(crate) struct GarbageCollector<K, V> {
+pub struct GarbageCollector<K, V> {
     query: Rc<Query<K, V>>,
     gc_time: Rc<Cell<Option<Duration>>>,
     handle: Rc<Cell<Option<TimeoutHandle>>>,
@@ -16,7 +16,7 @@ where
     K: crate::QueryKey + 'static,
     V: crate::QueryValue + 'static,
 {
-    pub(crate) fn new(query: Query<K, V>) -> Self {
+    pub fn new(query: Query<K, V>) -> Self {
         Self {
             query: Rc::new(query),
             gc_time: Rc::new(Cell::new(None)),

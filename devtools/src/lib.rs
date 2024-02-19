@@ -14,7 +14,12 @@ pub fn LeptosQueryDevtools() -> impl IntoView {
 #[cfg(any(debug_assertions, feature = "show_devtools"))]
 mod dev_tools {
     use leptos::*;
-    use leptos_query::*;
+    use leptos_query::{
+        cache_observer::{
+            CacheEvent, CacheObserver, CreatedQuery, ObserverAdded, QueryCacheKey, SerializedQuery,
+        },
+        *,
+    };
     use std::{collections::HashMap, time::Duration};
 
     use crate::timeout::{time_until_stale, use_timeout};
@@ -184,7 +189,7 @@ mod dev_tools {
                     self.query_state.set(map);
                 }
                 CacheEvent::ObserverAdded(observer) => {
-                    let leptos_query::ObserverAdded { key, options } = observer;
+                    let ObserverAdded { key, options } = observer;
                     let QueryOptions {
                         stale_time,
                         gc_time,

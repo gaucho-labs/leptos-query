@@ -139,7 +139,7 @@ impl QueryCache {
                 let query = query.clone();
                 spawn_local({
                     async move {
-                        let key = crate::make_cache_key(query.get_key());
+                        let key = crate::cache_observer::make_cache_key(query.get_key());
                         let result = persister.retrieve(key.as_str()).await;
 
                         // ensure query is not already loaded.

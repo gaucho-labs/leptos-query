@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 /// Default options for all queries under this client.
+/// Only differs from [`QueryOptions`] in that it doesn't have a default value.
 #[derive(Debug, Clone, Copy)]
 pub struct DefaultQueryOptions {
     /// Time before a query is considered stale.

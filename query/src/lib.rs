@@ -24,7 +24,7 @@
 //!
 //! ## The main entry points to using Queries are:
 //! - [`use_query`][crate::use_query::use_query()] - A query primitive for reading, caching, and refetching data.
-//! - [`create_query`](crate::create_query::create_query) - A wrapper with useful methods for managing queries.
+//! - [`create_query`](crate::create_query::create_query()) - A wrapper with useful methods for managing queries.
 //!
 //! # A Simple Example
 //!
@@ -43,7 +43,7 @@
 //! }
 //! ```
 //!
-//! Then make a query function with [`use_query`][crate::use_query::use_query]
+//! Then make a query function with [`use_query`][crate::use_query::use_query()]
 //!
 //! ```
 //! use leptos::*;
@@ -124,7 +124,8 @@
 //! ```
 //!
 
-mod cache_observer;
+/// Subcriptions to cache-wide query events.
+pub mod cache_observer;
 mod create_query;
 mod garbage_collector;
 mod instant;
@@ -134,19 +135,18 @@ mod query_client;
 mod query_executor;
 mod query_observer;
 mod query_options;
-mod query_persister;
+/// Utitities for client side query persistance.
+pub mod query_persister;
 mod query_result;
 mod query_state;
 mod use_query;
 mod util;
 
-pub use cache_observer::*;
 pub use create_query::*;
 pub use instant::*;
 pub use query_client::*;
 pub use query_executor::*;
 pub use query_options::*;
-pub use query_persister::*;
 pub use query_result::*;
 pub use query_state::*;
 pub use use_query::*;

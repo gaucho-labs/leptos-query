@@ -14,7 +14,10 @@ pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
     // Provides Query Client for entire app.
-    provide_query_client_with_options_and_persister(Default::default(), local_storage_persister::LocalStoragePersister);
+    provide_query_client_with_options_and_persister(
+        Default::default(),
+        local_storage_persister::LocalStoragePersister,
+    );
 
     view! {
         <Stylesheet id="leptos" href="/pkg/start-axum.css"/>
