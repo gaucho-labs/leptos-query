@@ -59,18 +59,6 @@ pub struct PersistQueryData {
     pub updated_at: u64,
 }
 
-impl<V> TryFrom<PersistQueryData> for crate::QueryState<V>
-where
-    V: crate::QueryValue,
-{
-    type Error = leptos::SerializationError;
-
-    fn try_from(data: PersistQueryData) -> Result<Self, Self::Error> {
-        let data = crate::QueryData::try_from(data)?;
-        Ok(crate::QueryState::Loaded(data))
-    }
-}
-
 impl<V> TryFrom<PersistQueryData> for crate::QueryData<V>
 where
     V: crate::QueryValue,

@@ -147,9 +147,25 @@ impl QueryCache {
 
                         if let Some(serialized) = result {
                             match serialized.try_into() {
-                                Ok(state) => query.set_state(state),
+                                Ok(data) => {
+                                    // If the query is currently fetching, then we should preserver the fetching state.
+                                    if query.with_state(|s| {
+                                        matches!(
+                                            s,
+                                            crate::QueryState::Loading
+                                                | crate::QueryState::Fetching(_)
+                                        )
+                                    }) {
+                                        query.set_state(crate::QueryState::Fetching(data));
+                                    } else {
+                                        query.set_state(crate::QueryState::Loaded(data));
+                                    }
+                                }
                                 Err(e) => {
-                                    logging::error!("Error deserializing query state: {:?}", e);
+                                    logging::debug_warn!(
+                                        "Error deserializing query state: {:?}",
+                                        e
+                                    );
                                 }
                             }
                         }
