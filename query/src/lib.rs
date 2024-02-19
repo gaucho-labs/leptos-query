@@ -20,11 +20,18 @@
 //! - cancellation
 //! - debugging tools
 //! - optimistic updates
+//! - client side cache persistance (localstorage, indexdb, custom, etc.)
 //!
 //!
 //! ## The main entry points to using Queries are:
 //! - [`use_query`][crate::use_query::use_query()] - A query primitive for reading, caching, and refetching data.
 //! - [`create_query`](crate::create_query::create_query()) - A wrapper with useful methods for managing queries.
+//!
+//! # Feature Flags
+//! - `csr` Client-side rendering: Use queries on the client.
+//! - `ssr` Server-side rendering: Initiate queries on the server.
+//! - `hydrate` Hydration: Ensure that queries are hydrated on the client, when using server-side rendering.
+//! - `local_storage` - Enables local storage persistance for queries.
 //!
 //! # A Simple Example
 //!
@@ -60,15 +67,15 @@
 //! }
 //!
 //! // Query fetcher.
-//! async fn get_user(id: TrackId) -> TrackData {
+//! async fn get_track(id: TrackId) -> TrackData {
 //!     todo!()
 //! }
 //!
-//! // Query for a user.
+//! // Query for a track.
 //! fn use_track_query(id: impl Fn() -> TrackId + 'static) -> QueryResult<TrackData, impl RefetchFn> {
 //!     leptos_query::use_query(
 //!         id,
-//!         get_user,
+//!         get_track,
 //!         QueryOptions::default(),
 //!     )
 //! }

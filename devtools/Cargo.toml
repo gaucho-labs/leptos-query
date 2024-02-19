@@ -15,7 +15,7 @@ wasm-bindgen = { version = "0.2", optional = true }
 
 [features]
 csr = ["web-sys", "wasm-bindgen", "js-sys"]
-show_devtools = []
+force = []
 
 # [package.metadata.docs.rs]
 # all-features = true
