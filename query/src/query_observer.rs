@@ -102,6 +102,9 @@ where
 
         if let Some(query) = query.borrow().as_ref() {
             query.subscribe(&observer);
+            if query.is_stale() {
+                query.execute()
+            }
         }
 
         observer
