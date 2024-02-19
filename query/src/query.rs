@@ -244,7 +244,6 @@ where
     }
 
     pub fn needs_execute(&self) -> bool {
-        // TODO: How to handle SSR Hydration case?
         self.with_state(|s| matches!(s, QueryState::Created))
             || self.with_state(|s| matches!(s, QueryState::Invalid(_)))
             || self.is_stale()
