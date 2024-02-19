@@ -152,11 +152,8 @@ pub use query_state::*;
 pub use use_query::*;
 
 /// Convenience trait for query key requirements.
-pub trait QueryKey: std::fmt::Debug + std::hash::Hash + Eq + Clone {}
-impl<K> QueryKey for K where K: std::fmt::Debug + std::hash::Hash + Eq + Clone {}
-// pub trait QueryKey: std::fmt::Debug + Clone + std::hash::Hash + Eq + leptos::Serializable {}
-// impl<K> QueryKey for K where K: std::fmt::Debug + Clone + std::hash::Hash + Eq + leptos::Serializable
-// {}
+pub trait QueryKey: std::fmt::Debug + Clone + std::hash::Hash + Eq {}
+impl<K> QueryKey for K where K: std::fmt::Debug + Clone + std::hash::Hash + Eq {}
 
 /// Convenience trait for query value requirements.
 pub trait QueryValue: std::fmt::Debug + Clone + leptos::Serializable {}

@@ -287,10 +287,10 @@ where
     V: crate::QueryValue + 'static,
 {
     pub fn dispose(&self) {
-        debug_assert!(
-            { self.observers.borrow().is_empty() },
-            "Query has active observers"
-        );
+        #[cfg(debug_assertions)]
+        if !self.observers.borrow().is_empty() {
+            logging::debug_warn!("Query has active observers");
+        }
     }
 }
 

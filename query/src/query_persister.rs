@@ -1,14 +1,17 @@
 use crate::{CacheEvent, CacheObserver};
 use async_trait::async_trait;
 
+/// A utility for client side query persistance
 #[async_trait]
 pub trait QueryPersister {
-    /// Persist a query to the persister.
+    /// Persist a query to the persister
     async fn persist(&self, query: PersistedQuery);
-    /// Remove a query from the persister.
+    /// Remove a query from the persister
     async fn remove(&self, key: &str);
-    /// Retrieve a query from the persister.
+    /// Retrieve a query from the persister
     async fn retrieve(&self, key: &str) -> Option<PersistedQueryData>;
+    /// Clear the persister
+    async fn clear(&self);
 }
 
 impl<Persist> CacheObserver for Persist
@@ -52,7 +55,11 @@ pub struct PersistedQuery {
     pub value: PersistedQueryData,
 }
 
-#[derive(Clone, miniserde::Serialize, miniserde::Deserialize)]
+#[derive(Clone)]
+#[cfg_attr(
+    feature = "local_storage",
+    derive(miniserde::Serialize, miniserde::Deserialize)
+)]
 pub struct PersistedQueryData {
     pub value: String,
     pub updated_at: u64,
@@ -107,6 +114,7 @@ where
     }
 }
 
+#[cfg(feature = "local_storage")]
 pub mod local_storage_persister {
     use super::*;
     use cfg_if::cfg_if;
@@ -114,10 +122,12 @@ pub mod local_storage_persister {
     #[derive(Clone, Copy)]
     pub struct LocalStoragePersister;
 
+    #[cfg(any(feature = "hydrate", feature = "csr"))]
     thread_local! {
         pub(crate) static LOCAL_STORAGE: Option<web_sys::Storage> = leptos::window().local_storage().ok().flatten()
     }
 
+    #[cfg(any(feature = "hydrate", feature = "csr"))]
     fn local_storage() -> Option<web_sys::Storage> {
         LOCAL_STORAGE.with(Clone::clone)
     }
@@ -164,6 +174,18 @@ pub mod local_storage_persister {
                 } else {
                     let _ = key;
                     None
+                }
+            }
+        }
+
+        async fn clear(&self) {
+            cfg_if! {
+                if #[cfg(any(feature = "hydrate", feature = "csr"))] {
+                    if let Some(storage) = local_storage() {
+                        let _ = storage.clear();
+                    }
+                } else {
+                    ()
                 }
             }
         }

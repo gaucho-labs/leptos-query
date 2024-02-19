@@ -469,6 +469,11 @@ impl QueryClient {
     pub fn remove_persister(&self) -> bool {
         self.cache.remove_persister().is_some()
     }
+
+    /// Clears the cache. All queries will be removed.
+    pub fn clear(&self) {
+        self.cache.clear_all_queries()
+    }
 }
 
 #[cfg(all(test, not(any(feature = "csr", feature = "hydrate"))))]

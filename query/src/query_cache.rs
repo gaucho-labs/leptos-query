@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub(crate) struct QueryCache {
+pub struct QueryCache {
     owner: Owner,
     cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
     observers: Rc<RefCell<SlotMap<CacheObserverKey, Box<dyn CacheObserver>>>>,
@@ -25,13 +25,13 @@ pub(crate) struct QueryCache {
 }
 
 slotmap::new_key_type! {
-    pub(crate) struct CacheObserverKey;
+    pub struct CacheObserverKey;
 }
 
-pub(crate) struct CacheEntry<K, V>(HashMap<K, Query<K, V>>);
+struct CacheEntry<K, V>(HashMap<K, Query<K, V>>);
 
 // Trait to enable cache introspection among distinct cache entry maps.
-pub(crate) trait CacheEntryTrait: CacheSize + CacheInvalidate {
+trait CacheEntryTrait: CacheSize + CacheInvalidate + CacheEntryClear {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -50,7 +50,7 @@ where
     }
 }
 
-pub(crate) trait CacheSize {
+trait CacheSize {
     fn size(&self) -> usize;
 }
 
@@ -60,7 +60,7 @@ impl<K, V> CacheSize for CacheEntry<K, V> {
     }
 }
 
-pub(crate) trait CacheInvalidate {
+trait CacheInvalidate {
     fn invalidate(&self);
 }
 
@@ -76,8 +76,25 @@ where
     }
 }
 
+trait CacheEntryClear {
+    fn clear(&mut self, cache: &QueryCache);
+}
+
+impl<K, V> CacheEntryClear for CacheEntry<K, V>
+where
+    K: QueryKey + 'static,
+    V: QueryValue + 'static,
+{
+    fn clear(&mut self, cache: &QueryCache) {
+        for (_, query) in self.0.drain() {
+            query.dispose();
+            cache.notify_query_eviction(query.get_key());
+        }
+    }
+}
+
 impl QueryCache {
-    pub(crate) fn new(owner: Owner) -> Self {
+    pub fn new(owner: Owner) -> Self {
         Self {
             owner,
             cache: Rc::new(RefCell::new(HashMap::new())),
@@ -87,7 +104,7 @@ impl QueryCache {
         }
     }
 
-    pub(crate) fn get_or_create_query<K, V>(&self, key: K) -> Query<K, V>
+    pub fn get_or_create_query<K, V>(&self, key: K) -> Query<K, V>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -149,7 +166,7 @@ impl QueryCache {
         query
     }
 
-    pub(crate) fn get_query<K, V>(&self, key: &K) -> Option<Query<K, V>>
+    pub fn get_query<K, V>(&self, key: &K) -> Option<Query<K, V>>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -157,7 +174,7 @@ impl QueryCache {
         self.use_cache_option(move |cache| cache.get(key).cloned())
     }
 
-    pub(crate) fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
+    pub fn get_query_signal<K, V>(&self, key: impl Fn() -> K + 'static) -> Memo<Query<K, V>>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -171,7 +188,7 @@ impl QueryCache {
         })
     }
 
-    pub(crate) fn size(&self) -> Signal<usize> {
+    pub fn size(&self) -> Signal<usize> {
         cfg_if::cfg_if! {
             if #[cfg(debug_assertions)] {
                 let size_signal = self.size.clone();
@@ -189,7 +206,7 @@ impl QueryCache {
         }
     }
 
-    pub(crate) fn evict_query<K, V>(&self, key: &K) -> bool
+    pub fn evict_query<K, V>(&self, key: &K) -> bool
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -198,7 +215,12 @@ impl QueryCache {
 
         if let Some(query) = result {
             self.notify_query_eviction(query.get_key());
-            self.size.set(self.size.get_untracked() - 1);
+            // With cache clears, the size may already be zero.
+            self.size.update(|size| {
+                if *size > 0 {
+                    *size = *size - 1
+                }
+            });
             query.dispose();
             true
         } else {
@@ -215,7 +237,29 @@ impl QueryCache {
         }
     }
 
-    pub(crate) fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
+    pub fn clear_all_queries(&self) {
+        let mut caches =
+            RefCell::try_borrow_mut(&self.cache).expect("clear_all_queries borrow mut");
+
+        for cache in caches.values_mut() {
+            cache.clear(self);
+        }
+        // Though persister receives removal events, there may be queries in persister that are not yet in cache.
+        // So we should clear them all.
+        if let Some(persister) = self.persister.borrow().clone() {
+            spawn_local(async move {
+                persister.clear().await;
+            });
+        }
+
+        // Need to queue microtask to avoid borrow errors.
+        let size = self.size;
+        queue_microtask(move || {
+            size.set(0);
+        })
+    }
+
+    pub fn use_cache_option<K, V, F, R>(&self, func: F) -> Option<R>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -232,7 +276,7 @@ impl QueryCache {
         func(&cache.0)
     }
 
-    pub(crate) fn use_cache_option_mut<K, V, F, R>(&self, func: F) -> Option<R>
+    pub fn use_cache_option_mut<K, V, F, R>(&self, func: F) -> Option<R>
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -249,10 +293,7 @@ impl QueryCache {
         func(&mut cache.0)
     }
 
-    pub(crate) fn use_cache<K, V, R>(
-        &self,
-        func: impl FnOnce(&mut HashMap<K, Query<K, V>>) -> R,
-    ) -> R
+    pub fn use_cache<K, V, R>(&self, func: impl FnOnce(&mut HashMap<K, Query<K, V>>) -> R) -> R
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -277,7 +318,7 @@ impl QueryCache {
         func(&mut cache.0)
     }
 
-    pub(crate) fn use_cache_entry<K, V>(
+    pub fn use_cache_entry<K, V>(
         &self,
         key: K,
         func: impl FnOnce((Owner, Option<&Query<K, V>>)) -> Option<Query<K, V>>,
@@ -312,36 +353,30 @@ impl QueryCache {
         }
     }
 
-    pub(crate) fn register_observer(
-        &self,
-        observer: impl CacheObserver + 'static,
-    ) -> CacheObserverKey {
+    pub fn register_observer(&self, observer: impl CacheObserver + 'static) -> CacheObserverKey {
         self.observers
             .try_borrow_mut()
             .expect("register_query_observer borrow mut")
             .insert(Box::new(observer))
     }
 
-    pub(crate) fn unregister_observer(
-        &self,
-        key: CacheObserverKey,
-    ) -> Option<Box<dyn CacheObserver>> {
+    pub fn unregister_observer(&self, key: CacheObserverKey) -> Option<Box<dyn CacheObserver>> {
         self.observers
             .try_borrow_mut()
             .expect("unregister_query_observer borrow mut")
             .remove(key)
     }
 
-    pub(crate) fn add_persister(&self, persister: impl QueryPersister + 'static) {
+    pub fn add_persister(&self, persister: impl QueryPersister + 'static) {
         let persister = Rc::new(persister) as Rc<dyn QueryPersister>;
         *self.persister.borrow_mut() = Some(persister);
     }
 
-    pub(crate) fn remove_persister(&self) -> Option<Rc<dyn QueryPersister>> {
+    pub fn remove_persister(&self) -> Option<Rc<dyn QueryPersister>> {
         self.persister.borrow_mut().take()
     }
 
-    pub(crate) fn notify<K, V>(&self, notification: CacheNotification<K, V>)
+    pub fn notify<K, V>(&self, notification: CacheNotification<K, V>)
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -356,7 +391,7 @@ impl QueryCache {
         self.notify_observers(event);
     }
 
-    pub(crate) fn notify_new_query<K, V>(&self, query: Query<K, V>)
+    pub fn notify_new_query<K, V>(&self, query: Query<K, V>)
     where
         K: QueryKey + 'static,
         V: QueryValue + 'static,
@@ -365,7 +400,7 @@ impl QueryCache {
         self.notify_observers(event);
     }
 
-    pub(crate) fn notify_query_eviction<K>(&self, key: &K)
+    pub fn notify_query_eviction<K>(&self, key: &K)
     where
         K: QueryKey + 'static,
     {
@@ -373,7 +408,7 @@ impl QueryCache {
         self.notify_observers(event);
     }
 
-    pub(crate) fn notify_observers(&self, notification: CacheEvent) {
+    pub fn notify_observers(&self, notification: CacheEvent) {
         let observers = self
             .observers
             .try_borrow()
@@ -384,15 +419,15 @@ impl QueryCache {
     }
 }
 
-pub(crate) enum CacheNotification<K, V> {
+pub enum CacheNotification<K, V> {
     UpdatedState(Query<K, V>),
     NewObserver(NewObserver<K, V>),
     ObserverRemoved(K),
 }
 
-pub(crate) struct NewObserver<K, V> {
-    pub(crate) key: K,
-    pub(crate) options: QueryOptions<V>,
+pub struct NewObserver<K, V> {
+    pub key: K,
+    pub options: QueryOptions<V>,
 }
 
 const EXPECT_CACHE_ERROR: &str =

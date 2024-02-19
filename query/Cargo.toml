@@ -14,8 +14,8 @@ repository = "https://github.com/nicoburniske/leptos_query"
 leptos = { workspace = true }
 cfg-if = { workspace = true }
 js-sys = { workspace = true, optional = true }
-web-sys = { workspace = true, optional = true, features = ["Storage"]}
-miniserde = { version = "0.1" }
+web-sys = { workspace = true, optional = true }
+miniserde = { version = "0.1", optional = true }
 gloo-timers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 slotmap = { workspace = true }
@@ -27,6 +27,7 @@ async-trait = { version = "0.1" }
 hydrate = ["js-sys", "web-sys", "gloo-timers"]
 csr = ["js-sys", "web-sys", "gloo-timers"]
 ssr = ["tokio"]
+local_storage = ["miniserde", "web-sys/Storage"]
 
 [dev-dependencies]
 leptos_axum = "0.6.5"
