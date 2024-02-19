@@ -73,14 +73,14 @@ where
                                     query.execute()
                                 }
                             } else {
-                                logging::debug_warn!("QueryObserver: Query is already borrowed")
+                                logging::debug_warn!("QueryObserver: Query is already borrowed");
                             }
                         },
                         refetch_interval,
                     )
                     .ok();
                     if timeout.is_none() {
-                        logging::debug_warn!("QueryObserver: Failed to set refetch interval")
+                        logging::debug_warn!("QueryObserver: Failed to set refetch interval");
                     }
                     timeout
                 } else {

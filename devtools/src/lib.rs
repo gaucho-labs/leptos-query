@@ -1,5 +1,3 @@
-mod timeout;
-
 use leptos::*;
 
 #[component]
@@ -10,6 +8,9 @@ pub fn LeptosQueryDevtools() -> impl IntoView {
         view! { <InnerDevtools/> }
     }
 }
+
+#[cfg(any(debug_assertions, feature = "show_devtools"))]
+mod timeout;
 
 #[cfg(any(debug_assertions, feature = "show_devtools"))]
 mod dev_tools {
