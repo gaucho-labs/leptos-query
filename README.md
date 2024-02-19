@@ -26,7 +26,7 @@ Leptos Query is a robust asynchronous state management library for [Leptos](http
 
 Heavily inspired by [Tanstack Query](https://tanstack.com/query/latest/).
 
-Read the introduction article here: [The Forging of Leptos Query](https://nicoburniske.com/thoughts/forging_leptos_query)
+Read the introduction article here: [Forging Leptos Query](https://nicoburniske.com/thoughts/forging_leptos_query)
 
 ## Why Choose Leptos Query?
 
@@ -40,7 +40,7 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 
 - **Server-Side Rendering (SSR) Compatibility**: Fetch your queries on the server and smoothly serialize them to the client, just as you would with a Leptos Resource.
 
-- **Client-Side Resource Persistance**: Cache your queries to local storage or async-db.
+- **Client-Side Resource Persistance**: Cache your queries to local storage, async-db, or another custom client side cache.
 
 - **Efficient De-duplication**: If you make multiple queries with the same Key, Leptos Query smartly fetches only once.
 
