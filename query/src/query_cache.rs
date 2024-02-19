@@ -18,7 +18,9 @@ use crate::{
 #[derive(Clone)]
 pub struct QueryCache {
     owner: Owner,
+    #[allow(clippy::type_complexity)]
     cache: Rc<RefCell<HashMap<(TypeId, TypeId), Box<dyn CacheEntryTrait>>>>,
+    #[allow(clippy::type_complexity)]
     observers: Rc<RefCell<SlotMap<CacheObserverKey, Box<dyn CacheObserver>>>>,
     persister: Rc<RefCell<Option<Rc<dyn QueryPersister>>>>,
     size: RwSignal<usize>,
@@ -176,7 +178,7 @@ impl QueryCache {
 
         // It's necessary to delay the size update until we are out of the borrow, to avoid borrow errors.
         if created {
-            self.size.update(|size| *size = *size + 1);
+            self.size.update(|size| *size += 1);
         }
 
         query
@@ -207,7 +209,7 @@ impl QueryCache {
     pub fn size(&self) -> Signal<usize> {
         cfg_if::cfg_if! {
             if #[cfg(debug_assertions)] {
-                let size_signal = self.size.clone();
+                let size_signal = self.size;
                 let cache = self.cache.clone();
                 create_memo(move |_| {
                     let size = size_signal.get();
@@ -234,7 +236,7 @@ impl QueryCache {
             // With cache clears, the size may already be zero.
             self.size.update(|size| {
                 if *size > 0 {
-                    *size = *size - 1
+                    *size -= 1
                 }
             });
             query.dispose();
@@ -365,7 +367,7 @@ impl QueryCache {
 
         // It's necessary to delay the size update until we are out of the borrow, to avoid borrow errors.
         if created {
-            self.size.update(|size| *size = *size + 1);
+            self.size.update(|size| *size += 1);
         }
     }
 
@@ -398,7 +400,7 @@ impl QueryCache {
         V: QueryValue + 'static,
     {
         let event = match notification {
-            CacheNotification::UpdatedState(query) => CacheEvent::updated(query.into()),
+            CacheNotification::UpdatedState(query) => CacheEvent::updated(query),
             CacheNotification::NewObserver(observer) => {
                 CacheEvent::observer_added(&observer.key, observer.options)
             }

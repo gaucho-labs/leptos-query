@@ -73,6 +73,7 @@ where
 /// * `V`: The type of the query value.
 #[derive(Clone)]
 pub struct QueryScope<K, V> {
+    #[allow(clippy::type_complexity)]
     fetcher: Rc<dyn Fn(K) -> Pin<Box<dyn Future<Output = V>>>>,
     options: QueryOptions<V>,
 }

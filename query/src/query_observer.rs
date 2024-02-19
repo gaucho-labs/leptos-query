@@ -15,6 +15,7 @@ pub struct QueryObserver<K, V> {
     fetcher: Option<Fetcher<K, V>>,
     refetch: Rc<Cell<Option<IntervalHandle>>>,
     options: QueryOptions<V>,
+    #[allow(clippy::type_complexity)]
     listeners: Rc<RefCell<SlotMap<ListenerKey, Box<dyn Fn(&QueryState<V>)>>>>,
 }
 

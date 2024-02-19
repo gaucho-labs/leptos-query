@@ -133,8 +133,8 @@ where
             .expect("subscribe borrow_mut");
 
         // Check if the observer is already subscribed to avoid duplicate subscriptions
-        if !observers.contains_key(&observer_id) {
-            observers.insert(observer_id, observer.clone());
+        if let std::collections::hash_map::Entry::Vacant(e) = observers.entry(observer_id) {
+            e.insert(observer.clone());
             self.disable_gc();
             self.update_gc_time(observer.get_options().gc_time);
 
@@ -154,7 +154,7 @@ where
             .observers
             .try_borrow_mut()
             .expect("unsubscribe borrow_mut");
-        if let Some(_) = observers.remove(&observer.get_id()) {
+        if observers.remove(&observer.get_id()).is_some() {
             use_query_client()
                 .cache
                 .notify::<K, V>(CacheNotification::ObserverRemoved(self.key.clone()))
@@ -197,8 +197,7 @@ where
     // Useful to avoid clones.
     pub fn with_state<T>(&self, func: impl FnOnce(&QueryState<V>) -> T) -> T {
         let state = self.state.borrow();
-        let result = func(&state);
-        result
+        func(&state)
     }
 
     /**
@@ -383,6 +382,7 @@ async fn execute_with_cancellation<V, Fu>(
 where
     Fu: std::future::Future<Output = V> + Unpin,
 {
+    #[allow(clippy::let_underscore_future)]
     let _ = cancellation;
     let result = fut.await;
     Ok(result)

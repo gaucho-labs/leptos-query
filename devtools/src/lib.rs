@@ -72,7 +72,7 @@ mod dev_tools {
     }
 
     impl SortOption {
-        fn to_string(&self) -> &str {
+        fn as_str(&self) -> &str {
             match self {
                 SortOption::Time => "Time",
                 SortOption::Ascii => "Ascii",
@@ -548,7 +548,7 @@ mod dev_tools {
             <select
                 id="countries"
                 class="form-select border-lq-border border text-xs rounded-md block w-52 py-1 px-2 bg-lq-input text-lq-input-foreground"
-                value=move || sort.get().to_string().to_string()
+                value=move || sort.get().as_str().to_string()
                 on:change=move |ev| {
                     let new_value = event_target_value(&ev);
                     let option = SortOption::from_string(&new_value);
@@ -556,8 +556,8 @@ mod dev_tools {
                 }
             >
 
-                <option value=SortOption::Time.to_string()>Sort by last updated</option>
-                <option value=SortOption::Ascii.to_string()>Sort by query key</option>
+                <option value=SortOption::Time.as_str()>Sort by last updated</option>
+                <option value=SortOption::Ascii.as_str()>Sort by query key</option>
             </select>
         }
     }
@@ -689,7 +689,7 @@ mod dev_tools {
 
                 {observer}
                 <span class="w-[4.5rem]">
-                    <RowStateLabel state=state.into() is_stale=is_stale.into()/>
+                    <RowStateLabel state=state.into() is_stale/>
                 </span>
                 <span class="text-sm">{key.0}</span>
             </li>
@@ -813,7 +813,7 @@ mod dev_tools {
                                 <dd class="text-zinc-200">
                                     <RowStateLabel
                                         state=query_state.into()
-                                        is_stale=is_stale.into()
+                                        is_stale
                                     />
                                 </dd>
                             </div>

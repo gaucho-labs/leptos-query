@@ -45,23 +45,20 @@ where
         let gc_time = self.gc_time.get();
         let updated_at = self.query.get_updated_at();
 
-        match (gc_time, updated_at) {
-            (Some(gc_time), Some(updated_at)) => {
-                let time_until_gc = crate::util::time_until_stale(updated_at, gc_time);
-                let query = self.query.clone();
-                let new_handle = set_timeout_with_handle(
-                    move || {
-                        let client = crate::use_query_client();
-                        let key = query.get_key();
-                        client.cache.evict_query::<K, V>(&key);
-                    },
-                    time_until_gc,
-                )
-                .ok();
+        if let (Some(gc_time), Some(updated_at)) = (gc_time, updated_at) {
+            let time_until_gc = crate::util::time_until_stale(updated_at, gc_time);
+            let query = self.query.clone();
+            let new_handle = set_timeout_with_handle(
+                move || {
+                    let client = crate::use_query_client();
+                    let key = query.get_key();
+                    client.cache.evict_query::<K, V>(key);
+                },
+                time_until_gc,
+            )
+            .ok();
 
-                self.handle.set(new_handle);
-            }
-            _ => (),
+            self.handle.set(new_handle);
         }
     }
 

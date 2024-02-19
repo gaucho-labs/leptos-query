@@ -39,7 +39,10 @@ where
                 }
             }
             CacheEvent::Removed(key) => {
-                let _ = self.remove(&key.0);
+                let persister = self.clone();
+                leptos::spawn_local(async move {
+                    let _ = persister.remove(&key.0).await;
+                })
             }
             _ => (),
         }
