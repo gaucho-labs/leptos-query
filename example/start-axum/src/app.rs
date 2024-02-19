@@ -4,7 +4,7 @@ use crate::{
 };
 use leptos::*;
 use leptos_meta::*;
-use leptos_query::*;
+use leptos_query::{query_persister, *};
 use leptos_query_devtools::LeptosQueryDevtools;
 use leptos_router::{Outlet, Route, Router, Routes};
 use std::time::Duration;
@@ -16,7 +16,7 @@ pub fn App() -> impl IntoView {
     // Provides Query Client for entire app.
     provide_query_client_with_options_and_persister(
         Default::default(),
-        local_storage_persister::LocalStoragePersister,
+        query_persister::LocalStoragePersister,
     );
 
     view! {
@@ -162,7 +162,7 @@ fn post_query() -> QueryScope<PostKey, Option<String>> {
         QueryOptions {
             default_value: None,
             refetch_interval: None,
-            resource_option: Some(ResourceOption::NonBlocking),
+            resource_option: Some(ResourceOption::Local),
             stale_time: Some(Duration::from_secs(5)),
             gc_time: Some(Duration::from_secs(60)),
         },

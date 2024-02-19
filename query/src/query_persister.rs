@@ -100,6 +100,9 @@ impl From<crate::QueryData<String>> for PersistQueryData {
     }
 }
 
+#[cfg(feature = "local_storage")]
+pub use local_storage_persister::LocalStoragePersister;
+
 /// A persister that uses local storage to persist queries.
 #[cfg(feature = "local_storage")]
 pub mod local_storage_persister {
