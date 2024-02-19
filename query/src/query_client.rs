@@ -19,6 +19,20 @@ pub fn provide_query_client_with_options(options: DefaultQueryOptions) {
     provide_context(QueryClient::new(owner, options));
 }
 
+/// Provides a Query Client to the current scope with custom options and a persister.
+pub fn provide_query_client_with_options_and_persister(
+    options: DefaultQueryOptions,
+    persister: impl QueryPersister + Clone + 'static,
+) {
+    let owner = Owner::current().expect("Owner to be present");
+
+    let client = QueryClient::new(owner, options);
+
+    client.add_persister(persister);
+
+    provide_context(client);
+}
+
 /// Retrieves a Query Client from the current scope.
 pub fn use_query_client() -> QueryClient {
     use_context::<QueryClient>().expect("Query Client Missing.")
