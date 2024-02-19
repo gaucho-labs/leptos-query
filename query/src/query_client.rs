@@ -137,9 +137,7 @@ impl QueryClient {
         create_isomorphic_effect({
             move |_| {
                 // Ensure listener is set.
-                if let Some(curr_listener) = listener.take() {
-                    listener.set(Some(curr_listener));
-                } else {
+                if listener.get().is_none() {
                     let listener_id = observer.add_listener(move |state| {
                         state_signal.set(Some(state.clone()));
                     });

@@ -91,28 +91,40 @@ where
         #[cfg(not(any(feature = "csr", feature = "hydrate")))]
         let refetch = Rc::new(Cell::new(None));
 
-        Self {
+        let observer = Self {
             id,
-            query,
+            query: query.clone(),
             fetcher,
             refetch,
             options,
             listeners: Rc::new(RefCell::new(SlotMap::with_key())),
+        };
+
+        if let Some(query) = query.borrow().as_ref() {
+            query.subscribe(&observer);
         }
+
+        observer
     }
 
     pub fn no_fetcher(options: QueryOptions<V>, query: Option<Query<K, V>>) -> Self {
         let query = Rc::new(RefCell::new(query));
         let id = next_id();
 
-        Self {
+        let observer = Self {
             id,
-            query,
+            query: query.clone(),
             fetcher: None,
             refetch: Rc::new(Cell::new(None)),
             options,
             listeners: Rc::new(RefCell::new(SlotMap::with_key())),
+        };
+
+        if let Some(query) = query.borrow().as_ref() {
+            query.subscribe(&observer);
         }
+
+        observer
     }
 
     pub fn get_fetcher(&self) -> Option<Fetcher<K, V>> {
@@ -152,21 +164,31 @@ where
             .is_some()
     }
 
-    pub fn update_query(&self, query: Option<Query<K, V>>) {
+    pub fn update_query(&self, new_query: Option<Query<K, V>>) {
+        // Determine if the new query is the same as the current one.
+        let is_same_query = self.query.borrow().as_ref().map_or(false, |current_query| {
+            new_query.as_ref().map_or(false, |new_query| {
+                new_query.get_key() == current_query.get_key()
+            })
+        });
+
+        // If the new query is the same as the current, do nothing.
+        if is_same_query {
+            return;
+        }
+
+        // If there's an existing query, unsubscribe from it.
         if let Some(current_query) = self.query.take() {
             current_query.unsubscribe(self);
         }
 
-        if let Some(query) = query {
+        // Set the new query (if any) and subscribe to it.
+        *self.query.borrow_mut() = new_query.clone(); // Use clone to keep ownership with the caller.
+
+        if let Some(ref query) = new_query {
+            // Subscribe to the new query and ensure it's executed.
             query.subscribe(self);
-            *self.query.borrow_mut() = Some(query);
-            self.query
-                .borrow()
-                .as_ref()
-                .expect("update_query borrow")
-                .ensure_execute();
-        } else {
-            *self.query.borrow_mut() = None;
+            query.ensure_execute();
         }
     }
 

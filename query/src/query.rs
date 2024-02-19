@@ -131,21 +131,22 @@ where
             .observers
             .try_borrow_mut()
             .expect("subscribe borrow_mut");
-        observers.insert(observer_id, observer.clone());
 
-        // Disable GC.
-        self.disable_gc();
-        self.update_gc_time(observer.get_options().gc_time);
+        // Check if the observer is already subscribed to avoid duplicate subscriptions
+        if !observers.contains_key(&observer_id) {
+            observers.insert(observer_id, observer.clone());
+            self.disable_gc();
+            self.update_gc_time(observer.get_options().gc_time);
 
-        // Notify cache.
-        use_query_client()
-            .cache
-            .notify::<K, V>(CacheNotification::NewObserver(
-                crate::query_cache::NewObserver {
-                    key: self.key.clone(),
-                    options: observer.get_options().clone(),
-                },
-            ));
+            use_query_client()
+                .cache
+                .notify::<K, V>(CacheNotification::NewObserver(
+                    crate::query_cache::NewObserver {
+                        key: self.key.clone(),
+                        options: observer.get_options().clone(),
+                    },
+                ));
+        }
     }
 
     pub fn unsubscribe(&self, observer: &QueryObserver<K, V>) {
@@ -205,12 +206,8 @@ where
      */
 
     pub fn execute(&self) {
-        let fetcher = self
-            .observers
-            .try_borrow()
-            .expect("execute borrow")
-            .values()
-            .find_map(|f| f.get_fetcher());
+        let observers = self.observers.try_borrow().expect("execute borrow");
+        let fetcher = observers.values().find_map(|f| f.get_fetcher());
 
         if let Some(fetcher) = fetcher {
             spawn_local(execute_query(self.clone(), move |k| fetcher(k)));
