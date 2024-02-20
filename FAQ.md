@@ -17,7 +17,7 @@ With a resource, you have to manually lift it to a higher scope if you want to p
 
 ## What's the difference between `stale_time` and `gc_time`?
 
-`stale_time` is the duration until a query transitions from fresh to stale. As long as the query is fresh, data will always be read from the cache only. When a query is stale, it will be refetched in the background on its next usage (specifically on the next use_query mount). While the refetch is executing to retrieve the latest value, the stale value will be used.
+`stale_time` is the duration until a query transitions from fresh to stale. As long as the query is fresh, data will always be read from the cache only. When a query is stale, it will be refetched in the background on its next usage (specifically on the next `use_query` mount). While the refetch is executing to retrieve the latest value, the stale value will be used.
 
 The active `stale_time` is the minimum of all active query `stale_time` values.
 
@@ -32,10 +32,8 @@ Default values:
 
 These can be configured per-query using `QueryOptions`, or for the entire App using `DefaultQueryOptions`. If you want infinite cache/stale time, set `stale_time` and `gc_time` to `None`.
 
-> NOTE: `stale_time` can never be greater than `gc_time`
+**NOTE: `stale_time` can never be greater than `gc_time`.**
 > If `stale_time` is greater than `gc_time`, `stale_time` will be set to `gc_time`.
-
-Consider a query that fetches a Stock Price, and that price is updated every minute. We should set our `stale_time` to be a minute. This would ensure that we would always have the latest stock price.
 
 ## The Query Client
 
