@@ -1,0 +1,37 @@
+[package]
+name = "leptos_query"
+version = "0.4.2"
+edition = "2021"
+authors = ["Nico Burniske"]
+description = "Async query manager for Leptos"
+exclude = ["example/"]
+keywords = ["leptos"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nicoburniske/leptos_query"
+
+[dependencies]
+leptos = { workspace = true }
+cfg-if = { workspace = true }
+js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true }
+miniserde = { version = "0.1", optional = true }
+gloo-timers = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+slotmap = { workspace = true }
+futures-channel = { workspace = true }
+futures = { workspace = true }
+async-trait = { version = "0.1" }
+
+[features]
+hydrate = ["js-sys", "web-sys", "gloo-timers"]
+csr = ["js-sys", "web-sys", "gloo-timers"]
+ssr = ["tokio"]
+local_storage = ["miniserde", "web-sys/Storage"]
+
+[dev-dependencies]
+leptos_axum = "0.6.5"
+serde = "1"
+
+[package.metadata.docs.rs]
+all-features = true

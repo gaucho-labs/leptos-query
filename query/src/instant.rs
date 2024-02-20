@@ -5,14 +5,14 @@ use std::{
 
 /// Instant that can be used in both wasm and non-wasm environments.
 /// Contains Duration since Unix Epoch (Unix Timestamp).
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Instant(pub std::time::Duration);
 
 impl Instant {
     /// Get the current time as a Unix Timestamp.
     pub fn now() -> Self {
         cfg_if::cfg_if! {
-            if #[cfg(all(feature = "hydrate", target_arch = "wasm32"))] {
+            if #[cfg(any(feature = "hydrate", feature = "csr"))] {
                 let millis = js_sys::Date::now();
                 let duration = std::time::Duration::from_millis(millis as u64);
                 Instant(duration)

@@ -1,10 +1,9 @@
 use std::{cell::Cell, rc::Rc, time::Duration};
 
-use leptos::{leptos_dom::helpers::TimeoutHandle, *};
+use leptos::{create_effect, leptos_dom::helpers::TimeoutHandle, on_cleanup};
+use leptos_query::Instant;
 
-use crate::instant::Instant;
-
-pub(crate) fn use_timeout(func: impl Fn() -> Option<TimeoutHandle> + 'static) -> impl Fn() {
+pub(crate) fn use_timeout(func: impl Fn() -> Option<TimeoutHandle> + 'static) {
     // Saves last interval to be cleared on cleanup.
     let timeout: Rc<Cell<Option<TimeoutHandle>>> = Rc::new(Cell::new(None));
     let clean_up = {
@@ -16,11 +15,10 @@ pub(crate) fn use_timeout(func: impl Fn() -> Option<TimeoutHandle> + 'static) ->
         }
     };
 
-    on_cleanup(clean_up.clone());
+    on_cleanup(clean_up);
 
-    create_effect(move |maybe_handle: Option<Option<TimeoutHandle>>| {
-        let maybe_handle = maybe_handle.flatten().or_else(|| timeout.take());
-        if let Some(handle) = maybe_handle {
+    create_effect(move |_| {
+        if let Some(handle) = timeout.take() {
             handle.clear();
         }
 
@@ -29,8 +27,6 @@ pub(crate) fn use_timeout(func: impl Fn() -> Option<TimeoutHandle> + 'static) ->
 
         result
     });
-
-    clean_up
 }
 
 pub(crate) fn time_until_stale(updated_at: Instant, stale_time: Duration) -> Duration {
@@ -40,14 +36,4 @@ pub(crate) fn time_until_stale(updated_at: Instant, stale_time: Duration) -> Dur
     let result = (updated_at + stale_time) - now;
     let ensure_non_negative = result.max(0);
     Duration::from_millis(ensure_non_negative as u64)
-}
-
-pub(crate) fn maybe_time_until_stale(
-    updated_at: Option<Instant>,
-    stale_time: Option<Duration>,
-) -> Option<Duration> {
-    match (updated_at, stale_time) {
-        (Some(last_updated), Some(stale_time)) => Some(time_until_stale(last_updated, stale_time)),
-        _ => None,
-    }
 }

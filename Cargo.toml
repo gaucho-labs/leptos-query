@@ -1,25 +1,18 @@
-[package]
-name = "leptos_query"
-version = "0.4.2"
-edition = "2021"
-authors = ["Nico Burniske"]
-description = "Async query manager for Leptos"
-exclude = ["example/"]
-keywords = ["leptos"]
-license = "MIT"
-readme = "README.md"
-repository = "https://github.com/nicoburniske/leptos_query"
+[workspace]
+members = [ 
+    "devtools",
+    "query",
+]
+resolver = "2"
+exclude = ["example"]
 
-[dependencies]
+[workspace.dependencies]
 leptos = "0.6"
 cfg-if = "1"
-js-sys = {version = "0.3", optional = true}
-gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
-tokio = { version = "1.35", optional = true, features = ["time"]}
-
-[features]
-hydrate = ["dep:js-sys", "dep:gloo-timers"] 
-ssr = ["dep:tokio"]
-
-[package.metadata.docs.rs]
-all-features = true
+js-sys = { version = "0.3" }
+gloo-timers = { version = "0.3", features = ["futures"] }
+tokio = { version = "1", features = ["time"] }
+slotmap = "1"
+futures-channel = "0.3"
+futures = "0.3"
+web-sys = "0.3"
