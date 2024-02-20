@@ -9,45 +9,69 @@ use crate::{
     RefetchFn,
 };
 
-/// Creates a new `QueryScope` for managing queries with specific key and value types.
+/// Creates a new [`QueryScope`] for managing queries with specific key and value types. This reduces the need to use the [`QueryClient`](crate::QueryClient) directly.
 ///
 /// Useful for having typed invalidation, setting, and updating of queries.
 ///
-/// # Type Parameters
-///
-/// * `K`: The type of the query key.
-/// * `V`: The type of the query value.
-/// * `Fu`: The future type returned by the fetcher function.
-///
 /// # Parameters
 ///
-/// * `fetcher`: A function that, given a key of type `K`, returns a `Future` that resolves to a value of type `V`.
+/// * `fetcher`: The execution function to use for fetching query data.
 /// * `options`: Query options used to configure all queries within this scope.
 ///
-/// # Returns
-///
-/// Returns a new instance of `QueryScope<K, V>`.
+/// Returns a new [`QueryScope`].
 ///
 /// # Example
 ///
 /// ```
 /// use leptos_query::*;
+/// use leptos::*;
 ///
-/// fn create_query_test() {
-///     let query_scope = create_query::<UserId, UserData, _>(fetch_user_data, QueryOptions::default());
+/// #[component]
+/// pub fn App() -> impl IntoView {
+///    let track_query_scope = track_query();
+///    let QueryResult { data, .. } = track_query_scope.use_query(|| TrackId(1));
+///    
+///     view! {
+///        <div>
+///            // Query data should be read inside a Transition/Suspense component.
+///            <Transition
+///                fallback=move || {
+///                    view! { <h2>"Loading..."</h2> }
+///                }>
+///                {move || {
+///                     data
+///                         .get()
+///                         .map(|track| {
+///                            view! { <h2>{track.name}</h2> }
+///                         })
+///                }}
+///            </Transition>
+///        </div>
+///     }
 /// }
 ///
-/// async fn fetch_user_data(id: UserId) -> UserData {
-///    todo!()
+/// // Query for a track.
+/// fn track_query() -> QueryScope<TrackId, TrackData> {
+///     create_query(
+///         get_track,
+///         QueryOptions::default(),
+///     )
 /// }
+/// // Make a key type.
+/// #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+/// struct TrackId(i32);
 ///
-/// #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-/// struct UserId(i32);
-///
+/// // The result of the query fetcher.
 /// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-/// struct UserData {
+/// struct TrackData {
 ///    name: String,
 /// }
+///
+/// // Query fetcher.
+/// async fn get_track(id: TrackId) -> TrackData {
+///     todo!()
+/// }
+///
 ///
 /// ```
 pub fn create_query<K, V, Fu>(
@@ -65,12 +89,7 @@ where
 
 /// A scope for managing queries with specific key and value types within a type-safe environment.
 ///
-/// This struct allows operations such as fetching, prefetching, and invalidating queries to be performed.
-///
-/// # Type Parameters
-///
-/// * `K`: The type of the query key.
-/// * `V`: The type of the query value.
+/// Encapsulates operations such as fetching, prefetching, updating, and invalidating queries.
 #[derive(Clone)]
 pub struct QueryScope<K, V> {
     #[allow(clippy::type_complexity)]
@@ -86,13 +105,7 @@ where
     /// Executes a query using the provided key function and the fetcher function specified at creation.
     /// Data must be read inside of a Suspense/Transition component
     ///
-    /// # Parameters
-    ///
-    /// * `key`: A function that returns the query key of type `K`.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `QueryResult<V, impl RefetchFn>`, which includes the query data and a function to refetch the query.
+    /// Returns a `QueryResult<V, impl RefetchFn>`, which includes the query state signals.
     ///
     /// # Example
     ///
@@ -123,20 +136,24 @@ where
 
     /// Executes a query with additional options that override the default options provided at the scope's creation.
     ///
-    /// # Parameters
-    ///
-    /// * `key`: A function that returns the query key of type `K`.
-    /// * `options`: Additional options to override the default query options.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `QueryResult<V, impl RefetchFn>` similar to `use_query`, but with the provided override options applied.
+    /// Returns a [`QueryResult`] similar to [`QueryScope::use_query`], but with the provided override options applied.
     pub fn use_query_with_options(
         &self,
         key: impl Fn() -> K + 'static,
         options: QueryOptions<V>,
     ) -> QueryResult<V, impl RefetchFn> {
         use_query(key, self.make_fetcher(), options)
+    }
+
+    /// Executes a query with additional options derived from the default options.
+    ///
+    /// Returns a [`QueryResult`] similar to [`QueryScope::use_query`], but with the provided override options applied.
+    pub fn use_query_map_options(
+        &self,
+        key: impl Fn() -> K + 'static,
+        options: impl FnOnce(QueryOptions<V>) -> QueryOptions<V>,
+    ) -> QueryResult<V, impl RefetchFn> {
+        use_query(key, self.make_fetcher(), options(self.options.clone()))
     }
 
     /// Retrieves the default options for this scope.
@@ -166,46 +183,29 @@ where
 
     /// Retrieves the current state of a query identified by the given key function.
     ///
-    /// # Parameters
-    ///
-    /// * `key`: A function that returns the query key of type `K`.
-    ///
-    /// # Returns
-    ///
-    /// A `Signal` containing an `Option` with the current `QueryState` of the query. If the query does not exist, the `Signal` will contain `None`.
+    /// Returns A [`Signal`] containing the current [`QueryState`] of the query. If the query does not exist, the signal's value will be [`None`].
     pub fn get_query_state(&self, key: impl Fn() -> K + 'static) -> Signal<Option<QueryState<V>>> {
         use_query_client().get_query_state(key)
     }
 
     /// Retrieve the current state for an existing query.
-    /// If the query does not exist, [`None`](Option::None) will be returned.
     /// Useful for when you want to introspect the state of a query without subscribing to it.
+    ///
+    /// If the query does not exist, [`None`](Option::None) will be returned.
     pub fn peek_query_state(&self, key: &K) -> Option<QueryState<V>> {
         use_query_client().peek_query_state(key)
     }
 
     /// Invalidates a query in the cache, identified by a specific key, marking it as needing a refetch.
     ///
-    /// # Parameters
-    ///
-    /// * `key`: A key that identifies the query to be invalidated.
-    ///
-    /// # Returns
-    ///
-    /// A boolean indicating whether the query was successfully invalidated.
+    /// Returns a boolean indicating whether the query was successfully invalidated.
     pub fn invalidate_query(&self, key: impl Borrow<K>) -> bool {
         use_query_client().invalidate_query::<K, V>(key)
     }
 
     /// Invalidates multiple queries in the cache, identified by a collection of keys.
     ///
-    /// # Parameters
-    ///
-    /// * `keys`: An iterator over keys that identify the queries to be invalidated.
-    ///
-    /// # Returns
-    ///
-    /// An `Option` containing a `Vec` of keys that were successfully invalidated. If no queries were invalidated, `None` is returned.
+    /// Returns an `Option` containing a `Vec` of keys that were successfully invalidated. If no queries were invalidated, `None` is returned.
     pub fn invalidate_queries<Q>(&self, keys: impl IntoIterator<Item = Q>) -> Option<Vec<Q>>
     where
         K: QueryKey + 'static,
@@ -237,39 +237,27 @@ where
     }
 
     /// Sets the data of an existing query in the cache, identified by a specific key.
-    ///
-    /// # Parameters
-    ///
-    /// * `key`: The key that identifies the query to update.
-    /// * `data`: The new value.
-    ///
     pub fn set_query_data(&self, key: K, data: V) {
         use_query_client().set_query_data(key, data);
     }
 
     /// Mutates the data of an existing query in the cache, identified by a specific key.
+    /// If the query does not exist, this method does nothing.
+    /// If query does exist, all listeners will be notified.
     ///
     /// # Parameters
     ///
     /// * `key`: A key that identifies the query to mutate.
-    /// * `updater`: A closure that takes a mutable reference to the current query data.
+    /// * `updater`: A closure that can update a mutable reference to the query data.
     ///
-    /// # Returns
-    ///
-    /// A boolean indicating whether the query data was successfully mutated.
+    /// # Returns a boolean indicating whether the query data was successfully mutated.
     pub fn update_query_data_mut(&self, key: impl Borrow<K>, updater: impl FnOnce(&mut V)) -> bool {
         use_query_client().update_query_data_mut(key, updater)
     }
 
     /// Cancels an ongoing fetch operation for a query, identified by a specific key.
     ///
-    /// # Parameters
-    ///
-    /// * `key`: The key that identifies the query to cancel.
-    ///
-    /// # Returns
-    ///
-    /// A boolean indicating whether the fetch operation was successfully cancelled.
+    /// Returns a boolean indicating whether the fetch operation was active and successfully cancelled.
     pub fn cancel_query(&self, key: K) -> bool {
         use_query_client().cancel_query::<K, V>(key)
     }
