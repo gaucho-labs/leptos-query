@@ -93,81 +93,79 @@ ssr = [
 
 In the root of your App, provide a query client:
 
-```rust
-use leptos_query::*;
-use leptos::*;
+```rust 
+ #[component]
+ pub fn App() -> impl IntoView {
+     // Provides Query Client for entire app.
+     provide_query_client();
 
-#[component]
-pub fn App() -> impl IntoView {
-    // Provides Query Client for entire app.
-    provide_query_client();
+     // Rest of App...
+ }
+ ```
 
-    // Rest of App...
-}
-```
+ Then create a query with `leptos_query::create_query`
 
-Then make a query function.
+ ```rust
+ use leptos::*;
+ use leptos_query::*;
 
-```rust
-use leptos_query::*;
-use serde::*;
+  // Query for a track.
+ fn track_query() -> QueryScope<TrackId, TrackData> {
+     create_query(
+         get_track,
+         QueryOptions::default(),
+     )
+ }
 
-// Make a key type.
-#[derive(Debug, Clone,  Hash, Eq, PartialEq)]
-struct TrackId(i32);
+ // Make a key type.
+ #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+ struct TrackId(i32);
 
-// The result of the query fetcher.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct TrackData {
-   name: String,
-}
+ // The result of the query fetcher.
+ #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+ struct TrackData {
+    name: String,
+ }
 
-// Query for a track.
-fn use_track_query(id: impl Fn() -> TrackId + 'static) -> QueryResult<TrackData, impl RefetchFn> {
-    leptos_query::use_query(
-        id,
-        get_track,
-        QueryOptions::default(),
-    )
-}
+ // Query fetcher.
+ async fn get_track(id: TrackId) -> TrackData {
+     todo!()
+ }
 
-async fn get_track(id: TrackId) -> TrackData {
-    todo!()
-}
+ ```
 
-```
+ Now you can use the query in any component in your app.
 
-Now you can use the query in any component in your app.
+ ```rust
 
-```rust
-use leptos::*;
-use leptos_query::*;
+ use leptos::*;
+ use leptos_query::*;
 
-#[component]
-fn TrackView(id: TrackId) -> impl IntoView {
-    let QueryResult {
-        data,
-        ..
-    } = use_track_query(move || id.clone());
+ #[component]
+ fn TrackView(id: TrackId) -> impl IntoView {
+     let QueryResult {
+         data,
+         ..
+     } = track_query().use_query(move || id);
 
-    view! {
-       <div>
-           // Query data should be read inside a Transition/Suspense component.
-           <Transition
-               fallback=move || {
-                   view! { <h2>"Loading..."</h2> }
-               }>
-               {move || {
-                    data
-                        .get()
-                        .map(|track| {
-                           view! { <h2>{track.name}</h2> }
-                        })
-               }}
-           </Transition>
-       </div>
-    }
-}
+     view! {
+        <div>
+            // Query data should be read inside a Transition/Suspense component.
+            <Transition
+                fallback=move || {
+                    view! { <h2>"Loading..."</h2> }
+                }>
+                {move || {
+                     data
+                         .get()
+                         .map(|track| {
+                            view! { <h2>{track.name}</h2> }
+                         })
+                }}
+            </Transition>
+        </div>
+     }
+ }
 ```
 
 For a complete working example see [the example directory](/example)

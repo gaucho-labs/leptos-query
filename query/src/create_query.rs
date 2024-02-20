@@ -28,8 +28,8 @@ use crate::{
 ///
 /// #[component]
 /// pub fn App() -> impl IntoView {
-///    let track_query_scope = track_query();
-///    let QueryResult { data, .. } = track_query_scope.use_query(|| TrackId(1));
+///    let scope = track_query();
+///    let QueryResult { data, .. } = scope.use_query(|| TrackId(1));
 ///    
 ///     view! {
 ///        <div>

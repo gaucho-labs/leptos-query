@@ -50,14 +50,23 @@
 //! }
 //! ```
 //!
-//! Then make a query function with [`use_query`][crate::use_query::use_query()]
+//! Then make a query function with [`create_query`][crate::create_query::create_query()]
 //!
 //! ```
 //! use leptos::*;
 //! use leptos_query::*;
 //!
+//!
+//! // Query for a track.
+//! fn track_query() -> QueryScope<TrackId, TrackData> {
+//!     create_query(
+//!         get_track,
+//!         QueryOptions::default(),
+//!     )
+//! }
+//!
 //! // Make a key type.
-//! #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+//! #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 //! struct TrackId(i32);
 //!
 //! // The result of the query fetcher.
@@ -71,15 +80,6 @@
 //!     todo!()
 //! }
 //!
-//! // Query for a track.
-//! fn use_track_query(id: impl Fn() -> TrackId + 'static) -> QueryResult<TrackData, impl RefetchFn> {
-//!     leptos_query::use_query(
-//!         id,
-//!         get_track,
-//!         QueryOptions::default(),
-//!     )
-//! }
-//!
 //! ```
 //!
 //! Now you can use the query in any component in your app.
@@ -88,7 +88,7 @@
 //! # use serde::*;
 //! #
 //! # // Make a key type.
-//! # #[derive(Debug, Clone,  Hash, Eq, PartialEq)]
+//! # #[derive(Debug, Copy, Clone,  Hash, Eq, PartialEq)]
 //! # struct TrackId(i32);
 //! #
 //! # // The result of the query fetcher.
@@ -97,9 +97,16 @@
 //! #    name: String,
 //! # }
 //! #
-//! # fn use_track_query(id: impl Fn() -> TrackId + 'static) -> QueryResult<TrackData, impl RefetchFn>  {
-//! #     QueryResult {data: todo!(), state: todo!(), refetch: || (), is_fetching: todo!(), is_loading: todo!(), is_invalid: todo!()}
+//! # fn track_query() -> QueryScope<TrackId, TrackData> {
+//! #     create_query(
+//! #         get_track,
+//! #         QueryOptions::default(),
+//! #     )
 //! # }
+//! # async fn get_track(id: TrackId) -> TrackData {
+//! #    todo!()
+//! # }
+//! #
 //! use leptos::*;
 //! use leptos_query::*;
 //!
@@ -108,7 +115,7 @@
 //!     let QueryResult {
 //!         data,
 //!         ..
-//!     } = use_track_query(move || id.clone());
+//!     } = track_query().use_query(move || id);
 //!
 //!     view! {
 //!        <div>
