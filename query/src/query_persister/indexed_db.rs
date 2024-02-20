@@ -29,13 +29,14 @@ impl IndexedDbPersister {
         persister
     }
 
+    /// Initialize the persister eagerly, so that it is ready to use when needed.
     #[cfg(any(feature = "hydrate", feature = "csr"))]
     fn setup(&self) {
         let db = {
             let database_name = self.database_name.clone();
             let object_store = self.object_store.clone();
             async move {
-                helpers::get_database(database_name.as_str(), object_store.as_str()).await;
+                helpers::set_up_db(&database_name, &object_store).await;
             }
         };
         leptos::spawn_local(async move {
@@ -52,9 +53,8 @@ impl QueryPersister for IndexedDbPersister {
         use helpers::*;
         use js_sys::wasm_bindgen::JsValue;
 
-        let database_name = self.database_name.as_str();
         let object_store = self.object_store.as_str();
-        let db = get_database(database_name, object_store).await;
+        let db = get_database().await;
 
         let transaction = db
             .transaction_on_one_with_mode(object_store, web_sys::IdbTransactionMode::Readwrite)
@@ -77,9 +77,8 @@ impl QueryPersister for IndexedDbPersister {
         use helpers::*;
         use js_sys::wasm_bindgen::JsValue;
 
-        let database_name = self.database_name.as_str();
         let object_store = self.object_store.as_str();
-        let db = get_database(database_name, object_store).await;
+        let db = get_database().await;
 
         let transaction = db
             .transaction_on_one_with_mode(object_store, web_sys::IdbTransactionMode::Readwrite)
@@ -102,9 +101,8 @@ impl QueryPersister for IndexedDbPersister {
         use indexed_db_futures::prelude::*;
         use js_sys::wasm_bindgen::JsValue;
 
-        let database_name = self.database_name.as_str();
         let object_store = self.object_store.as_str();
-        let db = get_database(database_name, object_store).await;
+        let db = get_database().await;
 
         let transaction = db
             .transaction_on_one(object_store)
@@ -130,9 +128,9 @@ impl QueryPersister for IndexedDbPersister {
     async fn clear(&self) {
         use helpers::*;
 
-        let database_name = self.database_name.as_str();
         let object_store = self.object_store.as_str();
-        let db = get_database(database_name, object_store).await;
+
+        let db = get_database().await;
 
         let transaction = db
             .transaction_on_one_with_mode(object_store, web_sys::IdbTransactionMode::Readwrite)
@@ -169,8 +167,9 @@ impl QueryPersister for IndexedDbPersister {
 #[cfg(any(feature = "hydrate", feature = "csr"))]
 mod helpers {
 
-    use std::{cell::OnceCell, rc::Rc};
+    use std::rc::Rc;
 
+    use async_cell::unsync::AsyncCell;
     use indexed_db_futures::{
         request::{IdbOpenDbRequestLike, OpenDbRequest},
         IdbDatabase, IdbVersionChangeEvent,
@@ -178,25 +177,25 @@ mod helpers {
     use js_sys::wasm_bindgen::JsValue;
 
     thread_local! {
-       static DATABASE: OnceCell<Rc<IdbDatabase>> = OnceCell::new();
+       static DATABASE: Rc<AsyncCell<Rc<IdbDatabase>>> = Rc::new(AsyncCell::new());
     }
 
-    pub async fn get_database(db_name: &str, object_store: &str) -> Rc<IdbDatabase> {
-        if let Some(db) = DATABASE.with(|db| db.get().cloned()) {
-            db
-        } else {
-            let db = create_database(db_name, object_store).await;
-            let db = Rc::new(db);
-
-            DATABASE.with(move |db_cell| {
-                db_cell.get_or_init(move || db);
-            });
-
-            DATABASE.with(|db| db.get().unwrap().clone())
-        }
+    pub async fn get_database() -> Rc<IdbDatabase> {
+        let db = DATABASE.with(|cell| cell.clone());
+        let result = db.get().await;
+        result
     }
 
-    pub async fn create_database(db_name: &str, object_store: &str) -> IdbDatabase {
+    pub async fn set_up_db(db_name: &str, object_store: &str) {
+        let db = create_database(db_name, object_store).await;
+        let db = Rc::new(db);
+
+        DATABASE.with(move |db_cell| {
+            db_cell.set(db);
+        });
+    }
+
+    async fn create_database(db_name: &str, object_store: &str) -> IdbDatabase {
         let mut db_req: OpenDbRequest =
             IdbDatabase::open_u32(db_name, 1).expect("Database open request");
 
@@ -204,10 +203,11 @@ mod helpers {
         db_req.set_on_upgrade_needed(Some(
             move |evt: &IdbVersionChangeEvent| -> Result<(), JsValue> {
                 // Check if the object store exists; create it if it doesn't
-                if let None = evt
+                if evt
                     .db()
                     .object_store_names()
                     .find(|n| n == object_store.as_str())
+                    .is_none()
                 {
                     evt.db().create_object_store(object_store.as_str())?;
                 }
