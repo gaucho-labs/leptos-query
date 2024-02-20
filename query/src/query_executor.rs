@@ -23,12 +23,37 @@ use std::cell::Cell;
 /// fn App() -> impl IntoView {
 ///     ()
 /// }
-///
-///
-///
 /// ```
 pub fn suppress_query_load(suppress: bool) {
     SUPPRESS_QUERY_LOAD.with(|w| w.set(suppress));
+}
+
+/// Run a closure with query loading suppressed.
+///
+/// Useful for disabling query loads during App introspection, such as SSR Router integrations for Actix/Axum.
+///
+/// Example for `generate_route_list`
+/// ```
+/// use leptos::*;
+/// use leptos_query::*;
+/// use leptos_axum::*;
+///
+/// fn make_routes()  {
+///    let routes = with_query_supression(|| generate_route_list(App));
+/// }
+///
+/// #[component]
+/// fn App() -> impl IntoView {
+///     ()
+/// }
+/// ```
+pub fn with_query_supression<T>(f: impl FnOnce() -> T) -> T {
+    SUPPRESS_QUERY_LOAD.with(|w| {
+        w.set(true);
+        let result = f();
+        w.set(false);
+        result
+    })
 }
 
 pub(crate) fn query_is_supressed() -> bool {
