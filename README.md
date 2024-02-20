@@ -5,17 +5,11 @@
         <img src="https://raw.githubusercontent.com/nicoburniske/leptos_query/main/logo.svg" alt="Leptos Query" width="150"/>
     </a>
 </p>
-<p align="center">
-    <a href="https://github.com/nicoburniske/leptos_query">
-        <img src="https://img.shields.io/badge/github-nicoburniske/leptos_query-8da0cb?style=for-the-badge&labelColor=555555&logo=github" alt="GitHub"/>
-    </a>
-    <a href="https://crates.io/crates/leptos_query">
-        <img src="https://img.shields.io/crates/v/leptos_query.svg?style=for-the-badge&color=fc8d62&logo=rust" alt="Crates.io"/>
-    </a>
-    <a href="https://docs.rs/leptos_query">
-        <img src="https://img.shields.io/badge/docs.rs-leptos_query-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" alt="Docs.rs"/>
-    </a>
-</p>
+
+[<img alt="github" src="https://img.shields.io/badge/github-nicoburniske/leptos_query-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/nicoburniske/leptos_query)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/leptos_query.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/leptos_query)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-leptos_query-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/leptos_query)
+[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/nicoburniske/leptos_query/rust.yml?branch=main&style=for-the-badge" height="20">](https://github.com/nicoburniske/leptos_query/actions?query=branch%3Amain)
 
 
 [FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md) | [Examples](https://github.com/nicoburniske/leptos_query/tree/main/example/)
