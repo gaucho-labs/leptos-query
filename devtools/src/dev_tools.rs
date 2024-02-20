@@ -12,6 +12,25 @@ use crate::timeout::{time_until_stale, use_timeout};
 
 #[component]
 pub(crate) fn InnerDevtools() -> impl IntoView {
+    let mounted = create_rw_signal(false);
+
+    create_effect(move |_| {
+        mounted.set(true);
+    });
+
+    move || {
+        if mounted.get() {
+            view! {
+                <DevtoolsClient/>
+            }
+        } else {
+            ().into_view()
+        }
+    }
+}
+
+#[component]
+fn DevtoolsClient() -> impl IntoView {
     let client = leptos_query::use_query_client();
     let state = DevtoolsContext::new();
     client.register_cache_observer(state.clone());
