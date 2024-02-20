@@ -282,7 +282,7 @@ fn UniqueKeyExample() -> impl IntoView {
     let QueryResult { data, .. } = use_query(
         || UniqueKey,
         |_| async { get_unique().await.expect("Failed to retrieve unique") },
-        QueryOptions::once(),
+        QueryOptions::default(),
     );
 
     view! {
