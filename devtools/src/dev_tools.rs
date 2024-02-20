@@ -268,7 +268,11 @@ impl CacheObserver for DevtoolsContext {
             CacheEvent::ObserverRemoved(key) => {
                 self.query_state.update(|map| {
                     if let Some(entry) = map.get_mut(&key) {
-                        entry.observer_count.update(|c| *c -= 1);
+                        entry.observer_count.update(|c| {
+                            if *c > 0 {
+                                *c -= 1
+                            }
+                        });
                     }
                 });
             }
