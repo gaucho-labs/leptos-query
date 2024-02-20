@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use crate::cache_observer::{CacheEvent, CacheObserver};
 
 /// A utility for client side query persistance
+// Futures produced by the trait methods do not have to be Send, because everything is single threaded.
 #[async_trait(?Send)]
 pub trait QueryPersister {
     /// Persist a query to the persister
