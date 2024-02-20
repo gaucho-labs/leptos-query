@@ -264,6 +264,7 @@ impl QueryCache {
         }
         // Though persister receives removal events, there may be queries in persister that are not yet in cache.
         // So we should clear them all.
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
         if let Some(persister) = self.persister.borrow().clone() {
             spawn_local(async move {
                 persister.clear().await;

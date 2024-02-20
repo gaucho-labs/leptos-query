@@ -21,8 +21,9 @@ where
 {
     fn process_cache_event(&self, event: CacheEvent) {
         match event {
+            #[cfg(any(feature = "hydrate", feature = "csr"))]
             CacheEvent::Created(query) => {
-                if let Ok(value) = query.state.try_into() {
+                if let Ok(value) = TryInto::<PersistQueryData>::try_into(query.state) {
                     let key = query.key.0;
                     let persister = self.clone();
                     leptos::spawn_local(async move {
@@ -30,8 +31,9 @@ where
                     })
                 }
             }
+            #[cfg(any(feature = "hydrate", feature = "csr"))]
             CacheEvent::Updated(query) => {
-                if let Ok(value) = query.state.try_into() {
+                if let Ok(value) = TryInto::<PersistQueryData>::try_into(query.state) {
                     let key = query.key.0;
                     let persister = self.clone();
                     leptos::spawn_local(async move {
@@ -39,6 +41,7 @@ where
                     })
                 }
             }
+            #[cfg(any(feature = "hydrate", feature = "csr"))]
             CacheEvent::Removed(key) => {
                 let persister = self.clone();
                 leptos::spawn_local(async move {
@@ -115,6 +118,7 @@ pub mod local_storage_persister {
 
     #[cfg(any(feature = "hydrate", feature = "csr"))]
     thread_local! {
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
         pub(crate) static LOCAL_STORAGE: Option<web_sys::Storage> = leptos::window().local_storage().ok().flatten()
     }
 
