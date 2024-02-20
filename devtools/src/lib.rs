@@ -394,7 +394,7 @@ mod dev_tools {
                         <button
                             on:click=move |_| open.set(true)
                             class="bg-zinc-200 text-lq-foreground absolute bottom-3 right-3 rounded-full w-12 h-12 hover:-translate-y-1 hover:bg-zinc-300 transition-all duration-200"
-                            inner_html=include_str!("../../logo.svg")
+                            inner_html=include_str!("logo.svg")
                         ></button>
                     }
                 }
