@@ -43,8 +43,9 @@ Some useful methods on `QueryClient` include:
 
 - [Prefetching](https://docs.rs/leptos_query/latest/leptos_query/struct.QueryClient.html#method.prefetch_query): Query will start loading before you invoke [use_query](use_query::use_query), which is useful when you anticipate a query will be used soon.
 - [Invalidation](https://docs.rs/leptos_query/latest/leptos_query/struct.QueryClient.html#method.invalidate_query): Query will refetch on next usage. Active queries are immediately refetched in the background, which is helpful for highly dynamic data.
-- [Introspection](https://docs.rs/leptos_query/latest/leptos_query/struct.QueryClient.html#method.get_query_state): Lets you see what the current value of a query is.
+- [Introspection](https://docs.rs/leptos_query/latest/leptos_query/struct.QueryClient.html#method.get_query_state): Let's you observe what the current value of a query is.
 - [Manual updates](https://docs.rs/leptos_query/latest/leptos_query/struct.QueryClient.html#method.set_query_data): Useful when you have updated a value and you want to manually set it in cache instead of waiting for the query to refetch.
+- [Query Cancellation](https://docs.rs/leptos_query/latest/leptos_query/struct.QueryClient.html#method.cancel_query): Cancels a query that is currently being fetched.
 
 ## Query Invalidation
 
