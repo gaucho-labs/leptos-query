@@ -11,10 +11,10 @@ axum = { version = "0.7", optional = true }
 console_error_panic_hook = "0.1"
 console_log = "1"
 cfg-if = "1"
-leptos = { version = "0.6", features = ["serde", "nightly"] }
-leptos_axum = { version = "0.6", optional = true }
-leptos_meta = { version = "0.6", features = ["nightly"] }
-leptos_router = { version = "0.6", features = ["nightly"] }
+leptos = { version = "0.6.5", features = ["serde", "nightly"] }
+leptos_axum = { version = "0.6.5", optional = true }
+leptos_meta = { version = "0.6.5", features = ["nightly"] }
+leptos_router = { version = "0.6.5", features = ["nightly"] }
 log = "0.4"
 simple_logger = "4"
 tokio = { version = "1.35", optional = true, features = ["rt-multi-thread"] }
@@ -25,7 +25,7 @@ thiserror = "1.0"
 tracing = { version = "0.1", optional = true }
 http = "1"
 serde = "1.0"
-leptos_query = { path = "../../query", features = ["local_storage"] }
+leptos_query = { path = "../../query", features = ["local_storage", "indexed_db"] }
 leptos_query_devtools = { path = "../../devtools" }
 
 [features]
