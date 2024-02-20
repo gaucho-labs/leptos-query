@@ -29,7 +29,7 @@ const DEFAULT_STALE_TIME: Duration = Duration::from_secs(10);
 const DEFAULT_GC_TIME: Duration = Duration::from_secs(60 * 5);
 
 /**
- * Options for a query [`crate::use_query::use_query`]
+ * Options for a query [`use_query()`](crate::use_query())
  */
 #[derive(Debug, Clone)]
 pub struct QueryOptions<V> {
@@ -37,17 +37,17 @@ pub struct QueryOptions<V> {
     pub default_value: Option<V>,
     /// The duration that should pass before a query is considered stale.
     /// If the query is stale, it will be refetched.
-    /// If no stale time, the query will never be considered stale.
-    /// Stale time is checked when [`QueryState::read`](#impl-<K,V>-for-QueryState<K,V>) is used.
-    /// Stale time can never be greater than cache_time.
-    /// Default is 0 milliseconds.
-    /// NOTE: If different stale times are used for the same key, the minimum time for the currently ACTIVE query will be used.
+    /// If no stale_time, the query will never be considered stale.
+    /// Stale time is checked when [`use_query()`](crate::use_query()) instance is mounted.
+    /// Stale_time can never be greater than cache_time.
+    /// Default is 10 seconds.
+    /// NOTE: If different stale_time are used for the same key, the MINIMUM time will be used.
     pub stale_time: Option<Duration>,
     /// The amount of time a query will be cached, once it's considered stale.
     /// If no cache time, the query will never be revoked from cache.
     /// cache_time can never be less than stale_time.
     /// Default is 5 minutes.
-    /// NOTE: If different cache times are used for the same key, the minimum time will be used.
+    /// NOTE: If different cache times are used for the same key, the MAXIMUM time will be used.
     pub gc_time: Option<Duration>,
     /// If no refetch interval, the query will never refetch.
     pub refetch_interval: Option<Duration>,
@@ -64,7 +64,7 @@ impl<V> QueryOptions<V> {
         }
     }
 
-    /// Set the stale time.
+    /// Set the stale_time.
     pub fn set_stale_time(self, stale_time: Option<Duration>) -> Self {
         QueryOptions { stale_time, ..self }
     }
@@ -143,7 +143,6 @@ pub enum ResourceOption {
     NonBlocking,
     /// Query will use [`create_blocking_resource()`](leptos::create_blocking_resource)
     Blocking,
-
     /// Query will use [`create_local_resource()`](leptos::create_local_resource)
     Local,
 }
@@ -156,7 +155,7 @@ fn ensure_valid_stale_time(
         (Some(ref stale_time), Some(ref gc_time)) => {
             if stale_time > gc_time {
                 leptos::logging::debug_warn!(
-                    "Stale time is greater than gc time. Using gc time instead. Stale: {}, GC: {}",
+                    "stale_time is greater than gc_time. Using gc time instead. stale_time: {}, gc_time: {}",
                     stale_time.as_millis(),
                     gc_time.as_millis()
                 );
@@ -164,6 +163,14 @@ fn ensure_valid_stale_time(
             } else {
                 Some(*stale_time)
             }
+        }
+        (None, Some(ref gc_duration)) => {
+            leptos::logging::debug_warn!(
+                "stale_time (infinity) is greater than gc_time. Using gc_time instead. gc_time: {}",
+                gc_duration.as_millis()
+            );
+            let _ = gc_duration;
+            *gc_time
         }
         (stale_time, _) => *stale_time,
     }
@@ -189,7 +196,7 @@ mod tests {
         assert_eq!(
             options.stale_time,
             Some(Duration::from_secs(5)),
-            "Stale time should remain unchanged"
+            "Stale_time should remain unchanged"
         );
         assert_eq!(
             options.gc_time,
@@ -212,7 +219,7 @@ mod tests {
         assert_eq!(
             options.stale_time,
             Some(Duration::from_secs(10)),
-            "Stale time should be adjusted to GC time"
+            "Stale_time should be adjusted to GC time"
         );
         assert_eq!(
             options.gc_time,
@@ -235,7 +242,7 @@ mod tests {
         assert_eq!(
             options.stale_time,
             Some(Duration::from_secs(5)),
-            "Stale time should remain unchanged"
+            "Stale_time should remain unchanged"
         );
         assert_eq!(options.gc_time, None, "GC time should remain None");
     }
@@ -250,8 +257,11 @@ mod tests {
             resource_option: None,
         }
         .validate();
-
-        assert_eq!(options.stale_time, None, "Stale time should remain None");
+        assert_eq!(
+            options.stale_time,
+            Some(Duration::from_secs(10)),
+            "Stale_time should become gc_time"
+        );
         assert_eq!(
             options.gc_time,
             Some(Duration::from_secs(10)),
@@ -270,7 +280,7 @@ mod tests {
         }
         .validate();
 
-        assert_eq!(options.stale_time, None, "Stale time should remain None");
+        assert_eq!(options.stale_time, None, "Stale_time should remain None");
         assert_eq!(options.gc_time, None, "GC time should remain None");
     }
 
