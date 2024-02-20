@@ -1,7 +1,7 @@
 # FAQ
 
 - [How's this different from a Leptos Resource?](#hows-this-different-from-a-leptos-resource)
-- [What's the difference between `stale_time` and `cache_time`?](#whats-the-difference-between-stale_time-and-cache_time)
+- [What's the difference between `stale_time` and `gc_time`?](#whats-the-difference-between-stale_time-and-gc_time)
 - [What's a QueryClient?](#the-query-client)
 - [What's Query Invalidation?](#query-invalidation)
 - [What's the difference between `is_loading` and `is_fetching`?](#whats-the-difference-between-is_loading-and-is_fetching)
@@ -15,21 +15,25 @@ Queries are all bound to the `QueryClient` they are created in, meaning that onc
 
 With a resource, you have to manually lift it to a higher scope if you want to preserve it, which can be cumbersome if you have many resources.
 
-## What's the difference between `stale_time` and `cache_time`?
+## What's the difference between `stale_time` and `gc_time`?
 
-`stale_time` is the duration until a query transitions from fresh to stale. As long as the query is fresh, data will always be read from the cache only. When a query is stale, it will be refetched in the background on its next usage. While the refetch is executing to retrieve the latest value, the stale value will be used.
+`stale_time` is the duration until a query transitions from fresh to stale. As long as the query is fresh, data will always be read from the cache only. When a query is stale, it will be refetched in the background on its next usage (specifically on the next use_query mount). While the refetch is executing to retrieve the latest value, the stale value will be used.
 
-`cache_time` is the duration until inactive queries will be evicted from the cache.
+The active `stale_time` is the minimum of all active query `stale_time` values.
+
+`gc_time` is the duration until inactive queries will be evicted from the cache.
+
+The active `gc_time` is the maximum of all query `gc_time` values.
 
 Default values:
 
-- `stale_time`: 0 seconds.
-- `cache_time`: 5 minutes.
+- `stale_time`: 10 seconds.
+- `gc_time`: 5 minutes.
 
-These can be configured per-query using `QueryOptions`. If you want infinite cache/stale time, set `stale_time` and `cache_time` to `None`.
+These can be configured per-query using `QueryOptions`, or for the entire App using `DefaultQueryOptions`. If you want infinite cache/stale time, set `stale_time` and `gc_time` to `None`.
 
-> NOTE: `stale_time` can never be greater than `cache_time`
-> If `stale_time` is greater than `cache_time`, `stale_time` will be set to `cache_time`.
+> NOTE: `stale_time` can never be greater than `gc_time`
+> If `stale_time` is greater than `gc_time`, `stale_time` will be set to `gc_time`.
 
 Consider a query that fetches a Stock Price, and that price is updated every minute. We should set our `stale_time` to be a minute. This would ensure that we would always have the latest stock price.
 
@@ -60,7 +64,7 @@ This can be particularly useful in cases where you have a highly dynamic data so
 
 `is_fetching` is true when the query is in the process of fetching data. `is_loading` is true when the query is in the process of fetching data for the first time.
 
-Consider a scenario where you're fetching a list of items. `is_loading` would be true when you're initially loading this list, whereas `is_fetching` would be true for both the initial load and any subsequent data refreshes (e.g., due to user actions or background updates).
+Consider a scenario where you're fetching a list of items. `is_loading` would be true when you're initially loading this list, whereas `is_fetching` would be true for both the initial load and any subsequent data refreshes (e.g. due to user actions or background updates).
 
 ## Why am I getting a panic on my Leptos main function?
 
@@ -68,6 +72,7 @@ If you are getting a Rust Panic with the following cause:
 
 ```
 tried to run untracked function in a runtime that has been disposed: ()
+
 ```
 
 This is likely because queries are executing during some server side App introspection, such as SSR Router integrations for Actix/Axum.
