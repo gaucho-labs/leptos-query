@@ -11,10 +11,36 @@ pub struct IndexedDbPersister {
 
 impl Default for IndexedDbPersister {
     fn default() -> Self {
-        Self {
-            database_name: "leptos_query".to_string(),
-            object_store: "query_cache".to_string(),
-        }
+        IndexedDbPersister::new("leptos_query".to_string(), "query_cache".to_string())
+    }
+}
+
+impl IndexedDbPersister {
+    /// Create a new indexed db persister
+    pub fn new(database_name: String, object_store: String) -> Self {
+        let persister = Self {
+            database_name,
+            object_store,
+        };
+
+        #[cfg(any(feature = "hydrate", feature = "csr"))]
+        persister.setup();
+
+        persister
+    }
+
+    #[cfg(any(feature = "hydrate", feature = "csr"))]
+    fn setup(&self) {
+        let db = {
+            let database_name = self.database_name.clone();
+            let object_store = self.object_store.clone();
+            async move {
+                helpers::get_database(database_name.as_str(), object_store.as_str()).await;
+            }
+        };
+        leptos::spawn_local(async move {
+            let _ = db.await;
+        })
     }
 }
 
@@ -191,6 +217,7 @@ mod helpers {
 
         db_req.await.expect("Database open request")
     }
+
     pub fn to_json_string<T: miniserde::Serialize>(value: &T) -> JsValue {
         let string = miniserde::json::to_string(value);
         JsValue::from_str(&string)
