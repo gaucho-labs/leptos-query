@@ -33,8 +33,9 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QueryObserver")
             .field("id", &self.id)
-            // .field("query", &self.query)
-            .field("fetcher", &"...")
+            .field("query", &self.query)
+            .field("fetcher", &self.fetcher.is_some())
+            .field("refetch", &self.refetch.get().is_some())
             .field("options", &self.options)
             .field("listeners", &self.listeners.borrow().len())
             .finish()

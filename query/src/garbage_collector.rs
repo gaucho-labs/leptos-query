@@ -13,6 +13,20 @@ pub struct GarbageCollector<K, V> {
     handle: Rc<Cell<Option<TimeoutHandle>>>,
 }
 
+impl<K, V> std::fmt::Debug for GarbageCollector<K, V>
+where
+    K: crate::QueryKey,
+    V: crate::QueryValue,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GarbageCollector")
+            .field("query", &self.query)
+            .field("gc_time", &self.gc_time)
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum GcTime {
     // No gc time set.

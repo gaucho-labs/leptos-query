@@ -41,6 +41,21 @@ impl<K: PartialEq, V> PartialEq for Query<K, V> {
 
 impl<K: PartialEq, V> Eq for Query<K, V> {}
 
+impl<K, V> std::fmt::Debug for Query<K, V>
+where
+    K: crate::QueryKey,
+    V: crate::QueryValue,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Query")
+            .field("key", &self.key)
+            .field("state", &self.state)
+            .field("observers", &self.observers.borrow().len())
+            .field("gc", &self.garbage_collector)
+            .finish()
+    }
+}
+
 impl<K, V> Query<K, V>
 where
     K: crate::QueryKey + 'static,
