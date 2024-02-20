@@ -2,6 +2,8 @@ use crate::error_template::{AppError, ErrorTemplate};
 
 use leptos::*;
 use leptos_meta::*;
+use leptos_query::provide_query_client;
+use leptos_query_devtools::LeptosQueryDevtools;
 use leptos_router::*;
 
 pub mod error_template;
@@ -10,12 +12,15 @@ pub mod error_template;
 pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
+    provide_query_client();
 
     view! {
         <Stylesheet id="leptos" href="/pkg/start-axum-workspace.css"/>
 
         // sets the document title
         <Title text="Welcome to Leptos"/>
+
+        <LeptosQueryDevtools/>
 
         // content for this welcome page
         <Router fallback=|| {

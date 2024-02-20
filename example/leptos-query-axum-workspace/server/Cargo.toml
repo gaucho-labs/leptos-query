@@ -9,6 +9,7 @@ edition = "2021"
 app = { path = "../app", default-features = false, features = ["ssr"] }
 leptos = { workspace = true, features = [ "ssr" ]}
 leptos_axum.workspace = true
+leptos_query = { workspace = true, features = [ "ssr" ]}
 
 axum.workspace = true
 simple_logger.workspace = true

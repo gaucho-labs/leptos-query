@@ -11,6 +11,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 app = { path = "../app", default-features = false, features = ["hydrate"] }
 leptos = { workspace = true, features = [ "hydrate" ] }
+leptos_query = { workspace = true, features = [ "hydrate" ] }
+leptos_query_devtools = { workspace = true, features = [ "csr" ] }
 
 console_error_panic_hook.workspace = true
 console_log.workspace = true
