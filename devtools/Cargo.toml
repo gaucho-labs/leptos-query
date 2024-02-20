@@ -2,13 +2,17 @@
 name = "leptos_query_devtools"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Nico Burniske"]
+description = "Devtools for Leptos Query"
+keywords = ["leptos"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nicoburniske/leptos_query/"
 
 [dependencies]
 cfg-if = { workspace = true } 
 leptos = { workspace = true }
-leptos_query = { path = "../query" }
+leptos_query = { version = "0.5", path = "../query" }
 js-sys = { workspace = true, optional = true }
 web-sys = { workspace = true, features = ["DomRect"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }

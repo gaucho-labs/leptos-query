@@ -6,8 +6,8 @@
 //! The devtools help visualize all of the inner workings of Leptos Query and will likely save you hours of debugging if you find yourself in a pinch!
 //!
 //! ## Features
-//! - `force`: Always show the devtools, even in release mode.
 //! - `csr` Client side rendering: Needed to use browser apis, if this is not enabled your app (under a feature), you will not be able to use the devtools.
+//! - `force`: Always show the devtools, even in release mode.
 //!
 //! Then in your app, render the devtools component. Make sure you also provide the query client.
 //!
