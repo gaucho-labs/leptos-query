@@ -2,11 +2,18 @@ use async_trait::async_trait;
 
 use super::{PersistQueryData, QueryPersister};
 
+#[cfg(any(feature = "hydrate", feature = "csr"))]
+use async_cell::unsync::AsyncCell;
+#[cfg(any(feature = "hydrate", feature = "csr"))]
+use std::rc::Rc;
+
 /// A persister that uses indexed db to persist queries.
 #[derive(Clone, Debug)]
 pub struct IndexedDbPersister {
     database_name: String,
     object_store: String,
+    #[cfg(any(feature = "hydrate", feature = "csr"))]
+    database: Rc<AsyncCell<Rc<indexed_db_futures::IdbDatabase>>>,
 }
 
 impl Default for IndexedDbPersister {
@@ -21,6 +28,8 @@ impl IndexedDbPersister {
         let persister = Self {
             database_name,
             object_store,
+            #[cfg(any(feature = "hydrate", feature = "csr"))]
+            database: Rc::new(AsyncCell::new()),
         };
 
         #[cfg(any(feature = "hydrate", feature = "csr"))]
@@ -33,10 +42,9 @@ impl IndexedDbPersister {
     #[cfg(any(feature = "hydrate", feature = "csr"))]
     fn setup(&self) {
         let db = {
-            let database_name = self.database_name.clone();
-            let object_store = self.object_store.clone();
+            let persister = self.clone();
             async move {
-                helpers::set_up_db(&database_name, &object_store).await;
+                persister.set_up_db().await;
             }
         };
         leptos::spawn_local(async move {
@@ -50,11 +58,10 @@ impl IndexedDbPersister {
 impl QueryPersister for IndexedDbPersister {
     /// Persist a query to the persister
     async fn persist(&self, key: &str, query: PersistQueryData) {
-        use helpers::*;
         use js_sys::wasm_bindgen::JsValue;
 
         let object_store = self.object_store.as_str();
-        let db = get_database().await;
+        let db = self.get_database().await;
 
         let transaction = db
             .transaction_on_one_with_mode(object_store, web_sys::IdbTransactionMode::Readwrite)
@@ -64,7 +71,7 @@ impl QueryPersister for IndexedDbPersister {
             .expect("Failed to get object store");
 
         let key = JsValue::from_str(key);
-        let value = to_json_string(&query);
+        let value = IndexedDbPersister::to_json_string(&query);
 
         let _ = store
             .put_key_val(&key, &value)
@@ -74,11 +81,10 @@ impl QueryPersister for IndexedDbPersister {
     }
     /// Remove a query from the persister
     async fn remove(&self, key: &str) {
-        use helpers::*;
         use js_sys::wasm_bindgen::JsValue;
 
         let object_store = self.object_store.as_str();
-        let db = get_database().await;
+        let db = self.get_database().await;
 
         let transaction = db
             .transaction_on_one_with_mode(object_store, web_sys::IdbTransactionMode::Readwrite)
@@ -97,12 +103,10 @@ impl QueryPersister for IndexedDbPersister {
     }
     /// Retrieve a query from the persister
     async fn retrieve(&self, key: &str) -> Option<PersistQueryData> {
-        use helpers::*;
-        use indexed_db_futures::prelude::*;
-        use js_sys::wasm_bindgen::JsValue;
+        use indexed_db_futures::IdbQuerySource;
 
         let object_store = self.object_store.as_str();
-        let db = get_database().await;
+        let db = self.get_database().await;
 
         let transaction = db
             .transaction_on_one(object_store)
@@ -111,14 +115,14 @@ impl QueryPersister for IndexedDbPersister {
             .object_store(object_store)
             .expect("Failed to get object store");
 
-        let key = JsValue::from_str(key);
+        let key = js_sys::wasm_bindgen::JsValue::from_str(key);
         let request = store
             .get(&key)
             .expect("Failed to execute get operation")
             .await;
 
         match request {
-            Ok(Some(result)) => from_json_string(&result),
+            Ok(Some(result)) => IndexedDbPersister::from_json_string(&result),
             Ok(None) => None,
             Err(_) => None,
         }
@@ -126,11 +130,9 @@ impl QueryPersister for IndexedDbPersister {
 
     /// Clear the persister
     async fn clear(&self) {
-        use helpers::*;
-
         let object_store = self.object_store.as_str();
 
-        let db = get_database().await;
+        let db = self.get_database().await;
 
         let transaction = db
             .transaction_on_one_with_mode(object_store, web_sys::IdbTransactionMode::Readwrite)
@@ -165,37 +167,27 @@ impl QueryPersister for IndexedDbPersister {
 }
 
 #[cfg(any(feature = "hydrate", feature = "csr"))]
-mod helpers {
-
-    use std::rc::Rc;
-
-    use async_cell::unsync::AsyncCell;
-    use indexed_db_futures::{
-        request::{IdbOpenDbRequestLike, OpenDbRequest},
-        IdbDatabase, IdbVersionChangeEvent,
-    };
-    use js_sys::wasm_bindgen::JsValue;
-
-    thread_local! {
-       static DATABASE: Rc<AsyncCell<Rc<IdbDatabase>>> = Rc::new(AsyncCell::new());
-    }
-
-    pub async fn get_database() -> Rc<IdbDatabase> {
-        let db = DATABASE.with(|cell| cell.clone());
+impl IndexedDbPersister {
+    async fn get_database(&self) -> Rc<indexed_db_futures::IdbDatabase> {
+        let db = self.database.clone();
         let result = db.get().await;
         result
     }
 
-    pub async fn set_up_db(db_name: &str, object_store: &str) {
-        let db = create_database(db_name, object_store).await;
+    async fn set_up_db(&self) {
+        let db_name = self.database_name.clone();
+        let object_store = self.object_store.clone();
+
+        let db = IndexedDbPersister::create_database(db_name.as_ref(), object_store.as_ref()).await;
         let db = Rc::new(db);
 
-        DATABASE.with(move |db_cell| {
-            db_cell.set(db);
-        });
+        self.database.set(db);
     }
 
-    async fn create_database(db_name: &str, object_store: &str) -> IdbDatabase {
+    async fn create_database(db_name: &str, object_store: &str) -> indexed_db_futures::IdbDatabase {
+        use indexed_db_futures::{IdbDatabase, IdbVersionChangeEvent, request::{IdbOpenDbRequestLike, OpenDbRequest}};
+        use js_sys::wasm_bindgen::JsValue;
+
         let mut db_req: OpenDbRequest =
             IdbDatabase::open_u32(db_name, 1).expect("Database open request");
 
@@ -218,12 +210,14 @@ mod helpers {
         db_req.await.expect("Database open request")
     }
 
-    pub fn to_json_string<T: miniserde::Serialize>(value: &T) -> JsValue {
+    fn to_json_string<T: miniserde::Serialize>(value: &T) -> js_sys::wasm_bindgen::JsValue {
         let string = miniserde::json::to_string(value);
-        JsValue::from_str(&string)
+        js_sys::wasm_bindgen::JsValue::from_str(&string)
     }
 
-    pub fn from_json_string<T: miniserde::Deserialize>(value: &JsValue) -> Option<T> {
+    fn from_json_string<T: miniserde::Deserialize>(
+        value: &js_sys::wasm_bindgen::JsValue,
+    ) -> Option<T> {
         let value = value.as_string()?;
         miniserde::json::from_str(value.as_str()).ok()
     }
