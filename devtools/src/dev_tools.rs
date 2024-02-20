@@ -139,7 +139,7 @@ enum SettingTime {
 impl SettingTime {
     fn max(&self, other: Self) -> Self {
         match (self, other) {
-            (SettingTime::None, other) => other.clone(),
+            (SettingTime::None, other) => other,
             (current, SettingTime::None) => *current,
             (SettingTime::Some(current), SettingTime::Some(other)) if other > *current => {
                 SettingTime::Some(other)
@@ -152,14 +152,14 @@ impl SettingTime {
 
     fn min(&self, other: Self) -> Self {
         match (self, other) {
-            (SettingTime::None, other) => other.clone(),
+            (SettingTime::None, other) => other,
             (current, SettingTime::None) => *current,
             (SettingTime::Some(current), SettingTime::Some(other)) if other < *current => {
                 SettingTime::Some(other)
             }
             (SettingTime::Some(current), SettingTime::Some(_)) => SettingTime::Some(*current),
             (SettingTime::Infinity, other) => other,
-            (current, SettingTime::Infinity) => current.clone(),
+            (current, SettingTime::Infinity) => *current,
         }
     }
 
@@ -170,11 +170,11 @@ impl SettingTime {
         }
     }
 
-    fn to_expiration(&self) -> Option<Duration> {
+    fn to_expiration(self) -> Option<Duration> {
         match self {
             SettingTime::None => None,
             SettingTime::Infinity => None,
-            SettingTime::Some(duration) => Some(*duration),
+            SettingTime::Some(duration) => Some(duration),
         }
     }
 }
