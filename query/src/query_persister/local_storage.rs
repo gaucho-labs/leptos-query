@@ -47,6 +47,7 @@ impl QueryPersister for LocalStoragePersister {
 }
 
 #[cfg(not(any(feature = "hydrate", feature = "csr")))]
+#[async_trait(?Send)]
 impl QueryPersister for LocalStoragePersister {
     async fn persist(&self, key: &str, query: PersistQueryData) {
         let _ = key;
