@@ -118,8 +118,8 @@ In the root of your App, provide a query client:
  }
 
  // Make a key type.
- #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
- struct TrackId(i32);
+ #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+ struct TrackId(String);
 
  // The result of the query fetcher.
  #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -146,7 +146,7 @@ In the root of your App, provide a query client:
      let QueryResult {
          data,
          ..
-     } = track_query().use_query(move || id);
+     } = track_query().use_query(move || id.clone());
 
      view! {
         <div>
