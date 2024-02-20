@@ -82,6 +82,12 @@ Then make sure you re-enable query loading for your app to behave properly.
 
 Here's an example for the Axum integration:
 
+You can use the `with_query_suppression` function to wrap your app introspection code.
+```rust
+let routes = with_query_suppression(|| leptos_axum::generate_route_list(App));
+```
+
+Or you can manually suppress and re-enable query loading.
 ```rust
 // Disable query loading.
 leptos_query::suppress_query_load(true);
