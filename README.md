@@ -180,11 +180,8 @@ cargo add leptos_query_devtools
 
 Then in your `cargo.toml` enable the `csr` feature.
 
-If your app is using SSR, then this should go under the "hydrate" feature. 
-
-If your app is using CSR, then this should go under the "csr" feature.
-
 #### Hydrate Example
+- If your app is using SSR, then this should go under the "hydrate" feature. 
 ```toml
 [features]
 hydrate = [
@@ -193,6 +190,7 @@ hydrate = [
 ```
 
 #### CSR Example
+- If your app is using CSR, then this should go under the "csr" feature.
 ```toml
 [features]
 csr = [
