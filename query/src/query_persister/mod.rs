@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::cache_observer::{CacheEvent, CacheObserver};
 
 /// A utility for client side query persistance
-#[async_trait]
+#[async_trait(?Send)]
 pub trait QueryPersister {
     /// Persist a query to the persister
     async fn persist(&self, key: &str, query: PersistQueryData);
@@ -56,7 +56,7 @@ where
 /// Serialized query data.
 #[derive(Clone)]
 #[cfg_attr(
-    feature = "local_storage",
+    any(feature = "local_storage", feature = "indexed_db"),
     derive(miniserde::Serialize, miniserde::Deserialize)
 )]
 pub struct PersistQueryData {
@@ -103,86 +103,12 @@ impl From<crate::QueryData<String>> for PersistQueryData {
     }
 }
 
+#[cfg(feature = "indexed_db")]
+mod indexed_db;
+#[cfg(feature = "indexed_db")]
+pub use indexed_db::IndexedDbPersister;
+
 #[cfg(feature = "local_storage")]
-pub use local_storage_persister::LocalStoragePersister;
-
-/// A persister that uses local storage to persist queries.
+mod local_storage;
 #[cfg(feature = "local_storage")]
-pub mod local_storage_persister {
-    use super::*;
-    use cfg_if::cfg_if;
-
-    /// A persister that uses local storage to persist queries.
-    #[derive(Clone, Copy)]
-    pub struct LocalStoragePersister;
-
-    #[cfg(any(feature = "hydrate", feature = "csr"))]
-    thread_local! {
-        #[cfg(any(feature = "hydrate", feature = "csr"))]
-        pub(crate) static LOCAL_STORAGE: Option<web_sys::Storage> = leptos::window().local_storage().ok().flatten()
-    }
-
-    #[cfg(any(feature = "hydrate", feature = "csr"))]
-    fn local_storage() -> Option<web_sys::Storage> {
-        LOCAL_STORAGE.with(Clone::clone)
-    }
-
-    #[async_trait]
-    impl QueryPersister for LocalStoragePersister {
-        async fn persist(&self, key: &str, query: PersistQueryData) {
-            cfg_if! {
-                if #[cfg(any(feature = "hydrate", feature = "csr"))] {
-                    if let Some(storage) = local_storage() {
-                        let value = miniserde::json::to_string(&query);
-                        let _ = storage.set(&key, &value);
-                    }
-                } else {
-                    let _ = query;
-                    let _ = key;
-                    ()
-                }
-            }
-        }
-
-        async fn remove(&self, key: &str) {
-            cfg_if! {
-                if #[cfg(any(feature = "hydrate", feature = "csr"))] {
-                    if let Some(storage) = local_storage() {
-                        let _ = storage.remove_item(key);
-                    }
-                } else {
-                    let _ = key;
-                    ()
-                }
-            }
-        }
-
-        async fn retrieve(&self, key: &str) -> Option<PersistQueryData> {
-            cfg_if! {
-                if #[cfg(any(feature = "hydrate", feature = "csr"))] {
-                    if let Some(storage) = local_storage() {
-                        if let Some(value) = storage.get_item(key).ok().flatten() {
-                            return miniserde::json::from_str(&value).ok()
-                        }
-                    }
-                    None
-                } else {
-                    let _ = key;
-                    None
-                }
-            }
-        }
-
-        async fn clear(&self) {
-            cfg_if! {
-                if #[cfg(any(feature = "hydrate", feature = "csr"))] {
-                    if let Some(storage) = local_storage() {
-                        let _ = storage.clear();
-                    }
-                } else {
-                    ()
-                }
-            }
-        }
-    }
-}
+pub use local_storage::LocalStoragePersister;
