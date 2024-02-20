@@ -12,6 +12,7 @@ use leptos::*;
 use crate::{
     garbage_collector::GarbageCollector,
     query_cache::CacheNotification,
+    query_is_supressed,
     query_observer::{ObserverKey, QueryObserver},
     use_query_client,
     util::time_until_stale,
@@ -224,7 +225,9 @@ where
         let fetcher = observers.values().find_map(|f| f.get_fetcher());
 
         if let Some(fetcher) = fetcher {
-            spawn_local(execute_query(self.clone(), move |k| fetcher(k)));
+            if !query_is_supressed() {
+                spawn_local(execute_query(self.clone(), move |k| fetcher(k)));
+            }
         }
     }
 
