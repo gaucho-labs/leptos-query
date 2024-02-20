@@ -66,7 +66,7 @@ where
     V: crate::QueryValue + 'static,
     Fu: Future<Output = V> + 'static,
 {
-    let options = options.merge_with_default();
+    let options = options.validate();
     // Find relevant state.
     let query = use_query_client().cache.get_query_signal(key);
 

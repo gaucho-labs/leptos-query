@@ -25,6 +25,9 @@ impl Default for DefaultQueryOptions {
     }
 }
 
+const DEFAULT_STALE_TIME: Duration = Duration::from_secs(10);
+const DEFAULT_GC_TIME: Duration = Duration::from_secs(60 * 5);
+
 /**
  * Options for a query [`crate::use_query::use_query`]
  */
@@ -53,25 +56,37 @@ pub struct QueryOptions<V> {
 }
 
 impl<V> QueryOptions<V> {
-    /// Only fetches the query once.
-    pub fn once() -> Self {
-        Self {
-            default_value: None,
-            stale_time: None,
-            gc_time: None,
-            refetch_interval: None,
-            resource_option: Some(ResourceOption::NonBlocking),
+    /// Set the default value.
+    pub fn set_default_value(self, default_value: Option<V>) -> Self {
+        QueryOptions {
+            default_value,
+            ..self
         }
     }
 
-    /// Empty options.
-    pub fn empty() -> Self {
-        Self {
-            default_value: None,
-            stale_time: None,
-            gc_time: None,
-            refetch_interval: None,
-            resource_option: None,
+    /// Set the stale time.
+    pub fn set_stale_time(self, stale_time: Option<Duration>) -> Self {
+        QueryOptions { stale_time, ..self }
+    }
+
+    /// Set the gc time.
+    pub fn set_gc_time(self, gc_time: Option<Duration>) -> Self {
+        QueryOptions { gc_time, ..self }
+    }
+
+    /// Set the refetch interval.
+    pub fn set_refetch_interval(self, refetch_interval: Option<Duration>) -> Self {
+        QueryOptions {
+            refetch_interval,
+            ..self
+        }
+    }
+
+    /// Set the resource option.
+    pub fn set_resource_option(self, resource_option: Option<ResourceOption>) -> Self {
+        QueryOptions {
+            resource_option,
+            ..self
         }
     }
 
@@ -84,24 +99,6 @@ impl<V> QueryOptions<V> {
             refetch_interval: self.refetch_interval,
             resource_option: self.resource_option,
         }
-    }
-
-    /// Merge with default options.
-    pub fn merge_with_default(self) -> Self {
-        let default = Self::default();
-        self.merge(default)
-    }
-
-    /// Merge two sets of options. Self takes preference.
-    pub fn merge(self, other: Self) -> Self {
-        QueryOptions {
-            default_value: self.default_value.or(other.default_value),
-            stale_time: self.stale_time.or(other.stale_time),
-            gc_time: self.gc_time.or(other.gc_time),
-            refetch_interval: self.refetch_interval.or(other.refetch_interval),
-            resource_option: self.resource_option.or(other.resource_option),
-        }
-        .validate()
     }
 
     /// Ensures that gc_time is >= than stale_time.
@@ -121,32 +118,20 @@ impl<V> QueryOptions<V> {
     }
 }
 
-const DEFAULT_STALE_TIME: Duration = Duration::from_secs(10);
-const DEFAULT_GC_TIME: Duration = Duration::from_secs(60 * 5);
-
 impl<V> Default for QueryOptions<V> {
     fn default() -> Self {
         // Use cache wide defaults if they exist.
-        if let Some(client) = leptos::use_context::<crate::QueryClient>() {
-            let default_options = client.default_options;
-            Self {
-                default_value: None,
-                stale_time: default_options.stale_time,
-                gc_time: default_options.gc_time,
-                refetch_interval: default_options.refetch_interval,
-                resource_option: Some(default_options.resource_option),
-            }
-            .validate()
-        } else {
-            Self {
-                default_value: None,
-                stale_time: Some(DEFAULT_STALE_TIME),
-                gc_time: Some(DEFAULT_GC_TIME),
-                refetch_interval: None,
-                resource_option: Some(ResourceOption::NonBlocking),
-            }
-            .validate()
+        let default_options = leptos::use_context::<crate::QueryClient>()
+            .map(|c| c.default_options)
+            .unwrap_or_default();
+        Self {
+            default_value: None,
+            stale_time: default_options.stale_time,
+            gc_time: default_options.gc_time,
+            refetch_interval: default_options.refetch_interval,
+            resource_option: Some(default_options.resource_option),
         }
+        .validate()
     }
 }
 

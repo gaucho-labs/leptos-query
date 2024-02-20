@@ -278,6 +278,10 @@ where
     pub fn get_key(&self) -> &K {
         &self.key
     }
+
+    pub fn get_gc(&self) -> Option<GarbageCollector<K, V>> {
+        self.garbage_collector.borrow().clone()
+    }
 }
 
 impl<K, V> Query<K, V>

@@ -136,11 +136,12 @@ where
         key: impl Fn() -> K + 'static,
         options: QueryOptions<V>,
     ) -> QueryResult<V, impl RefetchFn> {
-        use_query(
-            key,
-            self.make_fetcher(),
-            options.merge(self.options.clone()),
-        )
+        use_query(key, self.make_fetcher(), options)
+    }
+
+    /// Retrieves the default options for this scope.
+    pub fn get_options(&self) -> &QueryOptions<V> {
+        &self.options
     }
 
     /// Prefetches a query and stores it in the cache. Useful for preloading data before it is needed.

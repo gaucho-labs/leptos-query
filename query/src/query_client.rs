@@ -140,7 +140,7 @@ impl QueryClient {
         });
 
         let observer = Rc::new(QueryObserver::no_fetcher(
-            QueryOptions::empty(),
+            QueryOptions::default(),
             maybe_query.get_untracked(),
         ));
 
