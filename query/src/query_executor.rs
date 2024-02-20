@@ -39,7 +39,7 @@ pub fn suppress_query_load(suppress: bool) {
 /// use leptos_axum::*;
 ///
 /// fn make_routes()  {
-///    let routes = with_query_supression(|| generate_route_list(App));
+///    let routes = with_query_suppression(|| generate_route_list(App));
 /// }
 ///
 /// #[component]
@@ -47,7 +47,7 @@ pub fn suppress_query_load(suppress: bool) {
 ///     ()
 /// }
 /// ```
-pub fn with_query_supression<T>(f: impl FnOnce() -> T) -> T {
+pub fn with_query_suppression<T>(f: impl FnOnce() -> T) -> T {
     SUPPRESS_QUERY_LOAD.with(|w| {
         w.set(true);
         let result = f();
@@ -56,7 +56,7 @@ pub fn with_query_supression<T>(f: impl FnOnce() -> T) -> T {
     })
 }
 
-pub(crate) fn query_is_supressed() -> bool {
+pub(crate) fn query_is_suppressed() -> bool {
     SUPPRESS_QUERY_LOAD.get()
 }
 

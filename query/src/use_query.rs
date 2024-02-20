@@ -2,7 +2,7 @@ use crate::query::Query;
 use crate::query_observer::{ListenerKey, QueryObserver};
 use crate::query_result::QueryResult;
 use crate::{
-    query_is_supressed, use_query_client, QueryOptions, QueryState, RefetchFn, ResourceOption,
+    query_is_suppressed, use_query_client, QueryOptions, QueryState, RefetchFn, ResourceOption,
 };
 use leptos::*;
 use std::cell::Cell;
@@ -114,7 +114,7 @@ where
     create_isomorphic_effect(move |_| {
         query_state.track();
         // If query is supressed, we have to make sure we don't refetch to avoid calling spawn_local.
-        if !query_is_supressed() {
+        if !query_is_suppressed() {
             resource.refetch();
         }
     });

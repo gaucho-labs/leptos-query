@@ -4,7 +4,7 @@ async fn main() {
     use axum::{routing::post, Router};
     use leptos::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
-    use leptos_query::with_query_supression;
+    use leptos_query::with_query_suppression;
     use start_axum::app::*;
     use start_axum::fileserv::file_and_error_handler;
     use tokio::net::TcpListener;
@@ -20,7 +20,7 @@ async fn main() {
     let leptos_options = conf.leptos_options;
     let addr = leptos_options.site_addr;
 
-    let routes = with_query_supression(|| generate_route_list(App));
+    let routes = with_query_suppression(|| generate_route_list(App));
 
     // build our application with a route
     let app = Router::new()
