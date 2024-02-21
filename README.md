@@ -48,6 +48,12 @@ Leptos Query focuses on simplifying your data fetching process and keeping your 
 
 - **Introspection & Debugging**: Leptos Query provides [devtools](https://crates.io/crates/leptos_query_devtools), so you can make sure everything's working as intended.
 
+## Feature Flags
+- `csr` Client-side rendering: Use queries on the client.
+- `ssr` Server-side rendering: Initiate queries on the server during SSR.
+- `hydrate` Hydration: Ensure that queries are hydrated on the client, when using server-side rendering.
+- `local_storage` - Enables local storage persistance for queries.
+- `index_db` - Enables index db persistance for queries.
 
 ## Version compatibility for Leptos and Leptos Query
 
@@ -55,7 +61,7 @@ The table below shows the compatible versions of `leptos_query` for each `leptos
 
 | `leptos` version | `leptos_query` version |
 |------------------|------------------------|
-| 0.6.*            | 0.4.* or 0.5.*         |
+| 0.6.*            | 0.5.* or 0.4.*         |
 | 0.5.*            | 0.3.*                  |
 
 
