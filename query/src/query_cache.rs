@@ -53,6 +53,7 @@ where
 }
 
 trait CacheSize {
+    #[allow(dead_code)]
     fn size(&self) -> usize;
 }
 
