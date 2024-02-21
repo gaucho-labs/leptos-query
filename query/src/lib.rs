@@ -32,6 +32,7 @@
 //! - `ssr` Server-side rendering: Initiate queries on the server.
 //! - `hydrate` Hydration: Ensure that queries are hydrated on the client, when using server-side rendering.
 //! - `local_storage` - Enables local storage persistance for queries.
+//! - `index_db` - Enables index db persistance for queries.
 //!
 //! # A Simple Example
 //!
