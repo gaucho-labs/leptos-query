@@ -56,7 +56,6 @@ impl IndexedDbPersister {
 #[cfg(any(feature = "hydrate", feature = "csr"))]
 #[async_trait(?Send)]
 impl QueryPersister for IndexedDbPersister {
-    /// Persist a query to the persister
     async fn persist(&self, key: &str, query: PersistQueryData) {
         use js_sys::wasm_bindgen::JsValue;
 
@@ -79,7 +78,7 @@ impl QueryPersister for IndexedDbPersister {
 
         transaction.await;
     }
-    /// Remove a query from the persister
+
     async fn remove(&self, key: &str) {
         use js_sys::wasm_bindgen::JsValue;
 
@@ -101,7 +100,7 @@ impl QueryPersister for IndexedDbPersister {
 
         transaction.await;
     }
-    /// Retrieve a query from the persister
+
     async fn retrieve(&self, key: &str) -> Option<PersistQueryData> {
         use indexed_db_futures::IdbQuerySource;
 
@@ -128,7 +127,6 @@ impl QueryPersister for IndexedDbPersister {
         }
     }
 
-    /// Clear the persister
     async fn clear(&self) {
         let object_store = self.object_store.as_str();
 
@@ -185,7 +183,10 @@ impl IndexedDbPersister {
     }
 
     async fn create_database(db_name: &str, object_store: &str) -> indexed_db_futures::IdbDatabase {
-        use indexed_db_futures::{IdbDatabase, IdbVersionChangeEvent, request::{IdbOpenDbRequestLike, OpenDbRequest}};
+        use indexed_db_futures::{
+            request::{IdbOpenDbRequestLike, OpenDbRequest},
+            IdbDatabase, IdbVersionChangeEvent,
+        };
         use js_sys::wasm_bindgen::JsValue;
 
         let mut db_req: OpenDbRequest =
