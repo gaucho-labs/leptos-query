@@ -98,7 +98,7 @@ where
 
 // Update an observer with all existing cache entries, upon subscription.
 trait CacheUpdateObserver {
-    fn update_observer(&self, observer: &Box<dyn CacheObserver>);
+    fn update_observer(&self, observer: &dyn CacheObserver);
 }
 
 impl<K, V> CacheUpdateObserver for CacheEntry<K, V>
@@ -106,7 +106,7 @@ where
     K: QueryKey + 'static,
     V: QueryValue + 'static,
 {
-    fn update_observer(&self, observer: &Box<dyn CacheObserver>) {
+    fn update_observer(&self, observer: &dyn CacheObserver) {
         for (_, query) in self.0.iter() {
             let event = CacheEvent::created(query.clone());
             observer.process_cache_event(event);
@@ -392,8 +392,6 @@ impl QueryCache {
     }
 
     pub fn register_observer(&self, observer: impl CacheObserver + 'static) -> CacheObserverKey {
-        let observer = Box::new(observer) as Box<dyn CacheObserver>;
-
         // Update all existing cache entries with the new observer.
         self.cache.borrow().values().for_each(|cache| {
             cache.update_observer(&observer);
@@ -402,7 +400,7 @@ impl QueryCache {
         self.observers
             .try_borrow_mut()
             .expect("register_query_observer borrow mut")
-            .insert(observer)
+            .insert(Box::new(observer))
     }
 
     pub fn unregister_observer(&self, key: CacheObserverKey) -> Option<Box<dyn CacheObserver>> {
