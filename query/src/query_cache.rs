@@ -33,7 +33,7 @@ slotmap::new_key_type! {
 struct CacheEntry<K, V>(HashMap<K, Query<K, V>>);
 
 // Trait to enable cache introspection among distinct cache entry maps.
-trait CacheEntryTrait: CacheSize + CacheInvalidate + CacheEntryClear {
+trait CacheEntryTrait: CacheSize + CacheInvalidate + CacheClear + CacheUpdateObserver {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -79,11 +79,11 @@ where
     }
 }
 
-trait CacheEntryClear {
+trait CacheClear {
     fn clear(&mut self, cache: &QueryCache);
 }
 
-impl<K, V> CacheEntryClear for CacheEntry<K, V>
+impl<K, V> CacheClear for CacheEntry<K, V>
 where
     K: QueryKey + 'static,
     V: QueryValue + 'static,
@@ -92,6 +92,24 @@ where
         for (_, query) in self.0.drain() {
             query.dispose();
             cache.notify_query_eviction(query.get_key());
+        }
+    }
+}
+
+// Update an observer with all existing cache entries, upon subscription.
+trait CacheUpdateObserver {
+    fn update_observer(&self, observer: &Box<dyn CacheObserver>);
+}
+
+impl<K, V> CacheUpdateObserver for CacheEntry<K, V>
+where
+    K: QueryKey + 'static,
+    V: QueryValue + 'static,
+{
+    fn update_observer(&self, observer: &Box<dyn CacheObserver>) {
+        for (_, query) in self.0.iter() {
+            let event = CacheEvent::created(query.clone());
+            observer.process_cache_event(event);
         }
     }
 }
@@ -374,10 +392,17 @@ impl QueryCache {
     }
 
     pub fn register_observer(&self, observer: impl CacheObserver + 'static) -> CacheObserverKey {
+        let observer = Box::new(observer) as Box<dyn CacheObserver>;
+
+        // Update all existing cache entries with the new observer.
+        self.cache.borrow().values().for_each(|cache| {
+            cache.update_observer(&observer);
+        });
+
         self.observers
             .try_borrow_mut()
             .expect("register_query_observer borrow mut")
-            .insert(Box::new(observer))
+            .insert(observer)
     }
 
     pub fn unregister_observer(&self, key: CacheObserverKey) -> Option<Box<dyn CacheObserver>> {
