@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "dev": "trunk serve --port 3000",
+    "tailwind": "bunx tailwindcss -i ./input.css -o ./public/styles.css --watch --minify"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "tailwindcss": "^3.4.1"
+  }
+}
