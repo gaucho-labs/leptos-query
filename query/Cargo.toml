@@ -22,12 +22,15 @@ slotmap = { workspace = true }
 futures-channel = { workspace = true }
 futures = { workspace = true }
 async-trait = { version = "0.1" }
+indexed_db_futures = { version = "0.4", optional = true }
+async_cell = { version = "0.2.2", optional = true }
 
 [features]
-hydrate = ["js-sys", "web-sys", "gloo-timers"]
-csr = ["js-sys", "web-sys", "gloo-timers"]
+hydrate = ["js-sys", "web-sys", "gloo-timers", "async_cell"]
+csr = ["js-sys", "web-sys", "gloo-timers", "async_cell"]
 ssr = ["tokio"]
 local_storage = ["miniserde", "web-sys/Storage"]
+indexed_db = [ "miniserde", "indexed_db_futures"]
 
 [dev-dependencies]
 leptos_axum = "0.6.5"

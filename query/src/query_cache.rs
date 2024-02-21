@@ -53,6 +53,7 @@ where
 }
 
 trait CacheSize {
+    #[allow(dead_code)]
     fn size(&self) -> usize;
 }
 
@@ -150,7 +151,7 @@ impl QueryCache {
                         if let Some(serialized) = result {
                             match serialized.try_into() {
                                 Ok(data) => {
-                                    // If the query is currently fetching, then we should preserver the fetching state.
+                                    // If the query is currently fetching, then we should preserve the fetching state.
                                     if query.with_state(|s| {
                                         matches!(
                                             s,
