@@ -173,16 +173,16 @@ impl IndexedDbPersister {
     }
 
     async fn set_up_db(&self) {
-        let db_name = self.database_name.clone();
-        let object_store = self.object_store.clone();
-
-        let db = IndexedDbPersister::create_database(db_name.as_ref(), object_store.as_ref()).await;
+        let db = self.create_database().await;
         let db = Rc::new(db);
 
         self.database.set(db);
     }
 
-    async fn create_database(db_name: &str, object_store: &str) -> indexed_db_futures::IdbDatabase {
+    async fn create_database(&self) -> indexed_db_futures::IdbDatabase {
+        let db_name = self.database_name.as_str();
+        let object_store = self.object_store.as_str();
+
         use indexed_db_futures::{
             request::{IdbOpenDbRequestLike, OpenDbRequest},
             IdbDatabase, IdbVersionChangeEvent,
