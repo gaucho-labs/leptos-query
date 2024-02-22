@@ -418,7 +418,7 @@ fn Devtools() -> impl IntoView {
                 view! {
                     <button
                         on:click=move |_| open.set(true)
-                        class="lq-bg-zinc-200 text-lq-foreground lq-absolute lq-bottom-3 lq-right-3 lq-rounded-full lq-w-12 lq-h-12 lq-hover:-translate-y-1 lq-hover:bg-zinc-300 lq-transition-all lq-duration-200"
+                        class="lq-bg-zinc-200 text-lq-foreground lq-absolute lq-bottom-3 lq-right-3 lq-rounded-full lq-w-12 lq-h-12 hover:-lq-translate-y-1 hover:lq-bg-zinc-300 lq-transition-all lq-duration-200"
                         inner_html=include_str!("logo.svg")
                     ></button>
                 }
@@ -431,7 +431,7 @@ fn Devtools() -> impl IntoView {
                 ref=container_ref
             >
                 <div
-                    class="lq-w-full lq-py-1 lq-bg-lq-background lq-cursor-ns-resize lq-transition-colors lq-hover:bg-lq-border"
+                    class="lq-w-full lq-py-1 lq-bg-lq-background lq-cursor-ns-resize lq-transition-colors hover:lq-bg-lq-border"
                     on:mousedown=handle_drag_start
                 ></div>
                 <div class="lq-h-full lq-flex lq-flex-col lq-relative">
@@ -538,7 +538,7 @@ fn Header() -> impl IntoView {
 
     let total = Signal::derive(move || query_state.get().len());
 
-    let label_class = "lq-hidden lq-lg:inline-block";
+    let label_class = "lq-hidden lg:lq-inline-block";
     view! {
         <div class="lq-flex-none lq-flex lq-justify-between lq-w-full lq-overflow-y-hidden lq-items-center lq-border-b lq-border-lq-border lq-pb-2 lq-px-1">
             <h3 class="lq-pl-2 lq-tracking-tighter lq-text-lg lq-italic lq-text-transparent lq-bg-clip-text lq-font-bold bg-gradient-to-r lq-from-red-800 lq-to-orange-400">
@@ -737,7 +737,7 @@ fn QueryRow(entry: QueryCacheEntry) -> impl IntoView {
     };
     view! {
         <li
-            class="lq-hover:bg-lq-accent lq-transition-colors lq-flex lq-w-full lq-gap-4 lq-items-center lq-border-lq-border lq-border-b lq-p-1"
+            class="hover:lq-bg-lq-accent lq-transition-colors lq-flex lq-w-full lq-gap-4 lq-items-center lq-border-lq-border lq-border-b lq-p-1"
             on:click={
                 let key = key.clone();
                 move |_| {
