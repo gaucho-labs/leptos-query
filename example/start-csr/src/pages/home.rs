@@ -1,5 +1,7 @@
 use leptos::*;
 
+use crate::components::Loud;
+
 /// Default Home Page
 #[component]
 pub fn Home() -> impl IntoView {
@@ -13,7 +15,7 @@ pub fn Home() -> impl IntoView {
                             inner_html=include_str!("../../../../logo.svg")
                         ></div>
                         <h1 class="inline-block font-black text-2xl md:text-4xl lg:text-6xl">
-                            <span class="inline-block italic text-transparent bg-clip-text bg-gradient-to-r from-red-700 to-orange-400">
+                            <span class="inline-block italic text-transparent bg-clip-text bg-gradient-to-r from-red-700 to-orange-400 p-2">
                                 Leptos Query
                             </span>
                         </h1>
@@ -27,7 +29,7 @@ pub fn Home() -> impl IntoView {
             <div class="flex flex-col lg:flex-row items-stretch gap-8 p-8 max-w-[1200px] mx-auto lg:min-h-72">
                 <InfoCard title="Simple & Expressive">
                     <p>
-                        <Umphf>Expressive, powerful, and simple</Umphf>
+                        <Loud>Expressive, powerful, and simple</Loud>
                         client-side caching, handling background updates and stale data out of the box with zero-configuration.
                     </p>
                     <p>
@@ -49,10 +51,6 @@ pub fn Home() -> impl IntoView {
             </div>
         </section>
     }
-}
-#[component]
-fn Umphf(children: Children) -> impl IntoView {
-    view! { <span class="font-semibold text-red-700 dark:text-red-400">{children()}</span> }
 }
 
 #[component]

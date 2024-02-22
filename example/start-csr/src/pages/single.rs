@@ -4,7 +4,7 @@ use leptos::*;
 use leptos_query::{create_query, QueryOptions, QueryScope};
 use serde::*;
 
-use crate::components::{skeleton::Skeleton, spinner::Spinner};
+use crate::components::{header::Header, skeleton::Skeleton, spinner::Spinner, Loud};
 
 #[component]
 pub fn QueryVsResource() -> impl IntoView {
@@ -30,10 +30,11 @@ fn SingleQuery() -> impl IntoView {
 
     view! {
         <div class="flex flex-col w-full gap-4">
-            <Header
-                title="Post with Query"
-                subtitle="This example uses Leptos Query to fetch a post from the JSONPlaceholder API."
-            />
+            <Header title="Post with Query">
+                <p>
+                    Fetching with <Loud>Leptos Query</Loud>
+                </p>
+            </Header>
 
             <div class="flex items-center gap-4">
                 <div class="w-32">
@@ -122,21 +123,6 @@ async fn get_post(post_id: u32) -> Option<PostValue> {
 }
 
 #[component]
-fn Header(
-    #[prop(optional, into)] title: String,
-    #[prop(optional, into)] subtitle: String,
-) -> impl IntoView {
-    view! {
-        <div class="space-y-2">
-            <h1 class="scroll-m-20 text-4xl font-bold tracking-tight">{title}</h1>
-            <p class="text-lg text-muted-foreground">
-                <span class="inline-block align-top max-w-xl">{subtitle}</span>
-            </p>
-        </div>
-    }
-}
-
-#[component]
 fn SkeletonCard() -> impl IntoView {
     view! {
         <div class=CARD_CLASS>
@@ -160,10 +146,16 @@ fn SingleResource() -> impl IntoView {
 
     view! {
         <div class="flex flex-col w-full gap-4">
-            <Header
-                title="Post with Resource"
-                subtitle="This example uses a Leptos Resource to fetch a post from the JSONPlaceholder API."
-            />
+            <Header title="Post with Resource">
+                <p>
+                    Fetching with
+                    <a
+                        href="https://book.leptos.dev/async/10_resources.html"
+                    >
+                        <Loud>Leptos Resource</Loud>
+                    </a>
+                </p>
+            </Header>
 
             <div class="flex items-center gap-4">
                 <div class="w-32">

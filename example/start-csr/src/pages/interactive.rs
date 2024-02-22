@@ -4,12 +4,16 @@ use leptos::*;
 use leptos_query::{create_query, QueryOptions, QueryScope};
 use serde::{Deserialize, Serialize};
 
-use crate::components::spinner::Spinner;
+use crate::components::{header::Header, spinner::Spinner};
 
 #[component]
 pub fn Interactive() -> impl IntoView {
     view! {
         <div class="mx-auto max-w-xl flex flex-col w-full h-full items-center gap-10">
+            <Header title="Optimistic Update">
+                <p>"Each todo operation takes 1 second, but the UI feels instant."</p>
+            </Header>
+
             <AddTodoEntry/>
             <AllTodos/>
         </div>
@@ -25,16 +29,25 @@ pub fn AllTodos() -> impl IntoView {
         <Transition fallback=move || {
             view! { <p>"Loading..."</p> }
         }>
-            <ul class="flex flex-col w-full gap-2">
-                <For
-                    each=move || todos.get().unwrap_or_default()
-                    key=|todo| todo.id
-                    children=move |todo| {
-                        view! { <TodoListItem todo=todo/> }
-                    }
-                />
+            {move || {
+                todos
+                    .get()
+                    .map(|todos| {
+                        view! {
+                            <ul class="flex flex-col w-full gap-2">
+                                <For
+                                    each=move || todos.clone()
+                                    key=|todo| todo.id
+                                    children=move |todo| {
+                                        view! { <TodoListItem todo=todo/> }
+                                    }
+                                />
 
-            </ul>
+                            </ul>
+                        }
+                    })
+            }}
+
         </Transition>
     }
 }
@@ -44,9 +57,7 @@ fn TodoListItem(todo: Todo) -> impl IntoView {
     let delete = move |id: TodoId| async move {
         let all_todos = all_todos_query();
 
-        if all_todos.cancel_query(AllTodosKey) {
-            logging::log!("Cancelled Query");
-        }
+        all_todos.cancel_query(AllTodosKey);
 
         all_todos.update_query_data_mut(AllTodosKey, move |todos| {
             todos.retain(|t| t.id != id);
@@ -99,8 +110,8 @@ fn TodoListItem(todo: Todo) -> impl IntoView {
 fn AddTodoEntry() -> impl IntoView {
     let form_ref = create_node_ref::<html::Form>();
 
-    let title = create_rw_signal("".to_string());
-    let content = create_rw_signal("".to_string());
+    let titleX = create_rw_signal("".to_string());
+    let contentX = create_rw_signal("".to_string());
     let loading = create_rw_signal(false);
 
     let add_todo = move || {
@@ -108,19 +119,46 @@ fn AddTodoEntry() -> impl IntoView {
         spawn_local(async move {
             all_todos.cancel_query(AllTodosKey);
 
-            let title = title.get_untracked();
-            let content = content.get_untracked();
+            let title = titleX.get_untracked();
+            let content = contentX.get_untracked();
+
+            titleX.set(Default::default());
+            contentX.set(Default::default());
+
+            // Find a unique id for the todo.
+            let temp_id = all_todos
+                .peek_query_state(&AllTodosKey)
+                .and_then(|todos| todos.data().map(|d| d.len() + 1))
+                .unwrap_or(0) as u32;
+
+            // Optimistically add the todo to the list
+            all_todos.update_query_data_mut(AllTodosKey, {
+                let title = title.clone();
+                let content = content.clone();
+                |todos| {
+                    todos.push(Todo {
+                        id: TodoId(temp_id),
+                        title,
+                        content,
+                        completed: false,
+                    })
+                }
+            });
 
             loading.set(true);
             let todo = add_todo(title, content).await;
             loading.set(false);
 
-            all_todos.update_query_data_mut(AllTodosKey, |todos| {
-                todos.push(todo);
+            // Replace the optimistic todo with the real todo
+            all_todos.update_query_data_mut(AllTodosKey, {
+                let temp_id = todo.id;
+                move |todos| {
+                    todos.retain(|t| t.id != temp_id);
+                    todos.push(todo);
+                }
             });
 
             all_todos.invalidate_query(AllTodosKey);
-            form_ref.get_untracked().expect("Form Node").reset();
         })
     };
 
@@ -141,9 +179,9 @@ fn AddTodoEntry() -> impl IntoView {
                 id="title"
                 name="title"
                 class="text-sm block w-full rounded-md border-border shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                prop:value=title
+                prop:value=titleX
                 on:input=move |ev| {
-                    title.set(event_target_value(&ev));
+                    titleX.set(event_target_value(&ev));
                 }
             />
 
@@ -154,9 +192,9 @@ fn AddTodoEntry() -> impl IntoView {
                 id="content"
                 name="content"
                 class="text-sm mt-1 block w-full rounded-md border-border shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                prop:value=content
+                prop:value=contentX
                 on:input=move |ev| {
-                    content.set(event_target_value(&ev));
+                    contentX.set(event_target_value(&ev));
                 }
             >
             </textarea>
@@ -165,7 +203,7 @@ fn AddTodoEntry() -> impl IntoView {
                 class="w-full relative inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-3"
                 disabled=loading
             >
-                <span> Create New </span>
+                <span>Create New</span>
                 <span class="absolute right-5">
                     <Spinner fetching=loading/>
                 </span>
@@ -179,7 +217,10 @@ struct AllTodosKey;
 
 fn all_todos_query() -> QueryScope<AllTodosKey, Vec<Todo>> {
     create_query(
-        move |_| async move { TODOS.with_borrow(|todos| todos.clone()) },
+        move |_| async move {
+            gloo_timers::future::sleep(Duration::from_millis(1000)).await;
+            TODOS.with_borrow(|todos| todos.clone())
+        },
         QueryOptions::default(),
     )
 }
