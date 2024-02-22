@@ -4,7 +4,7 @@ use leptos::*;
 use leptos_query::{create_query, QueryOptions, QueryScope};
 use serde::{Deserialize, Serialize};
 
-use crate::components::{header::Header, spinner::Spinner};
+use crate::components::{header::Header, skeleton::Skeleton, spinner::Spinner};
 
 #[component]
 pub fn Interactive() -> impl IntoView {
@@ -27,7 +27,12 @@ pub fn AllTodos() -> impl IntoView {
 
     view! {
         <Transition fallback=move || {
-            view! { <p>"Loading..."</p> }
+            view! {
+                <div class=CARD_CLASS>
+                    <Skeleton class="h-8 w-full"/>
+                    <Skeleton class="h-20 w-full"/>
+                </div>
+            }
         }>
             {move || {
                 todos
@@ -52,6 +57,8 @@ pub fn AllTodos() -> impl IntoView {
     }
 }
 
+const CARD_CLASS: &str = "flex flex-col items-start justify-between w-full rounded-xl border bg-card text-card-foreground shadow-md p-6 gap-2";
+
 #[component]
 fn TodoListItem(todo: Todo) -> impl IntoView {
     let delete = move |id: TodoId| async move {
@@ -69,7 +76,7 @@ fn TodoListItem(todo: Todo) -> impl IntoView {
     };
 
     view! {
-        <li class="flex flex-col items-start justify-between w-full rounded-xl border bg-card text-card-foreground shadow-md p-6 gap-2">
+        <li class=CARD_CLASS>
             <div class="flex items-center justify-between w-full">
                 <div class="text-base">{todo.title}</div>
                 // <div class="line-clamp-1 text-muted-foreground text-sm">{todo.content}</div>
@@ -101,6 +108,9 @@ fn TodoListItem(todo: Todo) -> impl IntoView {
                         Delete
                     </span>
                 </button>
+            </div>
+            <div class="text-muted-foreground text-sm text-wrap w-full overflow-hidden">
+                {todo.content}
             </div>
         </li>
     }

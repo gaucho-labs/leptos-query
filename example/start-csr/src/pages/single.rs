@@ -31,9 +31,7 @@ fn SingleQuery() -> impl IntoView {
     view! {
         <div class="flex flex-col w-full gap-4">
             <Header title="Post with Query">
-                <p>
-                    Fetching with <Loud>Leptos Query</Loud>
-                </p>
+                <p>Fetching with <Loud>Leptos Query</Loud></p>
             </Header>
 
             <div class="flex items-center gap-4">
@@ -148,10 +146,7 @@ fn SingleResource() -> impl IntoView {
         <div class="flex flex-col w-full gap-4">
             <Header title="Post with Resource">
                 <p>
-                    Fetching with
-                    <a
-                        href="https://book.leptos.dev/async/10_resources.html"
-                    >
+                    Fetching with <a href="https://book.leptos.dev/async/10_resources.html">
                         <Loud>Leptos Resource</Loud>
                     </a>
                 </p>
