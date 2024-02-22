@@ -20,9 +20,7 @@ pub(crate) fn InnerDevtools() -> impl IntoView {
 
     move || {
         if mounted.get() {
-            view! {
-                <DevtoolsClient/>
-            }
+            view! { <DevtoolsClient/> }
         } else {
             ().into_view()
         }
@@ -436,25 +434,23 @@ fn Devtools() -> impl IntoView {
                 ></div>
                 <div class="lq-h-full lq-flex lq-flex-col lq-relative">
                     <div class="lq-flex-1 lq-overflow-hidden lq-flex">
-                        <div class="lq-flex lq-flex-col lq-flex-1 lq-overflow-y-auto lq-overflow-x-hidden">
-                            <Header/>
-                            <div class="lq-py-1 lq-px-2 lq-border-lq-border lq-border-b lq-flex lq-items-center lq-w-full lq-justify-between lq-max-w-full lq-overflow-x-auto lq-gap-2 lq-no-scrollbar">
-                                <div class="lq-flex lq-items-center lq-gap-2">
-                                    <SearchInput/>
-                                    <SetSort/>
-                                    <SetSortOrder/>
-                                </div>
-                                <div class="lq-flex lq-items-center">
-                                    <ClearCache/>
+                        <div class="lq-flex lq-flex-col lq-flex-1  lq-overflow-x-hidden">
+                            <div class="lq-flex-none">
+                                <Header/>
+                                <div class="lq-py-1 lq-px-2 lq-border-lq-border lq-border-b lq-flex lq-items-center lq-w-full lq-justify-between lq-max-w-full lq-overflow-x-auto lq-gap-2 lq-no-scrollbar">
+                                    <div class="lq-flex lq-items-center lq-gap-2">
+                                        <SearchInput/>
+                                        <SetSort/>
+                                        <SetSortOrder/>
+                                    </div>
+                                    <div class="lq-flex lq-items-center">
+                                        <ClearCache/>
+                                    </div>
                                 </div>
                             </div>
 
-                            <ul class="lq-flex lq-flex-col lq-gap-1">
-                                <For
-                                    each=move || query_state.get()
-                                    key=|q| q.key.clone()
-                                    let:entry
-                                >
+                            <ul class="lq-flex lq-flex-col lq-gap-1 lq-overflow-y-auto">
+                                <For each=move || query_state.get() key=|q| q.key.clone() let:entry>
                                     <QueryRow entry=entry/>
                                 </For>
 
@@ -577,7 +573,12 @@ fn SearchInput() -> impl IntoView {
     view! {
         <div class="lq-relative lq-w-64">
             <div class="lq-pointer-events-none lq-absolute lq-inset-y-0 lq-left-0 lq-flex lq-items-center lq-pl-3 lq-text-zinc-400">
-                <svg class="lq-h-4 lq-w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <svg
+                    class="lq-h-4 lq-w-4"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                >
                     <path
                         fill-rule="evenodd"
                         d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
@@ -691,6 +692,7 @@ fn ClearCache() -> impl IntoView {
                 cache.clear();
             }
         >
+
             <svg
                 width="15"
                 height="15"
@@ -856,15 +858,14 @@ fn SelectedQuery(query: QueryCacheEntry) -> impl IntoView {
         <div class="lq-w-1/2 lq-overflow-y-scroll lq-max-h-full lq-border-black lq-border-l-4">
             <div class="lq-flex lq-flex-col lq-w-full lq-h-full lq-items-center">
                 <div class="lq-w-full">
-                    <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent">Query Details</div>
+                    <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent">
+                        Query Details
+                    </div>
                     <dl class=section_class>
                         <div class=entry_class>
                             <dt class="lq-text-zinc-100">Status</dt>
                             <dd class="lq-text-zinc-200">
-                                <RowStateLabel
-                                    state=query_state.into()
-                                    is_stale
-                                />
+                                <RowStateLabel state=query_state.into() is_stale/>
                             </dd>
                         </div>
                         <div class=entry_class>
@@ -891,7 +892,9 @@ fn SelectedQuery(query: QueryCacheEntry) -> impl IntoView {
                     </dl>
                 </div>
                 <div class="lq-w-full">
-                    <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent">Query Actions</div>
+                    <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent">
+                        Query Actions
+                    </div>
                     <div class="lq-flex lq-items-center lq-gap-2 lq-p-1">
                         <Button
                             color=ColorOption::Red
@@ -904,12 +907,14 @@ fn SelectedQuery(query: QueryCacheEntry) -> impl IntoView {
                         </Button>
                     </div>
                 </div>
-                <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent lq-w-full">Query Data</div>
+                <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent lq-w-full">
+                    Query Data
+                </div>
                 <div class="lq-flex-1 lq-flex lq-p-2 lq-w-full">
                     <div class="lq-flex-1 lq-p-4 lq-rounded-md lq-bg-zinc-800 lq-shadow-md lq-w-11/12 lq-text-xs lq-overflow-hidden">
-                    <pre class="lq-whitespace-pre-wrap lq-break-words">
-                        {move || value.get().unwrap_or_default()}
-                    </pre>
+                        <pre class="lq-whitespace-pre-wrap lq-break-words">
+                            {move || value.get().unwrap_or_default()}
+                        </pre>
                     </div>
                 </div>
             </div>
