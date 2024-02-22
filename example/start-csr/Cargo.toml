@@ -13,7 +13,7 @@ leptos_router = { version = "0.6", features = ["csr", "nightly"] }
 console_log = "1"
 log = "0.4"
 console_error_panic_hook = "0.1"
-leptos_query = { path = "../../query", features = ["csr"]}
+leptos_query = { path = "../../query", features = ["csr", "local_storage", "indexed_db"]}
 leptos_query_devtools = { path = "../../devtools", features = ["csr", "force"]}
 gloo-timers = "0.3.0"
 serde = { version = "1.0" }

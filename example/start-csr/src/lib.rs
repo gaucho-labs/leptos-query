@@ -19,6 +19,7 @@ use crate::pages::not_found::NotFound;
 pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
+    // Provide the query client with options to use local resource.
     provide_query_client_with_options(DefaultQueryOptions {
         resource_option: leptos_query::ResourceOption::Local,
         ..DefaultQueryOptions::default()
