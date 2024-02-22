@@ -418,7 +418,7 @@ fn Devtools() -> impl IntoView {
                 view! {
                     <button
                         on:click=move |_| open.set(true)
-                        class="lq-bg-zinc-200 text-lq-foreground lq-absolute lq-bottom-3 lq-right-3 lq-rounded-full lq-w-12 lq-h-12 hover:-lq-translate-y-1 hover:lq-bg-zinc-300 lq-transition-all lq-duration-200"
+                        class="lq-bg-zinc-200 text-lq-foreground lq-fixed lq-bottom-3 lq-right-3 lq-rounded-full lq-w-12 lq-h-12 hover:-lq-translate-y-1 hover:lq-bg-zinc-300 lq-transition-all lq-duration-200"
                         inner_html=include_str!("logo.svg")
                     ></button>
                 }
