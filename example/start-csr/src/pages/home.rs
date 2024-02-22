@@ -35,7 +35,8 @@ pub fn Home() -> impl IntoView {
                     </p>
                 </InfoCard>
                 <InfoCard title="Deep Leptos Integration">
-                    Flawless support for CSR and SSR rendering strategies, as well as {"Leptos's"} fine-grained reactivity, ensuring your data fetching is performant and up to date.
+                    Flawless support for CSR and SSR rendering strategies, as well as {"Leptos's"}
+                    fine-grained reactivity, ensuring your data fetching is performant and up to date.
                 </InfoCard>
                 <InfoCard title="Developer First">
                     <div class="h-full flex flex-col justify-between items-start">

@@ -4,8 +4,23 @@ use leptos::*;
 use leptos_query::{create_query, QueryOptions, QueryScope};
 use serde::*;
 
+use crate::components::{skeleton::Skeleton, spinner::Spinner};
+
 #[component]
-pub fn SingleQuery() -> impl IntoView {
+pub fn QueryVsResource() -> impl IntoView {
+    view! {
+        <div class="container mx-auto p-8">
+            <div class="flex flex-col gap-8">
+                <SingleQuery/>
+                <div class="h-2 w-full bg-border"></div>
+                <SingleResource/>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn SingleQuery() -> impl IntoView {
     let post_id = create_rw_signal(1_u32);
 
     let query = post_query().use_query(move || PostQueryKey(post_id.get()));
@@ -15,68 +30,34 @@ pub fn SingleQuery() -> impl IntoView {
 
     view! {
         <div class="flex flex-col w-full gap-4">
-            <div class="space-y-2">
-                <h1 class="scroll-m-20 text-4xl font-bold tracking-tight">Post with Query</h1>
-                <p class="text-lg text-muted-foreground">
-                    <span class="inline-block align-top max-w-sm">
-                        Add dependencies to your project manually.
-                    </span>
-                </p>
-            </div>
+            <Header
+                title="Post with Query"
+                subtitle="This example uses Leptos Query to fetch a post from the JSONPlaceholder API."
+            />
 
             <div class="flex items-center gap-4">
                 <div class="w-32">
-                    <label
-                        class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        for="post-id"
-                    >
+                    <label class=LABEL_CLASS for="post-id">
                         Post ID
                     </label>
                     <input
                         type="number"
                         id="post-id"
                         on:input=move |ev| {
-                            let new_post = event_target_value(&ev).parse().unwrap_or(0);
+                            let new_post = event_target_value(&ev).parse().unwrap_or(1).max(1);
                             post_id.set(new_post);
                         }
 
                         prop:value=post_id
-                        class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        class=INPUT_CLASS
                     />
                 </div>
-                <Show when=fetching>
-                    <div class="pt-6">
-                        <svg
-                            class="h-5 w-5 stroke-foreground text-foreground animate-spin"
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <line x1="12" x2="12" y1="2" y2="6"></line>
-                            <line x1="12" x2="12" y1="18" y2="22"></line>
-                            <line x1="4.93" x2="7.76" y1="4.93" y2="7.76"></line>
-                            <line x1="16.24" x2="19.07" y1="16.24" y2="19.07"></line>
-                            <line x1="2" x2="6" y1="12" y2="12"></line>
-                            <line x1="18" x2="22" y1="12" y2="12"></line>
-                            <line x1="4.93" x2="7.76" y1="19.07" y2="16.24"></line>
-                            <line x1="16.24" x2="19.07" y1="7.76" y2="4.93"></line>
-                        </svg>
-                    </div>
-                </Show>
+                <div class="pt-6">
+                    <Spinner fetching/>
+                </div>
             </div>
             <Transition fallback=|| {
-                view! {
-                    <div class="flex flex-col items-start gap-2 bg-card border rounded-md p-4 max-w-xl mx-auto w-full">
-                        <Skeleton class="h-8 w-full"/>
-                        <Skeleton class="h-20 w-full"/>
-                    </div>
-                }
+                view! { <SkeletonCard/> }
             }>
                 {move || {
                     data.get()
@@ -96,7 +77,7 @@ pub fn SingleQuery() -> impl IntoView {
 #[component]
 fn Post(post: PostValue) -> impl IntoView {
     view! {
-        <div class="flex flex-col items-start gap-2 bg-card border rounded-md p-4 max-w-xl mx-auto">
+        <div class=CARD_CLASS>
             <div class="space-y-0.5">
                 <h2 class="text-2xl font-bold tracking-tight">{post.title}</h2>
                 <p class="text-muted-foreground">{post.body}</p>
@@ -119,27 +100,107 @@ struct PostValue {
 
 fn post_query() -> QueryScope<PostQueryKey, Option<PostValue>> {
     create_query(
-        |post_id: PostQueryKey| async move {
-            gloo_timers::future::sleep(Duration::from_millis(500)).await;
-
-            let response = reqwest::get(&format!(
-                "https://jsonplaceholder.typicode.com/posts/{}",
-                post_id.0
-            ))
-            .await;
-
-            if let Ok(result) = response {
-                let result = result.json::<PostValue>().await;
-                result.ok()
-            } else {
-                None
-            }
-        },
+        |post_id: PostQueryKey| async move { get_post(post_id.0).await },
         QueryOptions::default(),
     )
 }
 
+async fn get_post(post_id: u32) -> Option<PostValue> {
+    gloo_timers::future::sleep(Duration::from_millis(500)).await;
+    let response = reqwest::get(&format!(
+        "https://jsonplaceholder.typicode.com/posts/{}",
+        post_id
+    ))
+    .await;
+
+    if let Ok(result) = response {
+        let result = result.json::<PostValue>().await;
+        result.ok()
+    } else {
+        None
+    }
+}
+
 #[component]
-fn Skeleton(#[prop(optional, into)] class: String) -> impl IntoView {
-    view! { <div class=format!("animate-pulse rounded-md bg-primary/10 {class}")></div> }
+fn Header(
+    #[prop(optional, into)] title: String,
+    #[prop(optional, into)] subtitle: String,
+) -> impl IntoView {
+    view! {
+        <div class="space-y-2">
+            <h1 class="scroll-m-20 text-4xl font-bold tracking-tight">{title}</h1>
+            <p class="text-lg text-muted-foreground">
+                <span class="inline-block align-top max-w-xl">{subtitle}</span>
+            </p>
+        </div>
+    }
+}
+
+#[component]
+fn SkeletonCard() -> impl IntoView {
+    view! {
+        <div class=CARD_CLASS>
+            <Skeleton class="h-8 w-full"/>
+            <Skeleton class="h-20 w-full"/>
+        </div>
+    }
+}
+
+const CARD_CLASS: &str =
+    "flex flex-col items-start gap-2 bg-card border rounded-md p-4 max-w-xl w-full h-40";
+const LABEL_CLASS: &str =
+    "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
+const INPUT_CLASS: &str= "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+#[component]
+fn SingleResource() -> impl IntoView {
+    let post_id = create_rw_signal(1_u32);
+
+    let resource = create_local_resource(post_id, get_post);
+
+    view! {
+        <div class="flex flex-col w-full gap-4">
+            <Header
+                title="Post with Resource"
+                subtitle="This example uses a Leptos Resource to fetch a post from the JSONPlaceholder API."
+            />
+
+            <div class="flex items-center gap-4">
+                <div class="w-32">
+                    <label class=LABEL_CLASS for="post-id">
+                        Post ID
+                    </label>
+                    <input
+                        type="number"
+                        id="post-id"
+                        on:input=move |ev| {
+                            let new_post = event_target_value(&ev).parse().unwrap_or(1).max(1);
+                            post_id.set(new_post);
+                        }
+
+                        prop:value=post_id
+                        class=INPUT_CLASS
+                    />
+                </div>
+                <div class="pt-6">
+                    <Spinner fetching=move || resource.loading().get()/>
+                </div>
+            </div>
+            <Transition fallback=|| {
+                view! { <SkeletonCard/> }
+            }>
+                {move || {
+                    resource
+                        .get()
+                        .map(|post| {
+                            match post {
+                                Some(post) => view! { <Post post/> }.into_view(),
+                                None => view! { <div>No Post Found</div> }.into_view(),
+                            }
+                        })
+                }}
+
+            </Transition>
+        </div>
+    }
 }

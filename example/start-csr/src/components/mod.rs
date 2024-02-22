@@ -1,1 +1,2 @@
-pub mod counter_btn;
+pub mod skeleton;
+pub mod spinner;
