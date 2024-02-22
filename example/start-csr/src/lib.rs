@@ -61,6 +61,7 @@ pub fn App() -> impl IntoView {
                     <Routes>
                         <Route path="/" view=Home/>
                         <Route path="/single" view=pages::single::QueryVsResource/>
+                        <Route path="/todos" view=pages::interactive::Interactive/>
                         <Route path="/*" view=NotFound/>
                     </Routes>
                 </Router>

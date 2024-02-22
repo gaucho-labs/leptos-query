@@ -16,6 +16,7 @@ pub fn Layout(children: Children) -> impl IntoView {
                         <h4 class="rounded-md px-2 py-1 text-base font-semibold">Examples</h4>
                         <div class="grid grid-flow-row auto-rows-max text-sm">
                             <SidebarLink href="/single">Single Query</SidebarLink>
+                            <SidebarLink href="/todos">Optimistic Update</SidebarLink>
                         </div>
                         <div class="absolute bottom-4">
                             <SelectPersister/>

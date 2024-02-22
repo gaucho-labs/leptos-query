@@ -37,12 +37,12 @@ fn SingleQuery() -> impl IntoView {
 
             <div class="flex items-center gap-4">
                 <div class="w-32">
-                    <label class=LABEL_CLASS for="post-id">
+                    <label class=LABEL_CLASS for="post-id-query">
                         Post ID
                     </label>
                     <input
                         type="number"
-                        id="post-id"
+                        id="post-id-query"
                         on:input=move |ev| {
                             let new_post = event_target_value(&ev).parse().unwrap_or(1).max(1);
                             post_id.set(new_post);
@@ -167,12 +167,12 @@ fn SingleResource() -> impl IntoView {
 
             <div class="flex items-center gap-4">
                 <div class="w-32">
-                    <label class=LABEL_CLASS for="post-id">
+                    <label class=LABEL_CLASS for="post-id-resource">
                         Post ID
                     </label>
                     <input
                         type="number"
-                        id="post-id"
+                        id="post-id-resource"
                         on:input=move |ev| {
                             let new_post = event_target_value(&ev).parse().unwrap_or(1).max(1);
                             post_id.set(new_post);
