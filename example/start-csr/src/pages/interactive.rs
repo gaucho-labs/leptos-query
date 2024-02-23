@@ -138,7 +138,11 @@ fn AddTodoEntry() -> impl IntoView {
             // Find a unique id for the todo.
             let temp_id = all_todos
                 .peek_query_state(&AllTodosKey)
-                .and_then(|todos| todos.data().map(|d| d.len() + 1))
+                .and_then(|todos| {
+                    let todos = todos.data()?;
+                    let id = todos.iter().map(|t| t.id.0).max()?;
+                    Some(id + 1)
+                })
                 .unwrap_or(0) as u32;
 
             // Optimistically add the todo to the list
