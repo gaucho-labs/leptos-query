@@ -136,14 +136,18 @@ fn AddTodoEntry() -> impl IntoView {
             contentX.set(Default::default());
 
             // Find a unique id for the todo.
-            let temp_id = all_todos
-                .peek_query_state(&AllTodosKey)
-                .and_then(|todos| {
-                    let todos = todos.data()?;
-                    let id = todos.iter().map(|t| t.id.0).max()?;
-                    Some(id + 1)
-                })
-                .unwrap_or(0) as u32;
+            let temp_id = {
+                let temp_id = all_todos
+                    .peek_query_state(&AllTodosKey)
+                    .and_then(|todos| {
+                        let todos = todos.data()?;
+                        let id = todos.iter().map(|t| t.id.0).max()?;
+                        Some(id + 1)
+                    })
+                    .unwrap_or(0) as u32;
+
+                TodoId(temp_id)
+            };
 
             // Optimistically add the todo to the list
             all_todos.update_query_data_mut(AllTodosKey, {
@@ -151,7 +155,7 @@ fn AddTodoEntry() -> impl IntoView {
                 let content = content.clone();
                 |todos| {
                     todos.push(Todo {
-                        id: TodoId(temp_id),
+                        id: temp_id,
                         title,
                         content,
                         completed: false,
@@ -165,7 +169,6 @@ fn AddTodoEntry() -> impl IntoView {
 
             // Replace the optimistic todo with the real todo
             all_todos.update_query_data_mut(AllTodosKey, {
-                let temp_id = todo.id;
                 move |todos| {
                     todos.retain(|t| t.id != temp_id);
                     todos.push(todo);
