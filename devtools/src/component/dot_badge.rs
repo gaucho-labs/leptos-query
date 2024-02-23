@@ -11,12 +11,12 @@ pub fn DotBadge(
     match color {
         ColorOption::Blue => {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-blue-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-blue-700">
                     {if dot {
                         Some(
                             view! {
                                 <svg
-                                    class="h-1.5 w-1.5 fill-blue-500"
+                                    class="lq-h-1.5 lq-w-1.5 lq-fill-blue-500"
                                     viewBox="0 0 6 6"
                                     aria-hidden="true"
                                 >
@@ -33,12 +33,12 @@ pub fn DotBadge(
         }
         ColorOption::Green => {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-green-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-green-700">
                     {if dot {
                         Some(
                             view! {
                                 <svg
-                                    class="h-1.5 w-1.5 fill-green-500"
+                                    class="lq-h-1.5 lq-w-1.5 lq-fill-green-500"
                                     viewBox="0 0 6 6"
                                     aria-hidden="true"
                                 >
@@ -55,12 +55,12 @@ pub fn DotBadge(
         }
         ColorOption::Red => {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-red-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-red-700">
                     {if dot {
                         Some(
                             view! {
                                 <svg
-                                    class="h-1.5 w-1.5 fill-red-500"
+                                    class="lq-h-1.5 lq-w-1.5 lq-fill-red-500"
                                     viewBox="0 0 6 6"
                                     aria-hidden="true"
                                 >
@@ -77,12 +77,12 @@ pub fn DotBadge(
         }
         ColorOption::Gray => {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-gray-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-gray-700">
                     {if dot {
                         Some(
                             view! {
                                 <svg
-                                    class="h-1.5 w-1.5 fill-gray-500"
+                                    class="lq-h-1.5 lq-w-1.5 lq-fill-gray-500"
                                     viewBox="0 0 6 6"
                                     aria-hidden="true"
                                 >
@@ -99,12 +99,12 @@ pub fn DotBadge(
         }
         ColorOption::Yellow => {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-yellow-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-yellow-700">
                     {if dot {
                         Some(
                             view! {
                                 <svg
-                                    class="h-1.5 w-1.5 fill-yellow-500"
+                                    class="lq-h-1.5 lq-w-1.5 lq-fill-yellow-500"
                                     viewBox="0 0 6 6"
                                     aria-hidden="true"
                                 >

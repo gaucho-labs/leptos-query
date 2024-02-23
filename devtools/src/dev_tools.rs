@@ -20,9 +20,7 @@ pub(crate) fn InnerDevtools() -> impl IntoView {
 
     move || {
         if mounted.get() {
-            view! {
-                <DevtoolsClient/>
-            }
+            view! { <DevtoolsClient/> }
         } else {
             ().into_view()
         }
@@ -57,7 +55,7 @@ fn DevtoolsClient() -> impl IntoView {
     view! {
         <Portal>
             <style>{include_str!("./styles.css")}</style>
-            <div class="leptos-query-devtools font-mono">
+            <div class="leptos-query-devtools lq-font-mono">
                 <Devtools/>
             </div>
         </Portal>
@@ -418,7 +416,7 @@ fn Devtools() -> impl IntoView {
                 view! {
                     <button
                         on:click=move |_| open.set(true)
-                        class="bg-zinc-200 text-lq-foreground absolute bottom-3 right-3 rounded-full w-12 h-12 hover:-translate-y-1 hover:bg-zinc-300 transition-all duration-200"
+                        class="lq-bg-zinc-200 text-lq-foreground lq-fixed lq-bottom-3 lq-right-3 lq-rounded-full lq-w-12 lq-h-12 hover:-lq-translate-y-1 hover:lq-bg-zinc-300 lq-transition-all lq-duration-200"
                         inner_html=include_str!("logo.svg")
                     ></button>
                 }
@@ -426,35 +424,33 @@ fn Devtools() -> impl IntoView {
         >
 
             <div
-                class="bg-lq-background text-lq-foreground px-0 fixed bottom-0 left-0 right-0 z-[1000]"
+                class="lq-bg-lq-background lq-text-lq-foreground lq-px-0 lq-fixed lq-bottom-0 lq-left-0 lq-right-0 lq-z-[1000]"
                 style:height=move || format!("{}px", height_signal.get())
                 ref=container_ref
             >
                 <div
-                    class="w-full py-1 bg-lq-background cursor-ns-resize transition-colors hover:bg-lq-border"
+                    class="lq-w-full lq-py-1 lq-bg-lq-background lq-cursor-ns-resize lq-transition-colors hover:lq-bg-lq-border"
                     on:mousedown=handle_drag_start
                 ></div>
-                <div class="h-full flex flex-col relative">
-                    <div class="flex-1 overflow-hidden flex">
-                        <div class="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
-                            <Header/>
-                            <div class="py-1 px-2 border-lq-border border-b flex items-center w-full justify-between max-w-full overflow-x-auto gap-2 no-scrollbar">
-                                <div class="flex items-center gap-2">
-                                    <SearchInput/>
-                                    <SetSort/>
-                                    <SetSortOrder/>
-                                </div>
-                                <div class="flex items-center">
-                                    <ClearCache/>
+                <div class="lq-h-full lq-flex lq-flex-col lq-relative">
+                    <div class="lq-flex-1 lq-overflow-hidden lq-flex">
+                        <div class="lq-flex lq-flex-col lq-flex-1  lq-overflow-x-hidden">
+                            <div class="lq-flex-none">
+                                <Header/>
+                                <div class="lq-py-1 lq-px-2 lq-border-lq-border lq-border-b lq-flex lq-items-center lq-w-full lq-justify-between lq-max-w-full lq-overflow-x-auto lq-gap-2 lq-no-scrollbar">
+                                    <div class="lq-flex lq-items-center lq-gap-2">
+                                        <SearchInput/>
+                                        <SetSort/>
+                                        <SetSortOrder/>
+                                    </div>
+                                    <div class="lq-flex lq-items-center">
+                                        <ClearCache/>
+                                    </div>
                                 </div>
                             </div>
 
-                            <ul class="flex flex-col gap-1">
-                                <For
-                                    each=move || query_state.get()
-                                    key=|q| q.key.clone()
-                                    let:entry
-                                >
+                            <ul class="lq-flex lq-flex-col lq-gap-1 lq-overflow-y-auto">
+                                <For each=move || query_state.get() key=|q| q.key.clone() let:entry>
                                     <QueryRow entry=entry/>
                                 </For>
 
@@ -469,7 +465,7 @@ fn Devtools() -> impl IntoView {
 
                         </Show>
                     </div>
-                    <div class="absolute -top-6 right-2">
+                    <div class="lq-absolute -lq-top-6 lq-right-2">
                         <CloseButton/>
                     </div>
                 </div>
@@ -485,7 +481,7 @@ fn CloseButton() -> impl IntoView {
     view! {
         <button
             on:click=move |_| open.set(false)
-            class="bg-lq-background text-lq-foreground rounded-t-sm w-6 h-6 p-1 transition-colors hover:bg-lq-accent"
+            class="lq-bg-lq-background lq-text-lq-foreground lq-rounded-t-sm lq-w-6 lq-h-6 lq-p-1 lq-transition-colors lq-hover:bg-lq-accent"
         >
             <svg
                 width="100%"
@@ -538,14 +534,14 @@ fn Header() -> impl IntoView {
 
     let total = Signal::derive(move || query_state.get().len());
 
-    let label_class = "hidden lg:inline-block";
+    let label_class = "lq-hidden lg:lq-inline-block";
     view! {
-        <div class="flex-none flex justify-between w-full overflow-y-hidden items-center border-b border-lq-border pb-2 px-1">
-            <h3 class="pl-2 tracking-tighter text-lg italic text-transparent bg-clip-text font-bold bg-gradient-to-r from-red-800 to-orange-400">
+        <div class="lq-flex-none lq-flex lq-justify-between lq-w-full lq-overflow-y-hidden lq-items-center lq-border-b lq-border-lq-border lq-pb-2 lq-px-1">
+            <h3 class="lq-pl-2 lq-tracking-tighter lq-text-lg lq-italic lq-text-transparent lq-bg-clip-text lq-font-bold bg-gradient-to-r lq-from-red-800 lq-to-orange-400">
                 Leptos Query
             </h3>
 
-            <div class="flex gap-2 px-2">
+            <div class="lq-flex lq-gap-2 lq-px-2">
                 <DotBadge color=ColorOption::Blue>
                     <span class=label_class>Fetching</span>
                     <span>{num_fetching}</span>
@@ -575,9 +571,14 @@ fn SearchInput() -> impl IntoView {
     let DevtoolsContext { filter, .. } = use_devtools_context();
 
     view! {
-        <div class="relative w-64">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400">
-                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <div class="lq-relative lq-w-64">
+            <div class="lq-pointer-events-none lq-absolute lq-inset-y-0 lq-left-0 lq-flex lq-items-center lq-pl-3 lq-text-zinc-400">
+                <svg
+                    class="lq-h-4 lq-w-4"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                >
                     <path
                         fill-rule="evenodd"
                         d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
@@ -587,7 +588,7 @@ fn SearchInput() -> impl IntoView {
             </div>
             <input
                 id="search"
-                class="form-input block w-full rounded-md bg-lq-input py-0 pl-10 pr-3 text-lq-input-foreground text-xs leading-6 placeholder-lq-input-foreground border border-lq-border"
+                class="lq-form-input lq-block lq-w-full lq-rounded-md lq-bg-lq-input lq-py-0 lq-pl-10 lq-pr-3 lq-text-lq-input-foreground lq-text-xs lq-leading-6 lq-placeholder-lq-input-foreground lq-border lq-border-lq-border"
                 placeholder="Search"
                 name="search"
                 autocomplete="off"
@@ -610,7 +611,7 @@ fn SetSort() -> impl IntoView {
     view! {
         <select
             id="countries"
-            class="form-select border-lq-border border text-xs rounded-md block w-48 py-1 px-2 bg-lq-input text-lq-input-foreground line-clamp-1"
+            class="lq-form-select lq-border-lq-border lq-border lq-text-xs lq-rounded-md lq-block lq-w-48 lq-py-1 lq-px-2 lq-bg-lq-input lq-text-lq-input-foreground lq-line-clamp-1"
             value=move || sort.get().as_str().to_string()
             on:change=move |ev| {
                 let new_value = event_target_value(&ev);
@@ -631,7 +632,7 @@ fn SetSortOrder() -> impl IntoView {
 
     view! {
         <button
-            class="bg-lq-input text-lq-input-foreground rounded-md px-2 py-1 text-xs inline-flex items-center gap-1 border border-lq-border"
+            class="lq-bg-lq-input lq-text-lq-input-foreground lq-rounded-md lq-px-2 lq-py-1 lq-text-xs lq-inline-flex lq-items-center lq-gap-1 lq-border lq-border-lq-border"
             on:click=move |_| {
                 order_asc.set(!order_asc.get());
             }
@@ -686,11 +687,12 @@ fn ClearCache() -> impl IntoView {
 
     view! {
         <button
-            class="bg-lq-input text-lq-input-foreground rounded-md px-2 py-1 text-xs inline-flex items-center gap-1 border border-lq-border"
+            class="lq-bg-lq-input lq-text-lq-input-foreground lq-rounded-md lq-px-2 lq-py-1 lq-text-xs lq-inline-flex lq-items-center lq-gap-1 lq-border lq-border-lq-border"
             on:click=move |_| {
                 cache.clear();
             }
         >
+
             <svg
                 width="15"
                 height="15"
@@ -723,13 +725,13 @@ fn QueryRow(entry: QueryCacheEntry) -> impl IntoView {
         let count = observer_count.get();
         if count == 0 {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-gray-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-gray-700">
                     {count}
                 </span>
             }
         } else {
             view! {
-                <span class="inline-flex items-center gap-x-1.5 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                <span class="lq-inline-flex lq-items-center lq-gap-x-1.5 lq-rounded-md lq-bg-green-100 lq-px-2 lq-py-1 lq-text-xs lq-font-medium lq-text-green-700">
                     {count}
                 </span>
             }
@@ -737,7 +739,7 @@ fn QueryRow(entry: QueryCacheEntry) -> impl IntoView {
     };
     view! {
         <li
-            class="hover:bg-lq-accent transition-colors flex w-full gap-4 items-center border-lq-border border-b p-1"
+            class="hover:lq-bg-lq-accent lq-transition-colors lq-flex lq-w-full lq-gap-4 lq-items-center lq-border-lq-border lq-border-b lq-p-1"
             on:click={
                 let key = key.clone();
                 move |_| {
@@ -751,10 +753,10 @@ fn QueryRow(entry: QueryCacheEntry) -> impl IntoView {
         >
 
             {observer}
-            <span class="w-[4.5rem]">
+            <span class="lq-w-[4.5rem]">
                 <RowStateLabel state=state.into() is_stale/>
             </span>
-            <span class="text-sm">{key.0}</span>
+            <span class="lq-text-sm">{key.0}</span>
         </li>
     }
 }
@@ -844,54 +846,56 @@ fn SelectedQuery(query: QueryCacheEntry) -> impl IntoView {
     #[cfg(not(feature = "csr"))]
     let value: Signal<Option<String>> = Signal::derive(move || query_state.get().data().cloned());
 
-    let section_class = "px-2 py-1 flex flex-col items-center gap-1 w-full";
-    let entry_class = "flex items-center justify-between text-xs font-medium w-full";
+    let section_class = "lq-px-2 lq-py-1 lq-flex lq-flex-col lq-items-center lq-gap-1 lq-w-full";
+    let entry_class =
+        "lq-flex lq-items-center lq-justify-between lq-text-xs lq-font-medium lq-w-full";
 
     let stale_time = Signal::derive(move || stale_time.get().to_string());
 
     let gc_time = Signal::derive(move || gc_time.get().to_string());
 
     view! {
-        <div class="w-1/2 overflow-y-scroll max-h-full border-black border-l-4">
-            <div class="flex flex-col w-full h-full items-center">
-                <div class="w-full">
-                    <div class="text-sm text-lq-foreground p-1 bg-lq-accent">Query Details</div>
+        <div class="lq-w-1/2 lq-overflow-y-scroll lq-max-h-full lq-border-black lq-border-l-4">
+            <div class="lq-flex lq-flex-col lq-w-full lq-h-full lq-items-center">
+                <div class="lq-w-full">
+                    <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent">
+                        Query Details
+                    </div>
                     <dl class=section_class>
                         <div class=entry_class>
-                            <dt class="text-zinc-100">Status</dt>
-                            <dd class="text-zinc-200">
-                                <RowStateLabel
-                                    state=query_state.into()
-                                    is_stale
-                                />
+                            <dt class="lq-text-zinc-100">Status</dt>
+                            <dd class="lq-text-zinc-200">
+                                <RowStateLabel state=query_state.into() is_stale/>
                             </dd>
                         </div>
                         <div class=entry_class>
-                            <dt class="text-zinc-100">Key</dt>
-                            <dd class="text-zinc-200">{query_key.0}</dd>
+                            <dt class="lq-text-zinc-100">Key</dt>
+                            <dd class="lq-text-zinc-200">{query_key.0}</dd>
                         </div>
                         <div class=entry_class>
-                            <dt class="text-zinc-100">Last Update</dt>
-                            <dd class="text-zinc-200">{last_update}</dd>
+                            <dt class="lq-text-zinc-100">Last Update</dt>
+                            <dd class="lq-text-zinc-200">{last_update}</dd>
                         </div>
                         <div class=entry_class>
-                            <dt class="text-zinc-100">Active Observers</dt>
-                            <dd class="text-zinc-200">{observer_count}</dd>
+                            <dt class="lq-text-zinc-100">Active Observers</dt>
+                            <dd class="lq-text-zinc-200">{observer_count}</dd>
                         </div>
 
                         <div class=entry_class>
-                            <dt class="text-zinc-100">Stale Time</dt>
+                            <dt class="lq-text-zinc-100">Stale Time</dt>
                             <dd class="text-zinc-200">{stale_time}</dd>
                         </div>
                         <div class=entry_class>
-                            <dt class="text-zinc-100">GC Time</dt>
-                            <dd class="text-zinc-200">{gc_time}</dd>
+                            <dt class="lq-text-zinc-100">GC Time</dt>
+                            <dd class="lq-text-zinc-200">{gc_time}</dd>
                         </div>
                     </dl>
                 </div>
-                <div class="w-full">
-                    <div class="text-sm text-lq-foreground p-1 bg-lq-accent">Query Actions</div>
-                    <div class="flex items-center gap-2 p-1">
+                <div class="lq-w-full">
+                    <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent">
+                        Query Actions
+                    </div>
+                    <div class="lq-flex lq-items-center lq-gap-2 lq-p-1">
                         <Button
                             color=ColorOption::Red
                             on:click=move |_| {
@@ -903,10 +907,14 @@ fn SelectedQuery(query: QueryCacheEntry) -> impl IntoView {
                         </Button>
                     </div>
                 </div>
-                <div class="text-sm text-lq-foreground p-1 bg-lq-accent w-full">Query Data</div>
-                <div class="flex-1 flex p-2 w-full">
-                    <div class="flex-1 p-4 rounded-md bg-zinc-800 shadow-md w-11/12 text-xs">
-                        <pre>{move || value.get().unwrap_or_default()}</pre>
+                <div class="lq-text-sm lq-text-lq-foreground lq-p-1 lq-bg-lq-accent lq-w-full">
+                    Query Data
+                </div>
+                <div class="lq-flex-1 lq-flex lq-p-2 lq-w-full">
+                    <div class="lq-flex-1 lq-p-4 lq-rounded-md lq-bg-zinc-800 lq-shadow-md lq-w-11/12 lq-text-xs lq-overflow-hidden">
+                        <pre class="lq-whitespace-pre-wrap lq-break-words">
+                            {move || value.get().unwrap_or_default()}
+                        </pre>
                     </div>
                 </div>
             </div>
