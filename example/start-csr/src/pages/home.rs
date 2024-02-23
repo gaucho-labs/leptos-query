@@ -69,14 +69,16 @@ pub fn Home() -> impl IntoView {
             <div class="flex flex-col lg:flex-row items-stretch gap-8 p-8 max-w-[1200px] mx-auto lg:min-h-72">
                 <InfoCard title="Simple & Expressive">
                     <p>
-                        Expressive, powerful, and client-side caching, handling background updates and stale data <Loud> out of the box with zero-configuration. </Loud>
+                        Expressive, powerful, and client-side caching, handling background updates and stale data
+                        <Loud>out of the box with zero-configuration.</Loud>
                     </p>
                     <p>
                         Unlocks features like optimistic updates, cancellation, persistance, and more.
                     </p>
                 </InfoCard>
                 <InfoCard title="Deep Leptos Integration">
-                    <Loud>Flawless support for CSR and SSR</Loud> rendering strategies, as well as
+                    <Loud>Flawless support for CSR and SSR</Loud>
+                    rendering strategies, as well as
                     {"Leptos's"}
                     fine-grained reactivity, ensuring your data fetching is performant and up to date.
                 </InfoCard>

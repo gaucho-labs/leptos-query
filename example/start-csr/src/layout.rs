@@ -1,7 +1,11 @@
+use std::str::FromStr;
+
 use leptos::*;
 use leptos_meta::Html;
 use leptos_query::query_persister::{IndexedDbPersister, LocalStoragePersister};
 use leptos_query::use_query_client;
+use leptos_use::storage::use_local_storage;
+use leptos_use::utils::FromToStringCodec;
 
 use crate::components::switch::Switch;
 
@@ -54,7 +58,10 @@ fn ThemeToggle() -> impl IntoView {
 
 #[component]
 fn SelectPersister() -> impl IntoView {
-    let persister = create_rw_signal(Persister::None);
+    let (persister, set_persister, _) =
+        use_local_storage::<Persister, FromToStringCodec>(Persister::None);
+
+    create_effect(move |_| set_persister(persister.get_untracked()));
 
     create_effect(move |_| {
         let client = use_query_client();
@@ -84,12 +91,12 @@ fn SelectPersister() -> impl IntoView {
         </label>
         <select
             id="query-persister"
-            class="form-select border-border border text-xs rounded-md block py-1 px-5 bg-input text-input-foreground line-clamp-1"
-            value=move || persister.get().as_str()
+            class="form-select border-border border text-xs rounded-md block py-1 pr-8 bg-input text-input-foreground line-clamp-1 focus:border-primary focus:ring focus:ring-primary/50 transition-colors"
+            prop:value=move || persister.get().as_str()
             on:change=move |ev| {
                 let new_value = event_target_value(&ev);
-                let option = Persister::from_string(&new_value);
-                persister.set(option);
+                let option = FromStr::from_str(&new_value).unwrap();
+                set_persister(option);
             }
         >
 
@@ -112,7 +119,7 @@ pub fn SidebarLink(#[prop(into)] href: String, children: Children) -> impl IntoV
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Persister {
     LocalStorage,
     IndexDB,
@@ -120,19 +127,43 @@ pub enum Persister {
 }
 
 impl Persister {
-    pub fn from_string(s: &str) -> Self {
-        match s {
-            "LocalStorage" => Self::LocalStorage,
-            "IndexDB" => Self::IndexDB,
-            _ => Self::None,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::LocalStorage => "LocalStorage",
             Self::IndexDB => "IndexDB",
             Self::None => "None",
         }
+    }
+}
+
+impl std::fmt::Display for Persister {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for Persister {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let result = match s {
+            "LocalStorage" => Self::LocalStorage,
+            "IndexDB" => Self::IndexDB,
+            _ => Self::None,
+        };
+
+        Ok(result)
+    }
+}
+
+impl AsRef<str> for Persister {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Default for Persister {
+    fn default() -> Self {
+        Self::None
     }
 }
