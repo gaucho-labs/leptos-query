@@ -26,7 +26,7 @@ pub fn App() -> impl IntoView {
     });
 
     view! {
-        <Html lang="en" dir="ltr" attr:data-theme="light" class=""/>
+        <Html lang="en" dir="ltr"/>
 
         // sets the document title
         <Title text="Welcome to Leptos CSR"/>

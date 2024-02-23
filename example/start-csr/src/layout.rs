@@ -1,11 +1,12 @@
 use leptos::*;
+use leptos_meta::Html;
 use leptos_query::query_persister::{IndexedDbPersister, LocalStoragePersister};
 use leptos_query::use_query_client;
 
+use crate::components::switch::Switch;
+
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
-    provide_context(AppState::default());
-
     view! {
         <div class="relative flex min-h-screen flex-col bg-background">
             <div class="flex-1 items-start grid grid-cols-[180px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-10">
@@ -18,7 +19,8 @@ pub fn Layout(children: Children) -> impl IntoView {
                             <SidebarLink href="/single">Single Query</SidebarLink>
                             <SidebarLink href="/todos">Optimistic Update</SidebarLink>
                         </div>
-                        <div class="absolute bottom-4">
+                        <div class="absolute bottom-4 flex flex-col items-start gap-2">
+                            <ThemeToggle/>
                             <SelectPersister/>
                         </div>
                     </div>
@@ -30,9 +32,29 @@ pub fn Layout(children: Children) -> impl IntoView {
 }
 
 #[component]
+fn ThemeToggle() -> impl IntoView {
+    let dark_mode = create_rw_signal(true);
+
+    view! {
+        <Html class=move || if dark_mode.get() { "dark" } else { "" }/>
+        <label
+            for="dark-mode-toggle"
+            class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+        >
+            Dark Mode
+        </label>
+        <Switch
+            enabled=dark_mode
+            on_click=move |_| { dark_mode.set(!dark_mode.get_untracked()) }
+
+            attr:id="dark-mode-toggle"
+        />
+    }
+}
+
+#[component]
 fn SelectPersister() -> impl IntoView {
-    let state = use_app_state();
-    let persister = state.persister;
+    let persister = create_rw_signal(Persister::None);
 
     create_effect(move |_| {
         let client = use_query_client();
@@ -62,7 +84,7 @@ fn SelectPersister() -> impl IntoView {
         </label>
         <select
             id="query-persister"
-            class="form-select border-border border text-xs rounded-md block py-1 px-4 bg-input text-input-foreground line-clamp-1"
+            class="form-select border-border border text-xs rounded-md block py-1 px-5 bg-input text-input-foreground line-clamp-1"
             value=move || persister.get().as_str()
             on:change=move |ev| {
                 let new_value = event_target_value(&ev);
@@ -87,23 +109,6 @@ pub fn SidebarLink(#[prop(into)] href: String, children: Children) -> impl IntoV
         >
             {children()}
         </a>
-    }
-}
-
-#[derive(Clone)]
-pub struct AppState {
-    persister: RwSignal<Persister>,
-}
-
-pub fn use_app_state() -> AppState {
-    use_context::<AppState>().expect("Missing AppState")
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        AppState {
-            persister: create_rw_signal(Persister::None),
-        }
     }
 }
 

@@ -1,15 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-  <head>
-    <!-- Add a plain CSS file: see https://trunkrs.dev/assets/#css -->
-    <!-- If using Tailwind with Leptos CSR, see https://trunkrs.dev/assets/#tailwind instead-->
-    <link data-trunk rel="css" rel="stylesheet" href="public/styles.css" />
+    <head>
+        <!-- Add a plain CSS file: see https://trunkrs.dev/assets/#css -->
+        <!-- If using Tailwind with Leptos CSR, see https://trunkrs.dev/assets/#tailwind instead-->
+        <link data-trunk rel="css" rel="stylesheet" href="public/styles.css" />
 
-    <!-- Include favicon in dist output: see https://trunkrs.dev/assets/#icon -->
-    <link data-trunk rel="icon" href="public/favicon.ico" />
+        <!-- Include favicon in dist output: see https://trunkrs.dev/assets/#icon -->
+        <link data-trunk rel="icon" href="public/favicon.ico" />
 
-    <!-- include support for `wasm-bindgen --weak-refs` - see: https://rustwasm.github.io/docs/wasm-bindgen/reference/weak-references.html -->
-    <link data-trunk rel="rust" data-wasm-opt="z" data-weak-refs />
-  </head>
-  <body class="bg-background font-sans"></body>
+        <!-- include support for `wasm-bindgen --weak-refs` - see: https://rustwasm.github.io/docs/wasm-bindgen/reference/weak-references.html -->
+        <link data-trunk rel="rust" data-wasm-opt="z" data-weak-refs />
+
+        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+        <link data-trunk rel="copy-file" href="public/geist-var.woff2" />
+    </head>
+    <body class="bg-background font-sans"></body>
 </html>

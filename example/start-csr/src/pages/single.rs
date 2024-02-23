@@ -4,7 +4,7 @@ use leptos::*;
 use leptos_query::{create_query, QueryOptions, QueryScope};
 use serde::*;
 
-use crate::components::{header::Header, skeleton::Skeleton, spinner::Spinner, Loud};
+use crate::components::{skeleton::Skeleton, spinner::Spinner, Loud};
 
 #[component]
 pub fn QueryVsResource() -> impl IntoView {
@@ -12,7 +12,7 @@ pub fn QueryVsResource() -> impl IntoView {
         <div class="container mx-auto p-8">
             <div class="flex flex-col gap-8">
                 <SingleQuery/>
-                <div class="h-2 w-full bg-border"></div>
+                <div class="h-2 w-full bg-border rounded-xl"></div>
                 <SingleResource/>
             </div>
         </div>
@@ -30,9 +30,7 @@ fn SingleQuery() -> impl IntoView {
 
     view! {
         <div class="flex flex-col w-full gap-4">
-            <Header title="Post with Query">
-                <p>Fetching with <Loud>Leptos Query</Loud></p>
-            </Header>
+            <h2 class=HEADER_CLASS>Fetching with <Loud>Leptos Query</Loud></h2>
 
             <div class="flex items-center gap-4">
                 <div class="w-32">
@@ -131,10 +129,11 @@ fn SkeletonCard() -> impl IntoView {
 }
 
 const CARD_CLASS: &str =
-    "flex flex-col items-start gap-2 bg-card border rounded-md p-4 max-w-xl w-full h-40";
+    "flex flex-col items-start gap-2 bg-card border rounded-md p-4 max-w-xl w-full h-40 grow overflow-hidden ";
 const LABEL_CLASS: &str =
     "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70";
 const INPUT_CLASS: &str= "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+const HEADER_CLASS: &str = "scroll-m-20 text-4xl font-bold tracking-tight";
 
 #[component]
 fn SingleResource() -> impl IntoView {
@@ -144,13 +143,12 @@ fn SingleResource() -> impl IntoView {
 
     view! {
         <div class="flex flex-col w-full gap-4">
-            <Header title="Post with Resource">
-                <p>
-                    Fetching with <a href="https://book.leptos.dev/async/10_resources.html">
-                        <Loud>Leptos Resource</Loud>
-                    </a>
-                </p>
-            </Header>
+
+            <h2 class=HEADER_CLASS>
+                Fetching with <a href="https://book.leptos.dev/async/10_resources.html">
+                    <Loud>Leptos Resource</Loud>
+                </a>
+            </h2>
 
             <div class="flex items-center gap-4">
                 <div class="w-32">

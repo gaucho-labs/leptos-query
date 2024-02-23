@@ -3,6 +3,7 @@ use leptos::*;
 pub mod header;
 pub mod skeleton;
 pub mod spinner;
+pub mod switch;
 
 #[component]
 pub fn Loud(children: Children) -> impl IntoView {
