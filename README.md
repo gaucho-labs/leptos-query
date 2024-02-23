@@ -12,7 +12,7 @@
 [<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/nicoburniske/leptos_query/rust.yml?branch=main&style=for-the-badge" height="20">](https://github.com/nicoburniske/leptos_query/actions?query=branch%3Amain)
 
 
-[FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md) | [Examples](https://github.com/nicoburniske/leptos_query/tree/main/example/)
+[FAQ](https://github.com/nicoburniske/leptos_query/blob/main/FAQ.md) | [Examples](https://github.com/nicoburniske/leptos_query/tree/main/example/) | [Live Demo](https://leptos-query-demo.vercel.app/)
 
 ## About
 
