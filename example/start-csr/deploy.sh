@@ -6,4 +6,4 @@ cargo clean
 
 cp vercel.json dist/vercel.json
 
-vercel deploy
+vercel deploy --prod
