@@ -12,18 +12,18 @@ pub fn Introduction() -> impl IntoView {
             ">
             <h1>Why Leptos Query?</h1>
             <hr></hr>
-            <strong>What is a Query? What is async state?</strong>
-            <p>Broadly, a Query is an async request for data, bound to a unique key. You often (but not always) "don't" own that state on the client.
-            </p>
+            <p> Leptos Query manages and simplifies async state for you on the client (through the use of Queries)</p>
+            <strong> What is a Query? What is Async State?</strong>
+            <p>A Query is an async request for data, bound to a unique key.</p>
             <p>
-                "We'll" call this state <code>Async State</code>.
+                "We'll" call this data <code>Async State</code>.
                 Here are some common properties:
             </p>
             <ul>
                 <li>You do not control or own the "source of truth" on the client</li>
                 <li>Requires async APIs for fetching data</li>
                 <li>
-                    Implies shared ownership and can be changed by other people without your knowledge
+                    Possible shared ownership and can be changed by others without your knowledge
                 </li>
                 <li>
                     Can potentially become "out of date" in your apps if "you're" not careful
@@ -32,10 +32,10 @@ pub fn Introduction() -> impl IntoView {
             <p>
                 Very often in programming highly dynamic web apps, you end up creating a client-side state machine to keep some
                 <code>Async State</code>
-                in sync with the actual source of truth (usually the server/database or the browser).
+                in sync with the actual source of truth (usually a server/database).
             </p>
             <p>
-                This helps make your app "feel" more responsive, with instant updates and the like.
+                This helps make your app "feel" more responsive, providing instant updates and the like.
             </p>
             <h4> But there are issues... </h4>
             <ul>
@@ -59,18 +59,16 @@ pub fn Introduction() -> impl IntoView {
                 <li>Updates (set to new value, update mut existing value, etc.)</li>
                 <li>Client side persistence (local storage, indexed db, etc.)</li>
             </ul>
-            <p>"Here's" where a Leptos Query comes in.</p>
-            <h2>Leptos Query to the rescue</h2>
+            <h2>"Here's" where a Leptos Query comes in.</h2>
             <hr></hr>
             <p>
-                Leptos Query is a client-side Query Manager, helping you manage
-                <code>Async State</code> for highly dynamic and interactive Leptos web apps, which handles all of the above problems.
+                Leptos Query helps you manage <code>Async State</code> for highly dynamic and interactive Leptos web apps, which handles all of the above problems (and more!).
             </p>
             Practically speaking, by using Leptos Query, you will likely:
             <ul>
                 <li>Reduce your code complexity and improve code maintainability by removing a lot of state management from your client side code</li>
-                <li>Improve the user experience by improving the speed and responsiveness of your app</li>
-                <li>Have a nicer debugging experience, with the provided Devtools</li>
+                <li>Improve the user experience by (1) improving the speed and responsiveness of your app, and (2) ensuring that data is always up to date</li>
+                <li>Have a nicer debugging experience with the provided Devtools</li>
             </ul>
         </article>
     }
