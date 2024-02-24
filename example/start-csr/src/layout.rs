@@ -37,10 +37,11 @@ pub fn Layout(children: Children) -> impl IntoView {
 
 #[component]
 fn ThemeToggle() -> impl IntoView {
-    let dark_mode = create_rw_signal(true);
+    let current_theme = use_theme();
+    let is_dark = Signal::derive(move || current_theme.get() == Theme::Dark);
 
     view! {
-        <Html class=move || if dark_mode.get() { "dark" } else { "" }/>
+        // <Html class=move || if is_dark.get() { "dark" } else { "" }/>
         <label
             for="dark-mode-toggle"
             class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
@@ -48,8 +49,11 @@ fn ThemeToggle() -> impl IntoView {
             Dark Mode
         </label>
         <Switch
-            enabled=dark_mode
-            on_click=move |_| { dark_mode.set(!dark_mode.get_untracked()) }
+            enabled=is_dark
+            on_click=Callback::new(move |_| {
+                let new_theme = if is_dark.get() { Theme::Light } else { Theme::Dark };
+                current_theme.set(new_theme);
+            })
 
             attr:id="dark-mode-toggle"
         />

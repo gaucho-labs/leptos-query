@@ -3,6 +3,7 @@ use leptos_meta::*;
 use leptos_query::{provide_query_client_with_options, DefaultQueryOptions};
 use leptos_query_devtools::LeptosQueryDevtools;
 use leptos_router::*;
+use leptos_theme::ThemeProvider;
 
 // Modules
 mod components;
@@ -54,16 +55,18 @@ pub fn App() -> impl IntoView {
             }
         }>
 
-            <Layout>
-                <Router>
-                    <Routes>
-                        <Route path="/" view=Home/>
-                        <Route path="/single" view=pages::single::QueryVsResource/>
-                        <Route path="/todos" view=pages::interactive::Interactive/>
-                        <Route path="/*" view=NotFound/>
-                    </Routes>
-                </Router>
-            </Layout>
+            <ThemeProvider>
+                <Layout>
+                    <Router>
+                        <Routes>
+                            <Route path="/" view=Home/>
+                            <Route path="/single" view=pages::single::QueryVsResource/>
+                            <Route path="/todos" view=pages::interactive::Interactive/>
+                            <Route path="/*" view=NotFound/>
+                        </Routes>
+                    </Router>
+                </Layout>
+            </ThemeProvider>
 
         </ErrorBoundary>
     }
