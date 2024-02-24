@@ -4,6 +4,8 @@ use leptos::*;
 use leptos_meta::Html;
 use leptos_query::query_persister::{IndexedDbPersister, LocalStoragePersister};
 use leptos_query::use_query_client;
+use leptos_theme::theme::use_theme;
+use leptos_theme::types::Theme;
 use leptos_use::storage::use_local_storage;
 use leptos_use::utils::FromToStringCodec;
 
@@ -12,11 +14,14 @@ use crate::components::switch::Switch;
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
     view! {
-        <div class="relative flex min-h-screen flex-col bg-background">
-            <div class="flex-1 items-start grid grid-cols-[180px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-10">
-                <aside class="h-full w-full shrink-0 border-r">
+        <div class="relative flex h-screen flex-col bg-background">
+            <div class="flex-1 items-start grid grid-cols-[180px_minmax(0,1fr)]  lg:grid-cols-[200px_minmax(0,1fr)]">
+                <aside class="h-screen w-full shrink-0 border-r">
                     <div class="relative overflow-hidden h-full py-6 pr-6 lg:py-8 px-2 md:px-4">
                         <SidebarLink href="/">Home</SidebarLink>
+                        <div class="text-sm">
+                            <SidebarLink href="/intro">Why Leptos Query</SidebarLink>
+                        </div>
                         <div class="py-2"></div>
                         <h4 class="rounded-md px-2 py-1 text-base font-semibold">Examples</h4>
                         <div class="grid grid-flow-row auto-rows-max text-sm">
@@ -29,7 +34,9 @@ pub fn Layout(children: Children) -> impl IntoView {
                         </div>
                     </div>
                 </aside>
-                <main class="container relative py-6 lg:py-8">{children()}</main>
+                <main class="container relative py-6 lg:py-8 overflow-y-auto max-h-screen">
+                    {children()}
+                </main>
             </div>
         </div>
     }
@@ -41,7 +48,7 @@ fn ThemeToggle() -> impl IntoView {
     let is_dark = Signal::derive(move || current_theme.get() == Theme::Dark);
 
     view! {
-        // <Html class=move || if is_dark.get() { "dark" } else { "" }/>
+        <Html class=move || if is_dark.get() { "dark" } else { "" }/>
         <label
             for="dark-mode-toggle"
             class="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"

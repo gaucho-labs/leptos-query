@@ -9,10 +9,10 @@ use crate::components::{skeleton::Skeleton, spinner::Spinner, Loud};
 #[component]
 pub fn QueryVsResource() -> impl IntoView {
     view! {
-        <div class="container mx-auto p-8">
-            <div class="flex flex-col gap-8">
+        <div class="container mx-auto p-8 max-w-2xl">
+            <div class="flex flex-col gap-8 ">
                 <SingleQuery/>
-                <div class="h-2 w-full bg-border rounded-xl"></div>
+                <div class="h-1 w-full bg-border rounded-xl"></div>
                 <SingleResource/>
             </div>
         </div>
