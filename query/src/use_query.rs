@@ -4,6 +4,7 @@ use crate::query_result::QueryResult;
 use crate::{
     query_is_suppressed, use_query_client, QueryOptions, QueryState, RefetchFn, ResourceOption,
 };
+use leptos::leptos_dom::HydrationCtx;
 use leptos::*;
 use std::cell::Cell;
 use std::future::Future;
@@ -83,7 +84,12 @@ where
                 | QueryState::Fetching(data) => ResourceData(Some(data.data)),
 
                 // Suspend indefinitely and wait for interruption.
-                QueryState::Created | QueryState::Loading => {
+                QueryState::Created => {
+                    query.execute();
+                    sleep(LONG_TIME).await;
+                    ResourceData(None)
+                }
+                QueryState::Loading => {
                     sleep(LONG_TIME).await;
                     ResourceData(None)
                 }
@@ -119,16 +125,22 @@ where
         }
     });
 
+    // First read.
+    {
+        let query = query.get_untracked();
+
+        if resource.loading().get_untracked()
+            && !HydrationCtx::is_hydrating()
+            && query.with_state(|state| matches!(state, QueryState::Created))
+        {
+            query.execute()
+        }
+    }
+
     let data = Signal::derive({
         move || {
             let read = resource.get().and_then(|r| r.0);
             let query = query.get_untracked();
-
-            // First Read.
-            // Putting this in an effect will cause it to always refetch needlessly on the client after SSR.
-            if read.is_none() && query.with_state(|state| matches!(state, QueryState::Created)) {
-                query.execute()
-            }
 
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
