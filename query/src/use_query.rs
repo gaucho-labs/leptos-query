@@ -140,6 +140,7 @@ where
     let data = Signal::derive({
         move || {
             let read = resource.get().and_then(|r| r.0);
+            let _ = read;
 
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
