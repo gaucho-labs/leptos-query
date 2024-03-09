@@ -140,13 +140,13 @@ where
     let data = Signal::derive({
         move || {
             let read = resource.get().and_then(|r| r.0);
-            let query = query.get_untracked();
 
             // SSR edge case.
             // Given hydrate can happen before resource resolves, signals on the client can be out of sync with resource.
             // Need to force insert the resource data into the query state.
             #[cfg(feature = "hydrate")]
             if let Some(ref data) = read {
+                let query = query.get_untracked();
                 if query.with_state(|state| matches!(state, QueryState::Created)) {
                     let data = crate::QueryData::now(data.clone());
                     query.set_state(QueryState::Loaded(data));
