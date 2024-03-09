@@ -84,12 +84,7 @@ where
                 | QueryState::Fetching(data) => ResourceData(Some(data.data)),
 
                 // Suspend indefinitely and wait for interruption.
-                QueryState::Created => {
-                    query.execute();
-                    sleep(LONG_TIME).await;
-                    ResourceData(None)
-                }
-                QueryState::Loading => {
+                QueryState::Created | QueryState::Loading => {
                     sleep(LONG_TIME).await;
                     ResourceData(None)
                 }
