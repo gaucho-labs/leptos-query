@@ -1,1 +1,0 @@
-bunx tailwindcss -i ./input.css -o ./src/styles.css --watch --minify

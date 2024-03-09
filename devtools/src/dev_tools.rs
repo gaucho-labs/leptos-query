@@ -537,7 +537,7 @@ fn Header() -> impl IntoView {
     let label_class = "lq-hidden lg:lq-inline-block";
     view! {
         <div class="lq-flex-none lq-flex lq-justify-between lq-w-full lq-overflow-y-hidden lq-items-center lq-border-b lq-border-lq-border lq-pb-2 lq-px-1">
-            <h3 class="lq-pl-2 lq-tracking-tighter lq-text-lg lq-italic lq-text-transparent lq-bg-clip-text lq-font-bold bg-gradient-to-r lq-from-red-800 lq-to-orange-400">
+            <h3 class="lq-pl-2 lq-tracking-tighter lq-text-lg lq-italic lq-text-transparent lq-bg-clip-text lq-font-bold lq-bg-gradient-to-r lq-from-red-800 lq-to-orange-400">
                 Leptos Query
             </h3>
 
