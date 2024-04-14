@@ -38,8 +38,8 @@ A Query provides:
 
 
 ## The main entry points to using Queries are:
-- `create_query` - **Recommended**: Creates a [`QueryScope`] which encapsulates `use_query` and other methods for managing queries.
-- [`use_query`][crate::use_query::use_query()] - A query primitive for reading, caching, and refetching data.
+- [`create_query`](create_query::create_query) - **Recommended**: Creates a [`QueryScope`] which encapsulates `use_query` and other methods for managing queries.
+- [`use_query`][use_query::use_query] - A query primitive for reading, caching, and refetching data.
 
 ## Feature Flags
 - `csr` Client-side rendering: Use queries on the client.
