@@ -61,5 +61,5 @@ pub(crate) fn query_is_suppressed() -> bool {
 }
 
 thread_local! {
-    static SUPPRESS_QUERY_LOAD: Cell<bool> = Cell::new(false);
+    static SUPPRESS_QUERY_LOAD: Cell<bool> = const { Cell::new(false) };
 }

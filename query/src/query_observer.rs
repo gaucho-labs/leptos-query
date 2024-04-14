@@ -220,7 +220,7 @@ where
 }
 
 thread_local! {
-    static NEXT_ID: Cell<u32> = Cell::new(1);
+    static NEXT_ID: Cell<u32> = const { Cell::new(1) } ;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
