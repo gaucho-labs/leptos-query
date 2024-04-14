@@ -11,14 +11,22 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Run clippy
-      run: cargo clippy --verbose -- -D warnings
+      - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --verbose
+      - name: Run tests
+        run: cargo test --verbose 
+      - name: Run clippy
+        run: cargo clippy --verbose -- -D warnings
+      - name: Check README.md
+        run: |
+          set -e
+          cargo install cargo-rdme
+          cargo rdme --check
+      - name: Warning for README.md check failure
+        if: ${{ failure() }}
+        run: |
+          echo "README.md check failed. Please run 'cargo rdme' to update your README.md based on doc comments."
+          exit 1
